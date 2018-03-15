@@ -71,6 +71,8 @@ Label.register('Roboto',
 from electrum.util import (base_units, NoDynamicFeeEstimates, decimal_point_to_base_unit_name,
                            base_unit_name_to_decimal_point, NotEnoughFunds)
 
+from .uix.dialogs.lightning_payer import LightningPayerDialog
+from .uix.dialogs.lightning_channels import LightningChannelsDialog
 
 class ElectrumWindow(App):
 
@@ -584,6 +586,14 @@ class ElectrumWindow(App):
         self._settings_dialog.update()
         self._settings_dialog.open()
 
+    def lightning_payer_dialog(self):
+        d = LightningPayerDialog(self)
+        d.open()
+
+    def lightning_channels_dialog(self):
+        d = LightningChannelsDialog(self)
+        d.open()
+
     def popup_dialog(self, name):
         if name == 'settings':
             self.settings_dialog()
@@ -601,6 +611,8 @@ class ElectrumWindow(App):
                 ref.data = xpub
                 master_public_keys_layout.add_widget(ref)
             popup.open()
+        elif name.endswith("_dialog"):
+            getattr(self, name)()
         else:
             popup = Builder.load_file('electrum/gui/kivy/uix/ui_screens/'+name+'.kv')
             popup.open()
