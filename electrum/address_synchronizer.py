@@ -126,6 +126,9 @@ class AddressSynchronizer(PrintError):
             self.verifier = SPV(self.network, self)
             self.synchronizer = Synchronizer(self, network)
             network.add_jobs([self.verifier, self.synchronizer])
+            if network.config.get("lnbase", False):
+                from .lnbase import LNWorker
+                self.lnworker = LNWorker(self, network)
         else:
             self.verifier = None
             self.synchronizer = None
