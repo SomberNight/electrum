@@ -817,22 +817,22 @@ class EC_KEY(object):
         signature = private_key.sign_digest_deterministic(msg_hash, hashfunc=hashlib.sha256, sigencode = sigencode)
         return signature
 
-    def sign_message(self, message, is_compressed):
+    def sign_message(self, message, is_compressed, algo=lambda x: Hash(msg_magic(x))):
         message = to_bytes(message, 'utf8')
-        signature = self.sign(Hash(msg_magic(message)))
+        signature = self.sign(algo(message))
         for i in range(4):
             sig = bytes([27 + i + (4 if is_compressed else 0)]) + signature
             try:
-                self.verify_message(sig, message)
+                self.verify_message(sig, message, algo)
                 return sig
             except Exception as e:
                 continue
         else:
             raise Exception("error: cannot sign message")
 
-    def verify_message(self, sig, message):
+    def verify_message(self, sig, message, algo=lambda x: Hash(msg_magic(x))):
         assert_bytes(message)
-        h = Hash(msg_magic(message))
+        h = algo(message)
         public_key, compressed = pubkey_from_signature(sig, h)
         # check public key
         if point_to_ser(public_key.pubkey.point, compressed) != point_to_ser(self.pubkey.point, compressed):
