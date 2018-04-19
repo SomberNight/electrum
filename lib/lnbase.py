@@ -335,13 +335,17 @@ def get_per_commitment_secret_from_seed(seed: int, i: int) -> int:
     for bitindex in range(47, -1, -1):  # 47, 46, ..., 0
         mask = 1 << bitindex
         if i & mask:
-            print('get_per_commitment_secret_from_seed() bitindex, mask', bitindex, mask)
-            print('get_per_commitment_secret_from_seed() branch entered')
+            pcs_bytes = per_commitment_secret.to_bytes(byteorder="little", length=32)
+            per_commitment_secret = int.from_bytes(pcs_bytes, byteorder="big")
+
             per_commitment_secret ^= mask
-            print('get_per_commitment_secret_from_seed() per_commitment_secret br1', per_commitment_secret)
+
             pcs_bytes = per_commitment_secret.to_bytes(byteorder="big", length=32)
-            per_commitment_secret = int.from_bytes(bitcoin.sha256(pcs_bytes[::-1]), byteorder="big")
-            print('get_per_commitment_secret_from_seed() per_commitment_secret br2', per_commitment_secret)
+            per_commitment_secret = int.from_bytes(pcs_bytes, byteorder="little")
+
+            pcs_bytes = per_commitment_secret.to_bytes(byteorder="big", length=32)
+            per_commitment_secret = int.from_bytes(bitcoin.sha256(pcs_bytes), byteorder="big")
+
     return per_commitment_secret
 
 
