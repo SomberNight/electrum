@@ -175,6 +175,7 @@ def script_num_to_hex(i: int) -> str:
 
     return bh2u(result)
 
+
 def var_int(i: int) -> str:
     # https://en.bitcoin.it/wiki/Protocol_specification#Variable_length_integer
     if i<0xfd:
@@ -230,10 +231,6 @@ def push_script(data: str) -> str:
 
 def add_number_to_script(i: int) -> bytes:
     return bfh(push_script(script_num_to_hex(i)))
-
-
-def push_script(x):
-    return op_push(len(x)//2) + x
 
 
 def sha256(x):
