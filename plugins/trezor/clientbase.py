@@ -6,6 +6,8 @@ from electrum.util import PrintError, UserCancelled
 from electrum.keystore import bip39_normalize_passphrase
 from electrum.bitcoin import serialize_xpub
 
+from ..hw_wallet.plugin import HW_ClientBase
+
 
 class GuiMixin(object):
     # Requires: self.proto, self.device
@@ -41,6 +43,7 @@ class GuiMixin(object):
         if not message:
             message = self.messages.get(msg.code, self.messages['default'])
         self.handler.show_message(message.format(self.device), self.cancel)
+        # we now agree to wait for a HW button press; i.e. blocking this thread.
         return self.proto.ButtonAck()
 
     def callback_PinMatrixRequest(self, msg):
@@ -94,10 +97,11 @@ class GuiMixin(object):
         return self.proto.WordAck(word=word)
 
 
-class TrezorClientBase(GuiMixin, PrintError):
+class TrezorClientBase(GuiMixin, PrintError, HW_ClientBase):
 
     def __init__(self, handler, plugin, proto):
         assert hasattr(self, 'tx_api')  # ProtocolMixin already constructed?
+        HW_ClientBase.__init__(self)
         self.proto = proto
         self.device = plugin.device
         self.handler = handler

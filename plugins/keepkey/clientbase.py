@@ -6,6 +6,8 @@ from electrum.util import PrintError, UserCancelled
 from electrum.keystore import bip39_normalize_passphrase
 from electrum.bitcoin import serialize_xpub
 
+from ..hw_wallet.plugin import HW_ClientBase
+
 
 class GuiMixin(object):
     # Requires: self.proto, self.device
@@ -92,10 +94,11 @@ class GuiMixin(object):
         return self.proto.CharacterAck(**char_info)
 
 
-class KeepKeyClientBase(GuiMixin, PrintError):
+class KeepKeyClientBase(GuiMixin, PrintError, HW_ClientBase):
 
     def __init__(self, handler, plugin, proto):
         assert hasattr(self, 'tx_api')  # ProtocolMixin already constructed?
+        HW_ClientBase.__init__(self)
         self.proto = proto
         self.device = plugin.device
         self.handler = handler

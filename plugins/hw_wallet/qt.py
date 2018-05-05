@@ -26,6 +26,7 @@
 
 import threading
 
+from PyQt5 import QtWidgets
 from PyQt5.Qt import QVBoxLayout, QLabel
 from electrum_gui.qt.password_dialog import PasswordDialog, PW_PASSPHRASE
 from electrum_gui.qt.util import *
@@ -174,6 +175,9 @@ class QtHandlerBase(QObject, PrintError):
     def win_yes_no_question(self, msg):
         self.ok = self.win.question(msg)
         self.done.set()
+
+    def refresh_gui(self):
+        QtWidgets.qApp.processEvents()
 
 
 

@@ -12,7 +12,7 @@ try:
     from electrum.transaction import Transaction
     from electrum.i18n import _
     from electrum.keystore import Hardware_KeyStore
-    from ..hw_wallet import HW_PluginBase
+    from ..hw_wallet import HW_PluginBase, HW_ClientBase, run_in_threadpool
     from electrum.util import print_error, to_string, UserCancelled
     from electrum.base_wizard import ScriptTypeNotSupported, HWD_SETUP_NEW_WALLET
 
@@ -43,9 +43,10 @@ except ImportError as e:
 def to_hexstr(s):
     return binascii.hexlify(s).decode('ascii')
 
-class DigitalBitbox_Client():
+class DigitalBitbox_Client(HW_ClientBase):
 
     def __init__(self, plugin, hidDevice):
+        HW_ClientBase.__init__(self)
         self.plugin = plugin
         self.dbb_hid = hidDevice
         self.opened = True
@@ -353,7 +354,7 @@ class DigitalBitbox_Client():
                 seq += 1
             idx += len(write)
 
-
+    @run_in_threadpool
     def hid_read_frame(self):
         # INIT response
         read = bytearray(self.dbb_hid.read(self.usbReportSize))

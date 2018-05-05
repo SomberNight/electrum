@@ -10,7 +10,7 @@ from electrum.plugins import BasePlugin
 from electrum.keystore import Hardware_KeyStore
 from electrum.transaction import Transaction
 from electrum.wallet import Standard_Wallet
-from ..hw_wallet import HW_PluginBase
+from ..hw_wallet import HW_PluginBase, HW_ClientBase, run_in_threadpool
 from electrum.util import print_error, is_verbose, bfh, bh2u, versiontuple
 
 try:
@@ -50,10 +50,16 @@ def test_pin_unlocked(func):
     return catch_exception
 
 
-class Ledger_Client():
+class Ledger_Client(HW_ClientBase):
     def __init__(self, hidDevice):
+        HW_ClientBase.__init__(self)
         self.dongleObject = btchip(hidDevice)
         self.preflightDone = False
+
+        try:
+            hidDevice.exchange = run_in_threadpool(hidDevice.exchange, client=self)
+        except:
+            print_error('monkey-patching hidDevice.exchange failed')
 
     def is_pairable(self):
         return True

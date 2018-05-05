@@ -44,3 +44,6 @@ class CmdLineHandler:
 
     def finished(self):
         pass
+
+    def refresh_gui(self):
+        pass

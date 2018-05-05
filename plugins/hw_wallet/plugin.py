@@ -24,6 +24,8 @@
 # CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+from concurrent.futures import ThreadPoolExecutor, TimeoutError
+
 from electrum.plugins import BasePlugin, hook
 from electrum.i18n import _
 from electrum.bitcoin import is_address
@@ -75,3 +77,26 @@ class HW_PluginBase(BasePlugin):
         if type(keystore) != self.keystore_class:
             return False
         return True
+
+
+class HW_ClientBase:
+
+    def __init__(self):
+        self._threadpool = ThreadPoolExecutor()
+
+
+def run_in_threadpool(func, executor=None, client=None):
+    """Function decorator to run a method in a threadpool."""
+    def wrap(*args, **kwargs):
+        nonlocal client
+        if client is None:
+            client = args[0]  # self
+        future = (executor or client._threadpool).submit(func, *args, **kwargs)
+        while True:
+            try:
+                res = future.result(0.01)
+                return res
+            except TimeoutError:
+                if hasattr(client, 'handler') and client.handler:
+                    client.handler.refresh_gui()
+    return wrap
