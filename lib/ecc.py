@@ -35,13 +35,20 @@ from ecdsa.curves import SECP256k1
 from ecdsa.ellipticcurve import Point
 from ecdsa.util import string_to_number, number_to_string
 
-from .util import bfh, bh2u, assert_bytes, print_error, to_bytes, InvalidPassword
+import pycoin
+import pycoin.ecdsa
+import pycoin.ecdsa.secp256k1
+
+from .util import bfh, bh2u, assert_bytes, print_error, to_bytes, InvalidPassword, profiler
 from .crypto import (Hash, aes_encrypt_with_iv, aes_decrypt_with_iv)
 
-try:
-    import coincurve
-except:
-    coincurve = None
+#try:
+#    import coincurve
+#except:
+#    coincurve = None
+coincurve = None
+
+pycoin_generator = pycoin.ecdsa.secp256k1.secp256k1_generator
 
 
 CURVE_ORDER = SECP256k1.order
@@ -63,7 +70,16 @@ def der_sig_from_sig_string(sig_string):
 
 
 def der_sig_from_r_and_s(r, s):
-    return ecdsa.util.sigencode_der(r, s, CURVE_ORDER)
+    return ecdsa.util.sigencode_der_canonize(r, s, CURVE_ORDER)
+
+
+def get_r_and_s_from_sig_string(sig_string):
+    r, s = ecdsa.util.sigdecode_string(sig_string, CURVE_ORDER)
+    return r, s
+
+
+def sig_string_from_r_and_s(r, s):
+    return ecdsa.util.sigencode_string_canonize(r, s, CURVE_ORDER)
 
 
 def point_to_ser(P, compressed=True) -> bytes:
@@ -77,30 +93,42 @@ def point_to_ser(P, compressed=True) -> bytes:
     return bfh('04'+('%064x' % x)+('%064x' % y))
 
 
+@profiler
+def ECC_YfromX(x, odd=True):
+    curve = curve_secp256k1
+    _p = curve.p()
+    _a = curve.a()
+    _b = curve.b()
+    for offset in range(128):
+        Mx = x + offset
+        My2 = pow(Mx, 3, _p) + _a * pow(Mx, 2, _p) + _b % _p
+        My = pow(My2, (_p + 1) // 4, _p)
+        if curve.contains_point(Mx, My):
+            if odd == bool(My & 1):
+                return My
+            return _p - My
+    raise Exception('ECC_YfromX: No Y found')
+
+
+def ser_to_point(ser: bytes) -> (int, int):
+    if ser[0] not in (0x02, 0x03, 0x04):
+        raise ValueError('Unexpected first byte: {}'.format(ser[0]))
+    if ser[0] == 0x04:
+        return string_to_number(ser[1:33]), string_to_number(ser[33:])
+    x = string_to_number(ser[1:])
+    return x, ECC_YfromX(x, ser[0] == 0x03)
+
+
 def _ser_to_point(Aser: bytes) -> ecdsa.ellipticcurve.Point:
     assert not coincurve
     curve = curve_secp256k1
-
-    def ECC_YfromX(x, odd=True):
-        _p = curve.p()
-        _a = curve.a()
-        _b = curve.b()
-        for offset in range(128):
-            Mx = x + offset
-            My2 = pow(Mx, 3, _p) + _a * pow(Mx, 2, _p) + _b % _p
-            My = pow(My2, (_p + 1) // 4, _p)
-            if curve.contains_point(Mx, My):
-                if odd == bool(My & 1):
-                    return [My, offset]
-                return [_p - My, offset]
-        raise Exception('ECC_YfromX: No Y found')
 
     if Aser[0] not in (0x02, 0x03, 0x04):
         raise ValueError('Unexpected first byte: {}'.format(Aser[0]))
     if Aser[0] == 0x04:
         return Point( curve, string_to_number(Aser[1:33]), string_to_number(Aser[33:]), CURVE_ORDER)
     Mx = string_to_number(Aser[1:])
-    return Point(curve, Mx, ECC_YfromX(Mx, Aser[0] == 0x03)[0], CURVE_ORDER)
+    return Point(curve, Mx, ECC_YfromX(Mx, Aser[0] == 0x03), CURVE_ORDER)
 
 
 class _MyVerifyingKey(ecdsa.VerifyingKey):
@@ -141,11 +169,26 @@ class _MySigningKey(ecdsa.SigningKey):
         return r, s
 
 
+def _enforce_low_s(func):
+    def canonized_func(*args, **kwargs):
+        r, s = func(*args, **kwargs)
+        if s > CURVE_ORDER // 2:
+            s = CURVE_ORDER - s
+        return r, s
+    return canonized_func
+
+pycoin_generator.sign = _enforce_low_s(pycoin_generator.sign)
+# note that pycoin_generator.sign_with_recid is NOT low-s normalized
+# normalizing it invalidates recid
+
+
 class ECPubkey(object):
 
     def __init__(self, b: bytes):
         assert_bytes(b)
-        if coincurve:
+        if pycoin:
+            self._pubkey = pycoin_generator.Point(*ser_to_point(b))
+        elif coincurve:
             self._pubkey = coincurve.PublicKey(b)
         else:
             point = _ser_to_point(b)
@@ -158,7 +201,15 @@ class ECPubkey(object):
             raise Exception('Wrong encoding')
         if recid < 0 or recid > 3:
             raise ValueError('recid is {}, but should be 0 <= recid <= 3'.format(recid))
-        if coincurve:
+        if pycoin:
+            r, s = get_r_and_s_from_sig_string(sig_string)
+            msg_hash_int = string_to_number(msg_hash)
+            y_parity = recid & 1
+            point = pycoin_generator.possible_public_pairs_for_signature(msg_hash_int, (r, s), y_parity=y_parity)[0]
+            if recid > 1:
+                point = pycoin_generator.Point(point[0] + CURVE_ORDER, point[1])
+            return ECPubkey.from_point(point)
+        elif coincurve:
             sig2 = sig_string + bytes([recid])
             cc_pubkey = coincurve.PublicKey.from_signature_and_message(sig2, msg_hash, hasher=None)
             return ECPubkey(cc_pubkey.format())
@@ -182,6 +233,11 @@ class ECPubkey(object):
         recid = nV - 27
         return cls.from_sig_string(sig[1:], recid, msg_hash), compressed
 
+    @classmethod
+    def from_point(cls, point):
+        _bytes = point_to_ser(point, compressed=False)  # faster than compressed
+        return ECPubkey(_bytes)
+
     def get_public_key_bytes(self, compressed=True):
         return point_to_ser(self.point(), compressed)
 
@@ -189,7 +245,9 @@ class ECPubkey(object):
         return bh2u(self.get_public_key_bytes(compressed))
 
     def point(self) -> (int, int):
-        if coincurve:
+        if pycoin:
+            return self._pubkey
+        elif coincurve:
             return self._pubkey.point()
         else:
             return self._pubkey.point.x(), self._pubkey.point.y()
@@ -197,13 +255,16 @@ class ECPubkey(object):
     def __mul__(self, other: int):
         if not isinstance(other, int):
             raise TypeError('multiplication not defined for ECPubkey and {}'.format(type(other)))
-        if coincurve:
+        if pycoin:
+            point = self._pubkey * other
+            return self.from_point(point)
+        elif coincurve:
             other_bytes = number_to_string(other, CURVE_ORDER)
             cc_pubkey = self._pubkey.multiply(other_bytes)
             return ECPubkey(cc_pubkey.format())
         else:
             ecdsa_point = self._pubkey.point * other
-            return ECPubkey(point_to_ser(ecdsa_point))
+            return self.from_point(ecdsa_point)
 
     def __rmul__(self, other: int):
         return self * other
@@ -211,12 +272,15 @@ class ECPubkey(object):
     def __add__(self, other):
         if not isinstance(other, ECPubkey):
             raise TypeError('addition not defined for ECPubkey and {}'.format(type(other)))
-        if coincurve:
+        if pycoin:
+            point = self._pubkey + other._pubkey
+            return self.from_point(point)
+        elif coincurve:
             cc_pubkey = coincurve.PublicKey.combine_keys([self._pubkey, other._pubkey])
             return ECPubkey(cc_pubkey.format())
         else:
             ecdsa_point = self._pubkey.point + other._pubkey.point
-            return ECPubkey(point_to_ser(ecdsa_point))
+            return self.from_point(ecdsa_point)
 
     def __eq__(self, other):
         return self.get_public_key_bytes() == other.get_public_key_bytes()
@@ -238,7 +302,11 @@ class ECPubkey(object):
         assert_bytes(sig_string)
         if len(sig_string) != 64:
             raise Exception('Wrong encoding')
-        if coincurve:
+        if pycoin:
+            r, s = get_r_and_s_from_sig_string(sig_string)
+            msg_hash_int = string_to_number(msg_hash)
+            pycoin_generator.verify(self._pubkey, msg_hash_int, (r, s))
+        elif coincurve:
             pubkey_bytes = self.get_public_key_bytes()
             der_sig = der_sig_from_sig_string(sig_string)
             if not coincurve.verify_signature(der_sig, msg_hash, pubkey_bytes, hasher=None):
@@ -317,7 +385,10 @@ class ECPrivkey(ECPubkey):
             raise Exception('Invalid secret scalar (not within curve order)')
         self.secret_scalar = secret
 
-        if coincurve:
+        if pycoin:
+            point = pycoin_generator * secret
+            super().__init__(point_to_ser(point, compressed=False))  # faster than compressed
+        elif coincurve:
             self._privkey = coincurve.keys.PrivateKey.from_int(secret)
             super().__init__(self._privkey.public_key.format())
         else:
@@ -347,7 +418,14 @@ class ECPrivkey(ECPubkey):
         return privkey_32bytes
 
     def sign_transaction(self, hashed_preimage):
-        if coincurve:
+        # TODO all three verifications could just use self.verify_message_hash and be unified
+        if pycoin:
+            hash_int = string_to_number(hashed_preimage)
+            r, s = pycoin_generator.sign(self.secret_scalar, hash_int)
+            sig = der_sig_from_r_and_s(r, s)
+            if not pycoin_generator.verify(self._pubkey, hash_int, (r, s)):
+                raise Exception('Sanity check verifying our own signature failed.')
+        elif coincurve:
             sig = self._privkey.sign(hashed_preimage, hasher=None)
             if not self._pubkey.verify(sig, hashed_preimage, hasher=None):
                 raise Exception('Sanity check verifying our own signature failed.')
@@ -369,29 +447,37 @@ class ECPrivkey(ECPubkey):
                 raise Exception('Sanity check verifying our own signature failed.')
             return signature
 
+        def bruteforce_recid(sig_string):
+            for recid in range(4):
+                sig65 = construct_sig65(sig_string, recid, is_compressed)
+                try:
+                    self.verify_message_for_address(sig65, message)
+                    return sig65, recid
+                except Exception as e:
+                    continue
+            else:
+                raise Exception("error: cannot sign message. no recid fits..")
+
         message = to_bytes(message, 'utf8')
         msg_hash = Hash(msg_magic(message))
-        if coincurve:
+        if pycoin:
+            hash_int = string_to_number(msg_hash)
+            r, s = pycoin_generator.sign(self.secret_scalar, hash_int)
+            sig_string = sig_string_from_r_and_s(r, s)
+            sig65, recid = bruteforce_recid(sig_string)
+        elif coincurve:
             signature = self._privkey.sign_recoverable(msg_hash, hasher=None)
             if len(signature) != 65:
                 raise ValueError('Unexpected sig length: {} instead of 65'.format(len(signature)))
             sig65 = construct_sig65(signature[:64], signature[64], is_compressed)
-            try:
-                self.verify_message_for_address(sig65, message)
-                return sig65
-            except Exception as e:
-                raise Exception("error: cannot sign message (1)")
         else:
-            signature = sign_with_python_ecdsa(msg_hash)
-            for recid in range(4):
-                sig65 = construct_sig65(signature, recid, is_compressed)
-                try:
-                    self.verify_message_for_address(sig65, message)
-                    return sig65
-                except Exception as e:
-                    continue
-            else:
-                raise Exception("error: cannot sign message (2)")
+            sig_string = sign_with_python_ecdsa(msg_hash)
+            sig65, recid = bruteforce_recid(sig_string)
+        try:
+            self.verify_message_for_address(sig65, message)
+            return sig65
+        except Exception as e:
+            raise Exception("error: cannot sign message. self-verify sanity check failed")
 
     def decrypt_message(self, encrypted, magic=b'BIE1'):
         encrypted = base64.b64decode(encrypted)
@@ -403,13 +489,14 @@ class ECPrivkey(ECPubkey):
         mac = encrypted[-32:]
         if magic_found != magic:
             raise Exception('invalid ciphertext: invalid magic bytes')
-        if coincurve:
+        if pycoin:
+            ephemeral_pubkey = ECPubkey(ephemeral_pubkey_bytes)  # TODO test if point is valid
+        elif coincurve:
             try:
                 cc_pubkey = coincurve.PublicKey(ephemeral_pubkey_bytes)
             except ValueError as e:
                 raise Exception('invalid ciphertext: invalid ephemeral pubkey') from e
             ephemeral_pubkey = ECPubkey(cc_pubkey.format())
-
         else:
             try:
                 ecdsa_point = _ser_to_point(ephemeral_pubkey_bytes)
