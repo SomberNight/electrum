@@ -71,8 +71,6 @@ setup(
         'electrum.plugins.digitalbitbox',
         'electrum.plugins.trustedcoin',
         'electrum.plugins.virtualkeyboard',
-        'electrum.ln.google.api',
-        'electrum.ln',
     ],
     package_dir={
         'electrum': 'electrum'
