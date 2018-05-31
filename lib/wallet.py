@@ -105,7 +105,7 @@ def append_utxos_to_inputs(inputs, network, pubkey, txin_type, imax):
         item['address'] = address
         item['type'] = txin_type
         item['prevout_hash'] = item['tx_hash']
-        item['prevout_n'] = item['tx_pos']
+        item['prevout_n'] = int(item['tx_pos'])
         item['pubkeys'] = [pubkey]
         item['x_pubkeys'] = [pubkey]
         item['signatures'] = [None]
@@ -242,16 +242,15 @@ class Abstract_Wallet(PrintError):
 
     @profiler
     def load_transactions(self):
+        # load txi, txo, tx_fees
         self.txi = self.storage.get('txi', {})
         for txid, d in list(self.txi.items()):
             for addr, lst in d.items():
                 self.txi[txid][addr] = set([tuple(x) for x in lst])
         self.txo = self.storage.get('txo', {})
-        for txid, d in list(self.txo.items()):
-            for addr, lst in d.items():
-                self.txo[txid][addr] = set([tuple(x) for x in lst])
         self.tx_fees = self.storage.get('tx_fees', {})
         tx_list = self.storage.get('transactions', {})
+        # load transactions
         self.transactions = {}
         for tx_hash, raw in tx_list.items():
             tx = Transaction(raw)
@@ -259,9 +258,13 @@ class Abstract_Wallet(PrintError):
             if self.txi.get(tx_hash) is None and self.txo.get(tx_hash) is None:
                 self.print_error("removing unreferenced tx", tx_hash)
                 self.transactions.pop(tx_hash)
-        # spent_outpoints[prevout_hash][prevout_n] = spending_txid
-        self.spent_outpoints = self.storage.get('spent_outpoints', {})
-        self.spent_outpoints = defaultdict(dict, self.spent_outpoints)
+        # load spent_outpoints
+        _spent_outpoints = self.storage.get('spent_outpoints', {})
+        self.spent_outpoints = defaultdict(dict)
+        for prevout_hash, d in _spent_outpoints.items():
+            for prevout_n_str, spending_txid in d.items():
+                prevout_n = int(prevout_n_str)
+                self.spent_outpoints[prevout_hash][prevout_n] = spending_txid
 
     @profiler
     def load_local_history(self):
@@ -872,7 +875,7 @@ class Abstract_Wallet(PrintError):
                 dd = self.txo.get(prevout_hash, {})
                 # note: this nested for loop takes linear time in num is_mine outputs of prev_tx
                 for addr, outputs in dd.items():
-                    for n, v, is_cb in outputs:
+                    for n, v, is_cb in outputs:  # TODO instead of [(n, v, is_cb), ...]; this could be: {n -> (v, is_cb)}
                         if n == prevout_n:
                             if addr and self.is_mine(addr):
                                 if d.get(addr) is None:
