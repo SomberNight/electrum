@@ -295,11 +295,7 @@ class TxDialog(QDialog, MessageBoxMixin):
                 prevout_n = x.get('prevout_n')
                 cursor.insertText(prevout_hash[0:8] + '...', ext)
                 cursor.insertText(prevout_hash[-8:] + ":%-4d " % prevout_n, ext)
-                addr = x.get('address')
-                if addr == "(pubkey)":
-                    _addr = self.wallet.get_txin_address(x)
-                    if _addr:
-                        addr = _addr
+                addr = self.wallet.get_txin_address(x)
                 if addr is None:
                     addr = _('unknown')
                 cursor.insertText(addr, text_format(addr))
