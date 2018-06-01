@@ -278,8 +278,7 @@ class Wallet_2fa(Multisig_Wallet):
             self.print_error("sign_transaction: no auth code")
             return
         long_user_id, short_id = self.get_user_id()
-        tx_dict = tx.as_dict()
-        raw_tx = tx_dict["hex"]
+        raw_tx = tx.serialize_to_network()
         r = server.sign(short_id, raw_tx, self.auth_code)
         if r:
             raw_tx = r.get('transaction')
