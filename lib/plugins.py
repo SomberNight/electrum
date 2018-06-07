@@ -538,7 +538,7 @@ class DeviceMgr(ThreadJob, PrintError):
         return devices
 
     def scan_devices(self):
-        self.print_error("scanning devices...")
+        self.print_error(">>>>> scanning devices... entered")
 
         # First see what's connected that we know about
         devices = self._scan_devices_with_hid()
@@ -558,8 +558,10 @@ class DeviceMgr(ThreadJob, PrintError):
         disconnected_ids = []
         with self.lock:
             connected = {}
+            print(">> pairs", pairs)
+            print(">> clients.items()", self.clients.items())
             for client, pair in self.clients.items():
-                if pair in pairs and client.has_usable_connection_with_device():
+                if pair in pairs and client.has_usable_connection_with_device(safe=True):
                     connected[client] = pair
                 else:
                     disconnected_ids.append(pair[1])
@@ -569,4 +571,5 @@ class DeviceMgr(ThreadJob, PrintError):
         for id_ in disconnected_ids:
             self.unpair_id(id_)
 
+        self.print_error(">>>>> scanning devices... exiting")
         return devices

@@ -119,10 +119,13 @@ class KeepKeyClientBase(GuiMixin, PrintError):
     def is_pairable(self):
         return not self.features.bootloader_mode
 
-    def has_usable_connection_with_device(self):
+    def has_usable_connection_with_device(self, safe=False):
         try:
-            res = self.ping("electrum pinging device")
-            assert res == "electrum pinging device"
+            if safe:
+                self.transport.hid.read(0, timeout_ms=20)
+            else:
+                res = self.ping("electrum pinging device")
+                assert res == "electrum pinging device"
         except BaseException:
             return False
         return True

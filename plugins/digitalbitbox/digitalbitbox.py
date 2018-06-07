@@ -83,9 +83,12 @@ class DigitalBitbox_Client():
     def is_paired(self):
         return self.password is not None
 
-    def has_usable_connection_with_device(self):
+    def has_usable_connection_with_device(self, safe=False):
         try:
-            self.dbb_has_password()
+            if safe:
+                self.dbb_hid.read(0, timeout_ms=20)
+            else:
+                self.dbb_has_password()
         except BaseException:
             return False
         return True

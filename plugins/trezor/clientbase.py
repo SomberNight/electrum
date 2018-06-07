@@ -130,10 +130,13 @@ class TrezorClientBase(GuiMixin, PrintError):
     def is_pairable(self):
         return not self.features.bootloader_mode
 
-    def has_usable_connection_with_device(self):
+    def has_usable_connection_with_device(self, safe=False):
         try:
-            res = self.ping("electrum pinging device")
-            assert res == "electrum pinging device"
+            if safe:
+                pass
+            else:
+                res = self.ping("electrum pinging device")
+                assert res == "electrum pinging device"
         except BaseException:
             return False
         return True

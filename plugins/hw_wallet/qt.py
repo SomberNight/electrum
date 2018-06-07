@@ -205,7 +205,7 @@ class QtPluginBase(object):
             handler = self.create_handler(window)
             handler.button = button
             keystore.handler = handler
-            keystore.thread = TaskThread(window, window.on_error)
+            keystore.thread = TaskThread(window, window.on_error)  #
             self.add_show_address_on_hw_device_button_for_receive_addr(wallet, keystore, window)
             # Trigger a pairing
             keystore.thread.add(partial(self.get_client, keystore))

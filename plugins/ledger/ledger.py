@@ -74,9 +74,12 @@ class Ledger_Client():
     def i4b(self, x):
         return pack('>I', x)
 
-    def has_usable_connection_with_device(self):
+    def has_usable_connection_with_device(self, safe=False):
         try:
-            self.dongleObject.getFirmwareVersion()
+            if safe:
+                self.dongleObject.dongle.device.read(0, timeout_ms=20)
+            else:
+                self.dongleObject.getFirmwareVersion()
         except BaseException:
             return False
         return True
