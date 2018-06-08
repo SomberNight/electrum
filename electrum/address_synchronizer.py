@@ -33,6 +33,7 @@ from .transaction import Transaction
 from .synchronizer import Synchronizer
 from .verifier import SPV
 from .i18n import _
+from .lnworker import LNWorker
 
 TX_HEIGHT_LOCAL = -2
 TX_HEIGHT_UNCONF_PARENT = -1
@@ -127,10 +128,8 @@ class AddressSynchronizer(PrintError):
             self.verifier = SPV(self.network, self)
             self.synchronizer = Synchronizer(self, network)
             network.add_jobs([self.verifier, self.synchronizer])
-            if network.config.get("lnbase", False):
-                asyncio.set_event_loop(network.asyncio_loop)
-                from .lnworker import LNWorker
-                self.lnworker = LNWorker(self, network)
+            asyncio.set_event_loop(network.asyncio_loop)
+            self.lnworker = LNWorker(self, network)
         else:
             self.verifier = None
             self.synchronizer = None
