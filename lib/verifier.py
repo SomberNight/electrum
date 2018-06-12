@@ -20,9 +20,10 @@
 # ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 # CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
-from .util import ThreadJob
+from .util import ThreadJob, profiler
 from .bitcoin import *
 from .transaction import Transaction
+import time
 
 
 class InnerNodeOfSpvProofIsValidTx(Exception): pass
@@ -37,6 +38,7 @@ class SPV(ThreadJob):
         self.blockchain = network.blockchain()
         self.merkle_roots = {}  # txid -> merkle root (once it has been verified)
         self.requested_merkle = set()  # txid set of pending requests
+        self.total_time = 0
 
     def run(self):
         interface = self.network.interface
@@ -115,14 +117,18 @@ class SPV(ThreadJob):
         if self.is_up_to_date() and self.wallet.is_up_to_date():
             self.wallet.save_verified_tx(write=True)
 
-    @classmethod
-    def hash_merkle_root(cls, merkle_s, target_hash, pos):
+    @profiler
+    def hash_merkle_root(self, merkle_s, target_hash, pos):
+        t0 = time.time()
         h = hash_decode(target_hash)
         for i in range(len(merkle_s)):
             item = merkle_s[i]
             h = Hash(hash_decode(item) + h) if ((pos >> i) & 1) else Hash(h + hash_decode(item))
-            cls._raise_if_valid_tx(bh2u(h))
-        return hash_encode(h)
+            self._raise_if_valid_tx(bh2u(h))
+        h2 = hash_encode(h)
+        t1 = time.time()
+        self.total_time += t1 - t0
+        return h2
 
     @classmethod
     def _raise_if_valid_tx(cls, raw_tx: str):
