@@ -1,0 +1,561 @@
+#
+# Coldcard Electrum plugin main code.
+#
+#
+from struct import pack, unpack
+import hashlib
+import os, sys, time, io
+import traceback
+
+from electrum import bitcoin
+from electrum.bitcoin import TYPE_ADDRESS, int_to_hex
+from electrum.i18n import _
+from electrum.plugins import BasePlugin, Device
+from electrum.keystore import Hardware_KeyStore, xpubkey_to_pubkey
+from electrum.transaction import Transaction
+from electrum.wallet import Standard_Wallet
+from electrum.crypto import hash_160
+from ..hw_wallet import HW_PluginBase
+from ..hw_wallet.plugin import is_any_tx_output_on_change_branch
+from electrum.util import print_error, is_verbose, bfh, bh2u, versiontuple
+from electrum.base_wizard import ScriptTypeNotSupported
+
+try:
+    import hid
+    from ckcc.protocol import CCProtocolPacker, CCProtocolUnpacker
+    from ckcc.protocol import CCProtoError, CCUserRefused, CCBusyError
+    from ckcc.constants import (MAX_MSG_LEN, MAX_BLK_LEN, MSG_SIGNING_MAX_LENGTH, MAX_TXN_LEN,
+        AF_CLASSIC, AF_P2SH, AF_P2WPKH, AF_P2WSH, AF_P2WPKH_P2SH, AF_P2WSH_P2SH)
+    from ckcc.client import ColdcardDevice, COINKITE_VID, CKCC_PID, CKCC_SIMULATOR_PATH
+
+    requirements_ok = True
+except ImportError:
+    requirements_ok = False
+
+class ElectrumColdcardDevice(ColdcardDevice):
+    # avoid use of pycoin for MiTM message signature test
+    def mitm_verify(self, sig, expect_xpub):
+        # verify a signature (65 bytes) over the session key, using the master bip32 node
+        # - customized to use specific EC library of Electrum.
+        from electrum.ecc import ECPubkey
+
+        xtype, depth, parent_fingerprint, child_number, chain_code, K_or_k \
+            = bitcoin.deserialize_xpub(expect_xpub)
+
+        pubkey = ECPubkey(K_or_k)
+        try:
+            pubkey.verify_message_hash(sig[1:65], self.session_key)
+            return True
+        except:
+            return False
+
+def my_var_int(l):
+    # Bitcoin serialization of integers... directly into binary!
+    if l < 253:
+        return pack("B", l)
+    elif l < 0x10000:
+        return pack("<BH", 253, l)
+    elif l < 0x100000000:
+        return pack("<BI", 254, l)
+    else:
+        return pack("<BQ", 255, l)
+
+
+class CKCCClient:
+    # Challenge: I haven't found anywhere that defines a base class for this 'client',
+    # nor an API (interface) to be met. Winging it. Gets called from lib/plugins.py mostly?
+
+    def __init__(self, handler, dev_path, is_simulator=False):
+        self.handler = handler
+
+        # if we know what the xpub "should be" then track it here
+        self._expected_master = None
+
+        if is_simulator:
+            self.dev = ElectrumColdcardDevice(dev_path, encrypt=True)
+        else:
+            # open the real HID device
+            import hid
+            hd = hid.device(path=dev_path)
+            hd.open_path(dev_path)
+
+            self.dev = ElectrumColdcardDevice(dev=hd, encrypt=True)
+
+        # NOTE: MiTM test is delayed until we have a hint as to what XPUB we
+        # should expect. It's also kinda slow.
+
+    def __repr__(self):
+        return '<CKCCClient: xfp=%08x label=%r>' % (self.dev.master_fingerprint,
+                                                        self.label())
+
+    @property
+    def expected_master(self, xp):
+        return self._expected_master
+
+    @expected_master.setter
+    def expected_master(self, xp):
+        if self._expected_master is None:
+            # Do the MiTM test now that we know what master xpub should be
+            self.dev.check_mitm(expected_master=xp)
+            self._expected_master = xp
+            print_error('[coldcard]', "USB MiTM test passed")
+        else:
+            assert self._expected_master == xp, "XPUB changing?"
+
+    def is_pairable(self):
+        # can't do anything w/ devices that aren't setup (but not normally reachable)
+        return bool(self.dev.master_xpub)
+
+    def timeout(self, cutoff):
+        # nothing to do?
+        pass
+
+    def close(self):
+        # close the HID device (so can be reused)
+        self.dev.close()
+        self.dev = None
+
+    def is_initialized(self):
+        return bool(self.dev.master_xpub)
+
+    def label(self):
+        # 'label' of this Coldcard. Warning: gets saved into wallet file, which might
+        # not be encrypted, so better for privacy if based on xpub/fingerprint rather than
+        # USB serial number.
+        if self.dev.is_simulator:
+            return 'Coldcard Simulator 0x%08x' % self.dev.master_fingerprint
+
+        if not self.dev.master_fingerprint:
+            # failback; not expected
+            return 'Coldcard #' + self.dev.serial
+
+        return 'Coldcard 0x%08x' % self.dev.master_fingerprint
+
+    def has_usable_connection_with_device(self):
+        # Do end-to-end ping test
+        try:
+            self.ping_check()
+            return True
+        except:
+            return False
+
+    def get_xpub(self, bip32_path, xtype):
+        # TODO: xtype?
+        return self.dev.send_recv(CCProtocolPacker.get_xpub(bip32_path), timeout=5000)
+
+    def ping_check(self):
+        # check connection is working
+        assert self.dev.session_key, 'not encrypted?'
+        req = b'1234 Electrum Plugin 4321'      # free up to 59 bytes
+        try:
+            echo = self.dev.send_recv(CCProtocolPacker.ping(req))
+            assert echo == req
+        except:
+            raise RuntimeError("Communication trouble with Coldcard")
+
+    def show_address(self, path, addr_fmt):
+        # prompt user w/ addres, also returns it immediately.
+        return self.dev.send_recv(CCProtocolPacker.show_address(path, addr_fmt), timeout=None)
+
+    def sign_message_start(self, path, msg):
+        # this starts the UX experience.
+        self.dev.send_recv(CCProtocolPacker.sign_message(msg, path), timeout=None)
+
+    def sign_message_poll(self):
+        # poll device... if user has approved, will get tuple: (addr, sig) else None
+        return self.dev.send_recv(CCProtocolPacker.get_signed_msg(), timeout=None)
+
+    def sign_transaction_start(self, raw_psbt, finalize=True):
+        # Multiple steps to sign:
+        # - upload binary
+        # - start signing UX
+        # - wait for coldcard to complete process, or have it refused.
+        # - download resulting txn
+        assert 20 <= len(raw_psbt) < MAX_TXN_LEN, 'PSBT is too big'
+        dlen, chk = self.dev.upload_file(raw_psbt)
+
+        resp = self.dev.send_recv(CCProtocolPacker.sign_transaction(dlen, chk, finalize=finalize),
+                                    timeout=None)
+
+        if resp != None:
+            raise ValueError(resp)
+
+    def sign_transaction_poll(self):
+        # poll device... if user has approved, will get tuple: (addr, sig) else None
+        return self.dev.send_recv(CCProtocolPacker.get_signed_txn(), timeout=None)
+
+    def download_file(self, length, checksum, file_number=1):
+        # get a file
+        return self.dev.download_file(length, checksum, file_number=file_number)
+
+        
+
+class Coldcard_KeyStore(Hardware_KeyStore):
+    hw_type = 'coldcard'
+    device = 'Coldcard'
+
+    def __init__(self, d):
+        Hardware_KeyStore.__init__(self, d)
+        # Errors and other user interaction is done through the wallet's
+        # handler.  The handler is per-window and preserved across
+        # device reconnects
+        self.force_watching_only = False
+        self.ux_busy = False
+
+        # seems like only the derivation path and resulting xpub is stored in
+        # the wallet file... however, we need to know the master xpub to verify
+        # the mitm and also so we can put the right value into the subkey paths
+        # of PSBT files that might be generated offline
+        #self.ckcc_master_xpub = d.get('ckcc_master_xpub', '')
+
+    def get_derivation(self):
+        return self.derivation
+
+    def get_client(self):
+        rv = self.plugin.get_client(self)
+        if rv and self.ckcc_master_xpub:
+            rv.expected_master = self.ckcc_master_xpub
+        return rv
+
+    def give_error(self, message, clear_client=False):
+        print_error(message)
+        if not self.ux_busy:
+            self.handler.show_error(message)
+        else:
+            self.ux_busy = False
+        if clear_client:
+            self.client = None
+        raise Exception(message)
+
+    def wrap_busy(func):
+        # decorator: function takes over the UX on the device.
+        def wrapper(self, *args, **kwargs):
+            try:
+                self.ux_busy = True
+                return func(self, *args, **kwargs)
+            finally:
+                self.ux_busy = False
+        return wrapper
+
+    def decrypt_message(self, pubkey, message, password):
+        raise RuntimeError(_('Encryption and decryption are currently not supported for {}').format(self.device))
+
+    @wrap_busy
+    def sign_message(self, sequence, message, password):
+        # Sign a message on device. Since we have big screen, of course we
+        # have to show the message unabiguously there first!
+        try:
+            msg = message.encode('ascii', errors='strict')
+            assert 1 <= len(msg) <= MSG_SIGNING_MAX_LENGTH
+        except (UnicodeError, AssertionError):
+            # there are other restrictions on message content,
+            # but let the device enforce and report those
+            self.handler.show_error('Only short (%d max) ASCII messages can be signed.' 
+                                            % MSG_SIGNING_MAX_LENGTH)
+            return b''
+
+        client = self.get_client()
+        path = self.get_derivation() + ("/%d/%d" % sequence)
+        try:
+            cl = self.get_client()
+            try:
+                self.handler.show_message("Signing message (using %s)..." % path)
+
+                cl.sign_message_start(path, msg)
+
+                while 1:
+                    # How to kill some time, without locking UI?
+                    time.sleep(0.250)
+
+                    resp = cl.sign_message_poll()
+                    if resp is not None:
+                        break
+
+            finally:
+                self.handler.finished()
+
+            assert len(resp) == 2
+            addr, raw_sig = resp
+
+            # already encoded in Bitcoin fashion, binary.
+            assert 40 < len(raw_sig) <= 65
+
+            return raw_sig
+
+        except (CCUserRefused, CCBusyError) as exc:
+            self.handler.show_error(str(exc))
+        except CCProtoError as exc:
+            traceback.print_exc(file=sys.stderr)
+            self.handler.show_error('{}\n\n{}'.format(
+                _('Error showing address') + ':', str(exc)))
+        except Exception as e:
+            self.give_error(e, True)
+
+        # give empty bytes for error cases; it seems to clear the old signature box
+        return b''
+
+    def build_psbt(self, tx, xfp=None, wallet=None):
+        # Render a PSBT file, for upload to Coldcard.
+        # 
+        if xfp is None:
+            # we need to BIP32 fingerprint value: 4 bytes of ripemd(sha256(pubkey))
+            kk = self.ckcc_master_xpub
+            print("kk = %r" % kk)
+            kk = bfh(self.get_pubkey_from_xpub(kk, []))
+            print("pubk = %r" % kk)
+            assert len(kk) == 33
+            
+            xfp, = unpack('<I', hash_160(kk)[0:4])
+
+            print("xfp = 0x%08x" % xfp)
+
+        inputs = tx.inputs()
+
+        if 'prev_tx' not in inputs[0]:
+            # fetch info about inputs, if needed?
+            # - needed during save PSBT flow, not normal online signing
+            assert wallet, 'need wallet reference'
+            wallet.add_hw_info(tx)
+
+        # Build map of pubkey needed to derivation, in PSBT binary format
+        # 1) binary version of the common subpath for all keys
+        #       m/ => fingerprint LE32
+        #       a/b/c => ints
+        base_path = pack('<I', xfp)
+        for x in self.get_derivation()[2:].split('/'):
+            if x.endswith("'"):
+                x = int(x[:-1]) | 0x80000000
+            else:
+                x = int(x)
+            base_path += pack('<I', x)
+
+        # 2) all used keys in transaction
+        subkeys = {}
+        derivations = self.get_tx_derivations(tx)
+        for xpubkey in derivations:
+            pubkey = xpubkey_to_pubkey(xpubkey)
+
+            # assuming depth two, non-harded: change + index
+            aa, bb = derivations[xpubkey]
+            assert 0 <= aa < 0x80000000
+            assert 0 <= bb < 0x80000000
+
+            subkeys[bfh(pubkey)] = base_path + pack('<II', aa, bb)
+            
+        for txin in inputs:
+            if txin['type'] == 'coinbase':
+                self.give_error("Coinbase not supported")     # but why not?
+
+            if txin['type'] in ['p2sh']:
+                self.give_error(('Not ready for multisig transactions yet'))
+
+            #if txin['type'] in ['p2wpkh-p2sh', 'p2wsh-p2sh']:
+            #if txin['type'] in ['p2wpkh', 'p2wsh']:
+
+            pubkeys, x_pubkeys = tx.get_sorted_pubkeys(txin)
+
+        # Construct PSBT from start to finish.
+        out_fd = io.BytesIO()
+        out_fd.write(b'psbt\xff')
+
+        def write_kv(ktype, val, key=b''):
+            # serialize helper: write w/ size and key byte
+            out_fd.write(my_var_int(1 + len(key)))
+            out_fd.write(bytes([ktype]) + key)
+
+            if isinstance(val, str):
+                val = bfh(val)
+
+            out_fd.write(my_var_int(len(val)))
+            out_fd.write(val)
+
+
+        # global section: just the unsigned txn
+        unsigned = bfh(tx.serialize_to_network(blank_scripts=True))
+        write_kv(0x0, unsigned)
+        write_kv(0x4, my_var_int(len(inputs)))
+
+        for k in subkeys:
+            write_kv(0x3, subkeys[k], k)
+        
+        # end globals section
+        out_fd.write(b'\x00')
+
+        # inputs section
+        for txin in tx.inputs():
+            utxo = txin['prev_tx'].outputs()[txin['prevout_n']]
+            spendable = txin['prev_tx'].serialize_output(utxo)
+            write_kv(0x01, spendable)
+            out_fd.write(b'\x00')
+
+        return out_fd.getvalue()
+
+
+    @wrap_busy
+    def sign_transaction(self, tx, password):
+        # Build a PSBT in memory, upload it for signing.
+        # - we can also work offline (without paired device present)
+        if tx.is_complete():
+            return
+
+        client = self.get_client()
+
+        raw_psbt = self.build_psbt(tx, client.dev.master_fingerprint)
+
+        #open('debug.psbt', 'wb').write(out_fd.getvalue())
+
+        try:
+            try:
+                self.handler.show_message("Authorize Transaction...")
+
+                new_raw = client.sign_transaction_start(raw_psbt, True)
+
+                while 1:
+                    # How to kill some time, without locking UI?
+                    time.sleep(0.250)
+
+                    resp = client.sign_transaction_poll()
+                    if resp is not None:
+                        break
+
+                rlen, rsha = resp
+            
+                # download the resulting txn.
+                new_raw = client.download_file(rlen, rsha)
+
+            finally:
+                self.handler.finished()
+
+        except (CCUserRefused, CCBusyError) as exc:
+            self.handler.show_error(str(exc))
+            return
+        except BaseException as e:
+            traceback.print_exc(file=sys.stdout)
+            self.give_error(e, True)
+            return
+
+        # trust the coldcard to re-searilize final product right?
+        tx.update(bh2u(new_raw))
+
+    @staticmethod
+    def _encode_txin_type(txin_type):
+        # Map from Electrum code names to our code numbers.
+        return {'standard': AF_CLASSIC, 'p2pkh': AF_CLASSIC,
+                'p2sh': AF_P2SH,
+                'p2wpkh-p2sh': AF_P2WPKH_P2SH,
+                'p2wpkh': AF_P2WPKH,
+                'p2wsh-p2sh': AF_P2WSH_P2SH,
+                'p2wsh': AF_P2WSH,
+                }[txin_type]
+
+    @wrap_busy
+    def show_address(self, sequence, txin_type):
+        client = self.get_client()
+        address_path = self.get_derivation()[2:] + "/%d/%d"%sequence
+        addr_fmt = self._encode_txin_type(txin_type)
+        try:
+            try:
+                self.handler.show_message(_("Showing address ..."))
+                dev_addr = client.show_address(address_path, addr_fmt)
+                # we could double check address here
+            finally:
+                self.handler.finished()
+        except CCProtoError as exc:
+            traceback.print_exc(file=sys.stderr)
+            self.handler.show_error('{}\n\n{}'.format(
+                _('Error showing address') + ':', str(exc)))
+        except BaseException as exc:
+            traceback.print_exc(file=sys.stderr)
+            self.handler.show_error(exc)
+
+
+CKCC_SIMULATED_PID = CKCC_PID ^ 0x55aa
+
+class ColdcardPlugin(HW_PluginBase):
+    libraries_available = requirements_ok
+    keystore_class = Coldcard_KeyStore
+    client = None
+    DEVICE_IDS = [ (COINKITE_VID, CKCC_PID), (COINKITE_VID, CKCC_SIMULATED_PID) ]
+    #SUPPORTED_XTYPES = ('standard', 'p2wpkh-p2sh', 'p2wpkh', 'p2wsh-p2sh', 'p2wsh')
+    SUPPORTED_XTYPES = ('standard', 'p2wpkh')
+
+    def __init__(self, parent, config, name):
+        self.segwit = config.get("segwit")
+        HW_PluginBase.__init__(self, parent, config, name)
+
+        if self.libraries_available:
+            self.device_manager().register_devices(self.DEVICE_IDS)
+
+            self.device_manager().register_enumerate_func(self.detect_simulator)
+
+    def detect_simulator(self):
+        # if there is a simulator running on this machine,
+        # return details about it so it's offered as a pairing choice
+        fn = CKCC_SIMULATOR_PATH
+
+        if os.path.exists(fn):
+            return [Device(fn, -1, fn, (COINKITE_VID, CKCC_SIMULATED_PID), 0)]
+
+        return []
+        
+
+    def create_client(self, device, handler):
+        if handler:
+            self.handler = handler
+
+        # We are given a HID device, or at least some details about it.
+        # Not sure why not we aren't just given a HID library handle, but
+        # the 'path' is unabiguous, so we'll use that.
+        rv = CKCCClient(handler, device.path, 
+                    is_simulator=(device.product_key[1] == CKCC_SIMULATED_PID))
+        return rv
+
+    def setup_device(self, device_info, wizard, purpose):
+        devmgr = self.device_manager()
+        device_id = device_info.device.id_
+        client = devmgr.client_by_id(device_id)
+        if client is None:
+            raise Exception(_('Failed to create a client for this device.') + '\n' +
+                            _('Make sure it is in the correct state.'))
+        client.handler = self.create_handler(wizard)
+
+    def get_xpub(self, device_id, derivation, xtype, wizard):
+        # this seems to be part of the pairing process only, not during normal ops?
+        if xtype not in self.SUPPORTED_XTYPES:
+            raise ScriptTypeNotSupported(_('This type of script is not supported with {}.').format(self.device))
+        devmgr = self.device_manager()
+        client = devmgr.client_by_id(device_id)
+        client.handler = self.create_handler(wizard)
+        client.ping_check()
+        xpub = client.get_xpub(derivation, xtype)
+        return xpub
+
+    def get_client(self, keystore, force_pair=True):
+        # All client interaction should not be in the main GUI thread
+        devmgr = self.device_manager()
+        handler = keystore.handler
+        with devmgr.hid_lock:
+            client = devmgr.client_for_keystore(self, handler, keystore, force_pair)
+        # returns the client for a given keystore. can use xpub
+        #if client:
+        #    client.used()
+        if client is not None:
+            client.ping_check()
+        return client
+
+    def show_address(self, wallet, address, keystore=None):
+        if keystore is None:
+            keystore = wallet.get_keystore()
+        if not self.show_address_helper(wallet, address, keystore):
+            return
+
+        # Standard_Wallet => not multisig, must be bip32
+        if type(wallet) is not Standard_Wallet:
+            keystore.handler.show_error(_('This function is only available for standard wallets when using {}.').format(self.device))
+            return
+
+        sequence = wallet.get_address_index(address)
+        txin_type = wallet.get_txin_type(address)
+        keystore.show_address(sequence, txin_type)
+
+# EOF

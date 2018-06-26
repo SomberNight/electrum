@@ -69,6 +69,7 @@ setup(
         'electrum_plugins.revealer',
         'electrum_plugins.trezor',
         'electrum_plugins.digitalbitbox',
+        'electrum_plugins.coldcard',
         'electrum_plugins.trustedcoin',
         'electrum_plugins.virtualkeyboard',
     ],
