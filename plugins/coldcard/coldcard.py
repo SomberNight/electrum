@@ -60,6 +60,14 @@ def my_var_int(l):
     else:
         return pack("<BQ", 255, l)
 
+def xfp_from_xpub(xpub):
+    # sometime we need to BIP32 fingerprint value: 4 bytes of ripemd(sha256(pubkey))
+    # UNTESTED
+    kk = bfh(Xpub.get_pubkey_from_xpub(xpub, []))
+    assert len(kk) == 33
+    xfp, = unpack('<I', hash_160(kk)[0:4])
+    return xfp
+
 
 class CKCCClient:
     # Challenge: I haven't found anywhere that defines a base class for this 'client',
@@ -68,8 +76,8 @@ class CKCCClient:
     def __init__(self, handler, dev_path, is_simulator=False):
         self.handler = handler
 
-        # if we know what the xpub "should be" then track it here
-        self._expected_master = None
+        # if we know what the (xfp, xpub) "should be" then track it here
+        self._expected_device = None
 
         if is_simulator:
             self.dev = ElectrumColdcardDevice(dev_path, encrypt=True)
@@ -88,19 +96,29 @@ class CKCCClient:
         return '<CKCCClient: xfp=%08x label=%r>' % (self.dev.master_fingerprint,
                                                         self.label())
 
-    @property
-    def expected_master(self, xp):
-        return self._expected_master
+    def verify_connection(self, expected_xfp, expected_xpub):
+        ex = (expected_xfp, expected_xpub)
 
-    @expected_master.setter
-    def expected_master(self, xp):
-        if self._expected_master is None:
-            # Do the MiTM test now that we know what master xpub should be
-            self.dev.check_mitm(expected_master=xp)
-            self._expected_master = xp
-            print_error('[coldcard]', "USB MiTM test passed")
-        else:
-            assert self._expected_master == xp, "XPUB changing?"
+        if self._expected_device == ex:
+            # all is as expected
+            return
+
+        if ( (self._expected_device is not None) 
+                or (self.dev.master_fingerprint != expected_xfp)
+                or (self.dev.master_xpub != expected_xpub)):
+            # probably indicating programing error, not hacking
+            raise RuntimeError("Expecting 0x%08x but that's not whats connected?!" %
+                                    expected_xfp)
+
+        # check signature over session key
+        # - mitm might have lied about xfp and xpub up to here
+        # - important that we use value capture at wallet creation time, not some value
+        #   we read over USB today
+        self.dev.check_mitm(expected_xpub=expected_xpub)
+
+        self._expected_device = ex
+
+        print_error("[coldcard]", "Successfully verified against MiTM")
 
     def is_pairable(self):
         # can't do anything w/ devices that aren't setup (but not normally reachable)
@@ -123,13 +141,26 @@ class CKCCClient:
         # not be encrypted, so better for privacy if based on xpub/fingerprint rather than
         # USB serial number.
         if self.dev.is_simulator:
-            return 'Coldcard Simulator 0x%08x' % self.dev.master_fingerprint
-
-        if not self.dev.master_fingerprint:
+            lab = 'Coldcard Simulator 0x%08x' % self.dev.master_fingerprint
+        elif not self.dev.master_fingerprint:
             # failback; not expected
-            return 'Coldcard #' + self.dev.serial
+            lab = 'Coldcard #' + self.dev.serial
+        else:
+            lab = 'Coldcard 0x%08x' % self.dev.master_fingerprint
 
-        return 'Coldcard 0x%08x' % self.dev.master_fingerprint
+        # Hack zone: during initial setup I need the xfp and master xpub but 
+        # very few objects are passed between the various steps of base_wizard.
+        # Solution: return a string with some hidden metadata
+        # - see <https://stackoverflow.com/questions/7172772/abc-for-string>
+        # - needs to work w/ deepcopy
+        class LabelStr(str):
+            def __new__(cls, s, xfp=None, xpub=None):
+                self = super().__new__(cls, str(s))
+                self.xfp = getattr(s, 'xfp', xfp)
+                self.xpub = getattr(s, 'xpub', xpub)
+                return self
+
+        return LabelStr(lab, self.dev.master_fingerprint, self.dev.master_xpub)
 
     def has_usable_connection_with_device(self):
         # Do end-to-end ping test
@@ -140,7 +171,8 @@ class CKCCClient:
             return False
 
     def get_xpub(self, bip32_path, xtype):
-        # TODO: xtype?
+        # TODO: xtype? .. might not be able to support anything but classic p2pkh?
+        print_error('[coldcard]', 'Derive xtype = %r' % xtype)
         return self.dev.send_recv(CCProtocolPacker.get_xpub(bip32_path), timeout=5000)
 
     def ping_check(self):
@@ -156,6 +188,10 @@ class CKCCClient:
     def show_address(self, path, addr_fmt):
         # prompt user w/ addres, also returns it immediately.
         return self.dev.send_recv(CCProtocolPacker.show_address(path, addr_fmt), timeout=None)
+
+    def get_version(self):
+        # gives list of strings
+        return self.dev.send_recv(CCProtocolPacker.version(), timeout=1000).split('\n')
 
     def sign_message_start(self, path, msg):
         # this starts the UX experience.
@@ -181,7 +217,7 @@ class CKCCClient:
             raise ValueError(resp)
 
     def sign_transaction_poll(self):
-        # poll device... if user has approved, will get tuple: (addr, sig) else None
+        # poll device... if user has approved, will get tuple: (legnth, checksum) else None
         return self.dev.send_recv(CCProtocolPacker.get_signed_txn(), timeout=None)
 
     def download_file(self, length, checksum, file_number=1):
@@ -202,19 +238,42 @@ class Coldcard_KeyStore(Hardware_KeyStore):
         self.force_watching_only = False
         self.ux_busy = False
 
-        # seems like only the derivation path and resulting xpub is stored in
-        # the wallet file... however, we need to know the master xpub to verify
-        # the mitm and also so we can put the right value into the subkey paths
-        # of PSBT files that might be generated offline
-        #self.ckcc_master_xpub = d.get('ckcc_master_xpub', '')
+        # Seems like only the derivation path and resulting **derived** xpub is stored in
+        # the wallet file... however, we need to know at least the fingerprint of the master
+        # xpub to verify against MiTM, and also so we can put the right value into the subkey paths
+        # of PSBT files that might be generated offline. 
+        # - save the fingerprint of the master xpub, as "xfp"
+        # - it's a LE32 int, but hex more natural way to see it
+        # - device reports these value during encryption setup process
+        lab = d['label']
+        if hasattr(lab, 'xfp'):
+            # initial setup
+            self.ckcc_xfp = lab.xfp
+            self.ckcc_xpub = lab.xpub
+        else:
+            # wallet load: fatal if missing, we need them!
+            self.ckcc_xfp = d['ckcc_xfp']
+            self.ckcc_xpub = d['ckcc_xpub']
+
+    def dump(self):
+        # our additions to the stored data about keystore -- only during creation?
+        d = Hardware_KeyStore.dump(self)
+
+        d['ckcc_xfp'] = self.ckcc_xfp
+        d['ckcc_xpub'] = self.ckcc_xpub
+
+        return d
 
     def get_derivation(self):
         return self.derivation
 
     def get_client(self):
+        # called when user tries to do something like view address, sign somthing.
+        # - not called during probing/setup
         rv = self.plugin.get_client(self)
-        if rv and self.ckcc_master_xpub:
-            rv.expected_master = self.ckcc_master_xpub
+        if rv:
+            rv.verify_connection(self.ckcc_xfp, self.ckcc_xpub)
+
         return rv
 
     def give_error(self, message, clear_client=False):
@@ -294,26 +353,18 @@ class Coldcard_KeyStore(Hardware_KeyStore):
         # give empty bytes for error cases; it seems to clear the old signature box
         return b''
 
-    def build_psbt(self, tx, xfp=None, wallet=None):
+    def build_psbt(self, tx, wallet=None, xfp=None):
         # Render a PSBT file, for upload to Coldcard.
         # 
         if xfp is None:
-            # we need to BIP32 fingerprint value: 4 bytes of ripemd(sha256(pubkey))
-            kk = self.ckcc_master_xpub
-            print("kk = %r" % kk)
-            kk = bfh(self.get_pubkey_from_xpub(kk, []))
-            print("pubk = %r" % kk)
-            assert len(kk) == 33
-            
-            xfp, = unpack('<I', hash_160(kk)[0:4])
-
-            print("xfp = 0x%08x" % xfp)
+            # need fingerprint of MASTER xpub, not the derived key
+            xfp = self.ckcc_xfp
 
         inputs = tx.inputs()
 
         if 'prev_tx' not in inputs[0]:
             # fetch info about inputs, if needed?
-            # - needed during save PSBT flow, not normal online signing
+            # - needed during export PSBT flow, not normal online signing
             assert wallet, 'need wallet reference'
             wallet.add_hw_info(tx)
 
@@ -347,7 +398,7 @@ class Coldcard_KeyStore(Hardware_KeyStore):
                 self.give_error("Coinbase not supported")     # but why not?
 
             if txin['type'] in ['p2sh']:
-                self.give_error(('Not ready for multisig transactions yet'))
+                self.give_error('Not ready for multisig transactions yet')
 
             #if txin['type'] in ['p2wpkh-p2sh', 'p2wsh-p2sh']:
             #if txin['type'] in ['p2wpkh', 'p2wsh']:
@@ -400,7 +451,9 @@ class Coldcard_KeyStore(Hardware_KeyStore):
 
         client = self.get_client()
 
-        raw_psbt = self.build_psbt(tx, client.dev.master_fingerprint)
+        assert client.dev.master_fingerprint == self.ckcc_xfp
+
+        raw_psbt = self.build_psbt(tx)
 
         #open('debug.psbt', 'wb').write(out_fd.getvalue())
 
@@ -408,7 +461,7 @@ class Coldcard_KeyStore(Hardware_KeyStore):
             try:
                 self.handler.show_message("Authorize Transaction...")
 
-                new_raw = client.sign_transaction_start(raw_psbt, True)
+                client.sign_transaction_start(raw_psbt, True)
 
                 while 1:
                     # How to kill some time, without locking UI?
@@ -427,10 +480,11 @@ class Coldcard_KeyStore(Hardware_KeyStore):
                 self.handler.finished()
 
         except (CCUserRefused, CCBusyError) as exc:
+            print_error('[coldcard]', 'Did not sign:', str(exc))
             self.handler.show_error(str(exc))
             return
         except BaseException as e:
-            traceback.print_exc(file=sys.stdout)
+            traceback.print_exc(file=sys.stderr)
             self.give_error(e, True)
             return
 
@@ -483,6 +537,8 @@ class ColdcardPlugin(HW_PluginBase):
         self.segwit = config.get("segwit")
         HW_PluginBase.__init__(self, parent, config, name)
 
+        #self.x_cache = {}
+
         if self.libraries_available:
             self.device_manager().register_devices(self.DEVICE_IDS)
 
@@ -521,12 +577,18 @@ class ColdcardPlugin(HW_PluginBase):
 
     def get_xpub(self, device_id, derivation, xtype, wizard):
         # this seems to be part of the pairing process only, not during normal ops?
+        # base_wizard:on_hw_derivation
         if xtype not in self.SUPPORTED_XTYPES:
             raise ScriptTypeNotSupported(_('This type of script is not supported with {}.').format(self.device))
         devmgr = self.device_manager()
         client = devmgr.client_by_id(device_id)
         client.handler = self.create_handler(wizard)
         client.ping_check()
+
+        # Capture xpub/xfp here. But where to put!?
+        # - keystore is not yet created
+        #self.x_cache[device_id] = (client.dev.master_fingerprint, client.dev.master_xpub)
+
         xpub = client.get_xpub(derivation, xtype)
         return xpub
 

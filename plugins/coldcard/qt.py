@@ -47,7 +47,11 @@ class Plugin(ColdcardPlugin, QtPluginBase):
     def export_psbt(self, dia):
         # Called from hook in transaction dialog
         tx = dia.tx
-        assert not tx.is_complete(), 'expect unsigned txn'
+
+        if tx.is_complete():
+            # if they sign while dialog is open, it can transition from unsigned to signed,
+            # which we don't support here, so do nothing
+            return
 
         # can only expect Coldcard wallets to work with these files (right now)
         keystore = dia.wallet.get_keystore()
@@ -64,6 +68,12 @@ class Plugin(ColdcardPlugin, QtPluginBase):
                 f.write(raw_psbt)
             dia.show_message(_("Transaction exported successfully"))
             dia.saved = True
+
+    def show_settings_dialog(self, window, keystore):
+        # When they click on the icon for CC we come here.
+        device_id = self.choose_device(window, keystore)
+        if device_id:
+            CKCCSettingsDialog(window, self, keystore, device_id).exec_()
 
 
 class Coldcard_Handler(QtHandlerBase):
@@ -93,5 +103,95 @@ class Coldcard_Handler(QtHandlerBase):
     def setup_dialog(self):
         self.show_error(_('Please initialization your Coldcard while disconnected.'))
         return
+
+class CKCCSettingsDialog(WindowModalDialog):
+    '''This dialog doesn't require a device be paired with a wallet.
+    We want users to be able to wipe a device even if they've forgotten
+    their PIN.'''
+
+    def __init__(self, window, plugin, keystore, device_id):
+        title = _("{} Settings").format(plugin.device)
+        super(CKCCSettingsDialog, self).__init__(window, title)
+        self.setMaximumWidth(540)
+
+        devmgr = plugin.device_manager()
+        config = devmgr.config
+        handler = keystore.handler
+        thread = keystore.thread
+
+        def connect_and_doit():
+            client = devmgr.client_by_id(device_id)
+            if not client:
+                raise RuntimeError("Device not connected")
+            return client
+
+        body = QWidget()
+        body_layout = QVBoxLayout(body)
+        grid = QGridLayout()
+        grid.setColumnStretch(2, 1)
+
+        # see <http://doc.qt.io/archives/qt-4.8/richtext-html-subset.html>
+        title = QLabel('''<center>
+<span style="font-size: x-large">Coldcard Wallet</span>
+<br><span style="font-size: medium">from Coinkite Inc.</span>
+<br><a href="https://coldcardwallet.com">coldcardwallet.com</a>''')
+        title.setTextInteractionFlags(Qt.LinksAccessibleByMouse)
+
+        grid.addWidget(title , 0,0, 1,2, Qt.AlignHCenter)
+        y = 3
+
+        rows = [
+            ('fw_version', _("Firmware Version")),
+            ('bl_version', _("Bootloader")),
+            ('xfp', _("Master Fingerprint")),
+            ('serial', _("USB Serial")),
+        ]
+        for row_num, (member_name, label) in enumerate(rows):
+            widget = QLabel('<tt>tbd')
+            widget.setTextInteractionFlags(Qt.TextSelectableByMouse | Qt.TextSelectableByKeyboard)
+
+            grid.addWidget(QLabel(label), y, 0, 1,1, Qt.AlignRight)
+            grid.addWidget(widget, y, 1, 1, 1, Qt.AlignLeft)
+            setattr(self, member_name, widget)
+            y += 1
+        body_layout.addLayout(grid)
+
+        upg_btn = QPushButton('Upgrade')
+        #upg_btn.setDefault(False)
+        def _start_upgrade():
+            thread.add(connect_and_doit, on_success=self.start_upgrade)
+        upg_btn.clicked.connect(_start_upgrade)
+
+        y += 3
+        grid.addWidget(upg_btn, y, 0)
+        grid.addWidget(CloseButton(self), y, 1)
+
+        dialog_vbox = QVBoxLayout(self)
+        dialog_vbox.addWidget(body)
+
+        # Fetch values and show them
+        thread.add(connect_and_doit, on_success=self.show_values)
+
+    def show_values(self, client):
+        print(repr(client))
+        dev = client.dev
+
+        self.xfp.setText('<tt>0x%08x' % dev.master_fingerprint)
+        self.serial.setText('<tt>%s' % dev.serial)
+
+        # ask device for versions
+        a,b,*unknown = client.get_version()
+
+        self.bl_version.setText('<tt>%s' % b)
+        self.fw_version.setText('<tt>%s' % a)
+
+    def start_upgrade(self, client):
+        # ask for a filename (must have already downloaded it)
+        mw = get_parent_main_window(self)
+        fileName = mw.getOpenFileName(_("Select upgraded firmware file"), "*.dfu")
+        if not fileName:
+            return
+
+        dfu = open(fileName, 'rb').read()
 
 # EOF
