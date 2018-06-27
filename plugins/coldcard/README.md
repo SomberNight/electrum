@@ -3,8 +3,12 @@
 
 ## Just the glue please
 
-- This code connects the public USB API and Electrum. Leverages all the good work that's been 
+This code connects the public USB API and Electrum. Leverages all the good work that's been 
 done my the Electrum team to support hardware wallets.
+
+## TODO Items
+
+- No effort yet to support translations, sorry.
 
 
 ### Ctags

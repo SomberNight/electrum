@@ -117,7 +117,7 @@ class CKCCSettingsDialog(WindowModalDialog):
         devmgr = plugin.device_manager()
         config = devmgr.config
         handler = keystore.handler
-        thread = keystore.thread
+        self.thread = thread = keystore.thread
 
         def connect_and_doit():
             client = devmgr.client_by_id(device_id)
@@ -188,10 +188,54 @@ class CKCCSettingsDialog(WindowModalDialog):
     def start_upgrade(self, client):
         # ask for a filename (must have already downloaded it)
         mw = get_parent_main_window(self)
-        fileName = mw.getOpenFileName(_("Select upgraded firmware file"), "*.dfu")
+        dev = client.dev
+
+        fileName = mw.getOpenFileName("Select upgraded firmware file", "*.dfu")
         if not fileName:
             return
 
-        dfu = open(fileName, 'rb').read()
+        from ckcc.utils import dfu_parse
+        from ckcc.sigheader import FW_HEADER_SIZE, FW_HEADER_OFFSET, FW_HEADER_MAGIC
+        from ckcc.protocol import CCProtocolPacker
+        from hashlib import sha256
+        import struct
 
+        try:
+            with open(fileName, 'rb') as fd:
+
+                # unwrap firmware from the DFU
+                offset, size, *ignored = dfu_parse(fd)
+
+                fd.seek(offset)
+                firmware = fd.read(size)
+
+            hpos = FW_HEADER_OFFSET
+            hdr = bytes(firmware[hpos:hpos + FW_HEADER_SIZE])        # needed later too
+            magic = struct.unpack_from("<I", hdr)[0]
+
+            if magic != FW_HEADER_MAGIC:
+                raise ValueError("Bad magic")
+        except Exception as exc:
+            mw.show_error("Does not appear to be a Coldcard firmware file.\n\n%s" % exc)
+            return
+
+        # TODO: 
+        # - detect if they are trying to downgrade; aint gonna work
+        # - warn them about the reboot?
+        # - length checks
+        # - add progress local bar
+        mw.show_message("Ready to Upgrade.\n\nBe patient. Unit will reboot itself when complete.")
+
+        def doit():
+            dlen, _ = dev.upload_file(firmware, verify=True)
+            assert dlen == len(firmware)
+
+            # append the firmware header a second time
+            result = dev.send_recv(CCProtocolPacker.upload(size, size+FW_HEADER_SIZE, hdr))
+
+            # make it reboot into bootlaoder which might install it
+            dev.send_recv(CCProtocolPacker.reboot())
+
+        self.thread.add(doit)
+        self.close()
 # EOF

@@ -562,9 +562,13 @@ class ColdcardPlugin(HW_PluginBase):
         # We are given a HID device, or at least some details about it.
         # Not sure why not we aren't just given a HID library handle, but
         # the 'path' is unabiguous, so we'll use that.
-        rv = CKCCClient(handler, device.path, 
+        try:
+            rv = CKCCClient(handler, device.path, 
                     is_simulator=(device.product_key[1] == CKCC_SIMULATED_PID))
-        return rv
+            return rv
+        except:
+            print_error('[coldcard]', 'late failure connecting to device?')
+            return None
 
     def setup_device(self, device_info, wizard, purpose):
         devmgr = self.device_manager()
