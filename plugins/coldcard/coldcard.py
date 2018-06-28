@@ -31,9 +31,6 @@ try:
     requirements_ok = True
 
 except ImportError:
-    print("Coldcard requirements missing: ", file=sys.stderr)
-    traceback.print_exc(file=sys.stderr)
-
     requirements_ok = False
 
 if requirements_ok:
