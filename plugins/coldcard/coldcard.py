@@ -29,25 +29,30 @@ try:
     from ckcc.client import ColdcardDevice, COINKITE_VID, CKCC_PID, CKCC_SIMULATOR_PATH
 
     requirements_ok = True
+
 except ImportError:
+    print("Coldcard requirements missing: ", file=sys.stderr)
+    traceback.print_exc(file=sys.stderr)
+
     requirements_ok = False
 
-class ElectrumColdcardDevice(ColdcardDevice):
-    # avoid use of pycoin for MiTM message signature test
-    def mitm_verify(self, sig, expect_xpub):
-        # verify a signature (65 bytes) over the session key, using the master bip32 node
-        # - customized to use specific EC library of Electrum.
-        from electrum.ecc import ECPubkey
+if requirements_ok:
+    class ElectrumColdcardDevice(ColdcardDevice):
+        # avoid use of pycoin for MiTM message signature test
+        def mitm_verify(self, sig, expect_xpub):
+            # verify a signature (65 bytes) over the session key, using the master bip32 node
+            # - customized to use specific EC library of Electrum.
+            from electrum.ecc import ECPubkey
 
-        xtype, depth, parent_fingerprint, child_number, chain_code, K_or_k \
-            = bitcoin.deserialize_xpub(expect_xpub)
+            xtype, depth, parent_fingerprint, child_number, chain_code, K_or_k \
+                = bitcoin.deserialize_xpub(expect_xpub)
 
-        pubkey = ECPubkey(K_or_k)
-        try:
-            pubkey.verify_message_hash(sig[1:65], self.session_key)
-            return True
-        except:
-            return False
+            pubkey = ECPubkey(K_or_k)
+            try:
+                pubkey.verify_message_hash(sig[1:65], self.session_key)
+                return True
+            except:
+                return False
 
 def my_var_int(l):
     # Bitcoin serialization of integers... directly into binary!
