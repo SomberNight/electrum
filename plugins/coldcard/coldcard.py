@@ -30,10 +30,7 @@ try:
 
     requirements_ok = True
 
-except ImportError:
-    requirements_ok = False
 
-if requirements_ok:
     class ElectrumColdcardDevice(ColdcardDevice):
         # avoid use of pycoin for MiTM message signature test
         def mitm_verify(self, sig, expect_xpub):
@@ -50,6 +47,14 @@ if requirements_ok:
                 return True
             except:
                 return False
+
+except ImportError:
+    requirements_ok = False
+
+    COINKITE_VID = 0xd13e
+    CKCC_PID     = 0xcc10
+
+CKCC_SIMULATED_PID = CKCC_PID ^ 0x55aa
 
 def my_var_int(l):
     # Bitcoin serialization of integers... directly into binary!
@@ -525,13 +530,17 @@ class Coldcard_KeyStore(Hardware_KeyStore):
             self.handler.show_error(exc)
 
 
-CKCC_SIMULATED_PID = CKCC_PID ^ 0x55aa
 
 class ColdcardPlugin(HW_PluginBase):
     libraries_available = requirements_ok
     keystore_class = Coldcard_KeyStore
     client = None
-    DEVICE_IDS = [ (COINKITE_VID, CKCC_PID), (COINKITE_VID, CKCC_SIMULATED_PID) ]
+
+    DEVICE_IDS = [
+        (COINKITE_VID, CKCC_PID),
+        (COINKITE_VID, CKCC_SIMULATED_PID)
+    ]
+
     #SUPPORTED_XTYPES = ('standard', 'p2wpkh-p2sh', 'p2wpkh', 'p2wsh-p2sh', 'p2wsh')
     SUPPORTED_XTYPES = ('standard', 'p2wpkh')
 
