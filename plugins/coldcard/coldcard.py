@@ -537,8 +537,6 @@ class ColdcardPlugin(HW_PluginBase):
         self.segwit = config.get("segwit")
         HW_PluginBase.__init__(self, parent, config, name)
 
-        #self.x_cache = {}
-
         if self.libraries_available:
             self.device_manager().register_devices(self.DEVICE_IDS)
 
@@ -588,10 +586,6 @@ class ColdcardPlugin(HW_PluginBase):
         client = devmgr.client_by_id(device_id)
         client.handler = self.create_handler(wizard)
         client.ping_check()
-
-        # Capture xpub/xfp here. But where to put!?
-        # - keystore is not yet created
-        #self.x_cache[device_id] = (client.dev.master_fingerprint, client.dev.master_xpub)
 
         xpub = client.get_xpub(derivation, xtype)
         return xpub
