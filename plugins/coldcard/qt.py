@@ -147,7 +147,7 @@ class CKCCSettingsDialog(WindowModalDialog):
             ('serial', _("USB Serial")),
         ]
         for row_num, (member_name, label) in enumerate(rows):
-            widget = QLabel('<tt>tbd')
+            widget = QLabel('<tt>000000000000')
             widget.setTextInteractionFlags(Qt.TextSelectableByMouse | Qt.TextSelectableByKeyboard)
 
             grid.addWidget(QLabel(label), y, 0, 1,1, Qt.AlignRight)
