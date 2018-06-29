@@ -28,11 +28,15 @@ jobs:
       python: false
       env:
         - TARGET_OS=Windows
-      services:
-        - docker
       before_install:
+        - sudo apt-get update
+        - sudo apt-get install -y curl
+        - curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
+        - sudo add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
+        - sudo apt-get update
+        - sudo apt-get install -y docker-ce
+      install:
         - sudo docker build  --no-cache -t electrum-wine-builder-img ./contrib/build-wine/docker/
-      install: echo ""
       script: sudo docker run \
         --name electrum-wine-builder-cont \
         -v $(pwd):/opt/electrum \
