@@ -142,6 +142,7 @@ class CKCCSettingsDialog(WindowModalDialog):
 
         rows = [
             ('fw_version', _("Firmware Version")),
+            ('fw_built', _("Build Date")),
             ('bl_version', _("Bootloader")),
             ('xfp', _("Master Fingerprint")),
             ('serial', _("USB Serial")),
@@ -179,11 +180,12 @@ class CKCCSettingsDialog(WindowModalDialog):
         self.xfp.setText('<tt>0x%08x' % dev.master_fingerprint)
         self.serial.setText('<tt>%s' % dev.serial)
 
-        # ask device for versions
-        a,b,*unknown = client.get_version()
+        # ask device for versions: allow extras for future
+        fw_date, fw_rel, bl_rel, *rfu = client.get_version()
 
-        self.bl_version.setText('<tt>%s' % b)
-        self.fw_version.setText('<tt>%s' % a)
+        self.fw_version.setText('<tt>%s' % fw_rel)
+        self.fw_built.setText('<tt>%s' % fw_date)
+        self.bl_version.setText('<tt>%s' % bl_rel)
 
     def start_upgrade(self, client):
         # ask for a filename (must have already downloaded it)
