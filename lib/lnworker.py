@@ -191,4 +191,5 @@ class LNWorker(PrintError):
         none_idx = tx._inputs[0]["signatures"].index(None)
         tx.add_signature_to_txin(0, none_idx, bh2u(remote_sig))
         assert tx.is_complete()
+        print(tx.inputs())
         return self.network.broadcast_transaction(tx)
