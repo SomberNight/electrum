@@ -17,6 +17,7 @@ from .transaction import Transaction
 from .lnhtlc import HTLCStateMachine
 from .lnutil import Outpoint, calc_short_channel_id
 from .lnwatcher import LNChanCloseHandler
+from .lnnursery import LNNursery
 
 # hardcoded nodes
 node_list = [
@@ -28,6 +29,7 @@ class LNWorker(PrintError):
     def __init__(self, wallet, network):
         self.wallet = wallet
         self.network = network
+        self.nursery = LNNursery(network, wallet)
         pk = wallet.storage.get('lightning_privkey')
         if pk is None:
             pk = bh2u(os.urandom(32))
