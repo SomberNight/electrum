@@ -37,7 +37,7 @@ from . import util
 RE_ADDRESS = '[1-9A-HJ-NP-Za-km-z]{26,}'
 RE_ALIAS = '(.*?)\s*\<([1-9A-HJ-NP-Za-km-z]{26,})\>'
 
-frozen_style = "QWidget { background-color:none; border:none;}"
+frozen_style = "QWidget {border:none;}"
 normal_style = "QPlainTextEdit { }"
 
 class PayToEdit(CompletionTextEdit, ScanQRTextEdit):
