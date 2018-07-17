@@ -245,6 +245,7 @@ class Network(util.DaemonThread):
         self.start_network(deserialize_server(self.default_server)[2],
                            deserialize_proxy(self.config.get('proxy')))
         self.asyncio_loop = loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(self.asyncio_loop) # must be called from main thread
         self.futures = []
         # lightning network
         self.lightning_nodes = {}
@@ -1071,7 +1072,6 @@ class Network(util.DaemonThread):
             b.update_size()
 
     def run(self):
-        asyncio.set_event_loop(self.asyncio_loop)
         self.init_headers_file()
         def asyncioThread():
             self.asyncio_loop.run_forever()
