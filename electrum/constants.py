@@ -26,6 +26,8 @@
 import os
 import json
 
+from . import bitcoin
+
 
 def read_json(filename, default):
     path = os.path.join(os.path.dirname(__file__), filename)
@@ -37,7 +39,14 @@ def read_json(filename, default):
     return r
 
 
-class BitcoinMainnet:
+class AbstractNet:
+
+    @classmethod
+    def rev_genesis_bytes(cls) -> bytes:
+        return bytes.fromhex(bitcoin.rev_hex(cls.GENESIS))
+
+
+class BitcoinMainnet(AbstractNet):
 
     TESTNET = False
     WIF_PREFIX = 0x80
@@ -66,7 +75,7 @@ class BitcoinMainnet:
     BIP44_COIN_TYPE = 0
 
 
-class BitcoinTestnet:
+class BitcoinTestnet(AbstractNet):
 
     TESTNET = True
     WIF_PREFIX = 0xef
@@ -93,16 +102,6 @@ class BitcoinTestnet:
         'p2wsh':       0x02575483,  # Vpub
     }
     BIP44_COIN_TYPE = 1
-
-
-class BitcoinSimnet(BitcoinTestnet):
-    ADDRTYPE_P2PKH = 0x3f
-    ADDRTYPE_P2SH = 0x7b
-    SEGWIT_HRP = "sb"
-    GENESIS = "683e86bd5c6d110d91b94b97137ba6bfe02dbbdb8e3dff722a669b5d69d77af6"
-    WIF_PREFIX = 0x00
-    DEFAULT_SERVERS = read_json('servers_regtest.json', {})  # Note: regtest!
-    CHECKPOINTS = []
 
 
 class BitcoinRegtest(BitcoinTestnet):

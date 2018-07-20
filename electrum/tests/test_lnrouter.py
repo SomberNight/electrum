@@ -1,9 +1,12 @@
 import unittest
+import tempfile
+import shutil
 
 from electrum.util import bh2u, bfh
 from electrum.lnbase import Peer
 from electrum.lnrouter import OnionHopsDataSingle, new_onion_packet, OnionPerHop
 from electrum import bitcoin, lnrouter
+from electrum.simple_config import SimpleConfig
 
 class Test_LNRouter(unittest.TestCase):
 
@@ -21,12 +24,22 @@ class Test_LNRouter(unittest.TestCase):
     #    assert witness_bytes == b"", witness_bytes
     #    return res
 
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.electrum_path = tempfile.mkdtemp()
+        cls.config = SimpleConfig({'electrum_path': cls.electrum_path})
 
+    @classmethod
+    def tearDownClass(cls):
+        super().tearDownClass()
+        shutil.rmtree(cls.electrum_path)
 
     def test_find_path_for_payment(self):
         class fake_network:
-            channel_db = lnrouter.ChannelDB()
+            config = self.config
             trigger_callback = lambda x: None
+        fake_network.channel_db = lnrouter.ChannelDB(fake_network())
         class fake_ln_worker:
             path_finder = lnrouter.LNPathFinder(fake_network.channel_db)
             privkey = bitcoin.sha256('privkeyseed')

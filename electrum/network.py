@@ -249,7 +249,7 @@ class Network(util.DaemonThread):
         self.futures = []
         # lightning network
         self.lightning_nodes = {}
-        self.channel_db = lnrouter.ChannelDB()
+        self.channel_db = lnrouter.ChannelDB(self)
         self.path_finder = lnrouter.LNPathFinder(self.channel_db)
         self.lnwatcher = lnwatcher.LNWatcher(self)
 
@@ -801,7 +801,7 @@ class Network(util.DaemonThread):
         # server.version should be the first message
         params = [ELECTRUM_VERSION, PROTOCOL_VERSION]
         self.queue_request('server.version', params, interface)
-        self.queue_request('blockchain.headers.subscribe', [True], interface)
+        self.queue_request('blockchain.headers.subscribe', [], interface)
         if server == self.default_server:
             self.switch_to_interface(server)
         #self.notify('interfaces')
@@ -1094,6 +1094,7 @@ class Network(util.DaemonThread):
         except:
             pass
         self.stop_network()
+        self.channel_db.save_data()
         self.on_stop()
 
     def on_notify_header(self, interface, header_dict):
@@ -1289,6 +1290,12 @@ class Network(util.DaemonThread):
     def get_merkle_for_transaction(self, tx_hash, tx_height, callback=None):
         command = 'blockchain.transaction.get_merkle'
         invocation = lambda c: self.send([(command, [tx_hash, tx_height])], c)
+
+        return Network.__with_default_synchronous_callback(invocation, callback)
+
+    def get_txid_from_txpos(self, tx_height, tx_pos, merkle, callback=None):
+        command = 'blockchain.transaction.id_from_pos'
+        invocation = lambda c: self.send([(command, [tx_height, tx_pos, merkle])], c)
 
         return Network.__with_default_synchronous_callback(invocation, callback)
 

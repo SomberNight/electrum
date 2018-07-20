@@ -728,7 +728,7 @@ class Peer(PrintError):
 
         node_sigs = [local_node_sig, remote_node_sig]
         bitcoin_sigs = [local_bitcoin_sig, remote_bitcoin_sig]
-        node_ids = [privkey_to_pubkey(self.privkey), self.pubkey]
+        node_ids = [privkey_to_pubkey(self.privkey), self.pubkey]  #
         bitcoin_keys = [chan.local_config.multisig_key.pubkey, chan.remote_config.multisig_key.pubkey]
 
         if node_ids[0] > node_ids[1]:
