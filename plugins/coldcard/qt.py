@@ -174,7 +174,6 @@ class CKCCSettingsDialog(WindowModalDialog):
         thread.add(connect_and_doit, on_success=self.show_values)
 
     def show_values(self, client):
-        print(repr(client))
         dev = client.dev
 
         self.xfp.setText('<tt>0x%08x' % dev.master_fingerprint)
