@@ -26,6 +26,11 @@ try:
     from ckcc.protocol import CCProtoError, CCUserRefused, CCBusyError
     from ckcc.constants import (MAX_MSG_LEN, MAX_BLK_LEN, MSG_SIGNING_MAX_LENGTH, MAX_TXN_LEN,
         AF_CLASSIC, AF_P2SH, AF_P2WPKH, AF_P2WSH, AF_P2WPKH_P2SH, AF_P2WSH_P2SH)
+    from ckcc.constants import (
+        PSBT_GLOBAL_UNSIGNED_TX, PSBT_IN_NON_WITNESS_UTXO, PSBT_IN_WITNESS_UTXO,
+        PSBT_IN_SIGHASH_TYPE, PSBT_IN_REDEEM_SCRIPT, PSBT_IN_WITNESS_SCRIPT,
+        PSBT_IN_BIP32_DERIVATION, PSBT_OUT_BIP32_DERIVATION)
+
     from ckcc.client import ColdcardDevice, COINKITE_VID, CKCC_PID, CKCC_SIMULATOR_PATH
 
     requirements_ok = True
@@ -375,7 +380,10 @@ class Coldcard_KeyStore(Hardware_KeyStore):
             assert wallet, 'need wallet reference'
             wallet.add_hw_info(tx)
 
-        # Build map of pubkey needed to derivation, in PSBT binary format
+        # wallet.add_hw_info installs this attr
+        assert hasattr(tx, 'output_info'), 'need data about outputs'
+
+        # Build map of pubkey needed as derivation from master, in PSBT binary format
         # 1) binary version of the common subpath for all keys
         #       m/ => fingerprint LE32
         #       a/b/c => ints
@@ -410,8 +418,6 @@ class Coldcard_KeyStore(Hardware_KeyStore):
             #if txin['type'] in ['p2wpkh-p2sh', 'p2wsh-p2sh']:
             #if txin['type'] in ['p2wpkh', 'p2wsh']:
 
-            pubkeys, x_pubkeys = tx.get_sorted_pubkeys(txin)
-
         # Construct PSBT from start to finish.
         out_fd = io.BytesIO()
         out_fd.write(b'psbt\xff')
@@ -430,20 +436,50 @@ class Coldcard_KeyStore(Hardware_KeyStore):
 
         # global section: just the unsigned txn
         unsigned = bfh(tx.serialize_to_network(blank_scripts=True))
-        write_kv(0x0, unsigned)
-        write_kv(0x4, my_var_int(len(inputs)))
+        write_kv(PSBT_GLOBAL_UNSIGNED_TX, unsigned)
 
-        for k in subkeys:
-            write_kv(0x3, subkeys[k], k)
-        
         # end globals section
         out_fd.write(b'\x00')
 
         # inputs section
-        for txin in tx.inputs():
+        for txin in inputs:
             utxo = txin['prev_tx'].outputs()[txin['prevout_n']]
             spendable = txin['prev_tx'].serialize_output(utxo)
-            write_kv(0x01, spendable)
+            write_kv(PSBT_IN_WITNESS_UTXO, spendable)
+
+            pubkeys, x_pubkeys = tx.get_sorted_pubkeys(txin)
+
+            pubkeys = [bfh(k) for k in pubkeys]
+
+            for k in pubkeys:
+                write_kv(PSBT_IN_BIP32_DERIVATION, subkeys[k], k)
+
+            out_fd.write(b'\x00')
+
+        # outputs section
+        for _type, address, amount in tx.outputs():
+            # can be empty, but must be present, and helpful to show change inputs
+            # wallet.add_hw_info() adds some data about change outputs into tx.output_info
+            if address in tx.output_info:
+                # this address "is_mine" but might not be change (I like to sent to myself)
+                #
+                index, xpubs, _multisig = tx.output_info.get(address)
+
+                if index[0] == 1 and len(index) == 2:
+                    # it is a change output (based on our standard derivation path)
+                    assert len(xpubs) == 1      # not expecting multisig
+                    xpubkey = xpubs[0]
+
+                    # document its bip32 derivation in output section
+                    aa, bb = index
+                    assert 0 <= aa < 0x80000000
+                    assert 0 <= bb < 0x80000000
+
+                    deriv = base_path + pack('<II', aa, bb)
+                    pubkey = self.get_pubkey_from_xpub(xpubkey, index)
+
+                    write_kv(PSBT_OUT_BIP32_DERIVATION, deriv, bfh(pubkey))
+
             out_fd.write(b'\x00')
 
         return out_fd.getvalue()
