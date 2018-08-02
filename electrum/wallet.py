@@ -43,7 +43,7 @@ from .i18n import _
 from .util import (NotEnoughFunds, PrintError, UserCancelled, profiler,
                    format_satoshis, format_fee_satoshis, NoDynamicFeeEstimates,
                    TimeoutException, WalletFileException, BitcoinException,
-                   InvalidPassword)
+                   InvalidPassword, format_time)
 
 from .bitcoin import *
 from .version import *
@@ -487,7 +487,6 @@ class Abstract_Wallet(AddressSynchronizer):
         return ''
 
     def get_tx_status(self, tx_hash, tx_mined_status):
-        from .util import format_time
         extra = []
         height = tx_mined_status.height
         conf = tx_mined_status.conf
