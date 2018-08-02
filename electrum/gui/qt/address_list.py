@@ -25,7 +25,7 @@
 import webbrowser
 
 from electrum.i18n import _
-from electrum.util import block_explorer_URL
+from electrum.util import block_explorer_URL, profiler
 from electrum.plugin import run_hook
 from electrum.bitcoin import is_address
 
@@ -82,6 +82,7 @@ class AddressList(MyTreeWidget):
         self.show_used = state
         self.update()
 
+    @profiler
     def on_update(self):
         self.wallet = self.parent.wallet
         item = self.currentItem()
@@ -93,8 +94,9 @@ class AddressList(MyTreeWidget):
         else:
             addr_list = self.wallet.get_addresses()
         self.clear()
+        fx = self.parent.fx
         for address in addr_list:
-            num = len(self.wallet.get_address_history(address))
+            num = self.wallet.get_address_history_len(address)
             is_used = self.wallet.is_used(address)
             label = self.wallet.labels.get(address, '')
             c, u, x = self.wallet.get_addr_balance(address)
@@ -106,7 +108,6 @@ class AddressList(MyTreeWidget):
             if self.show_used == 3 and not is_used:
                 continue
             balance_text = self.parent.format_amount(balance, whitespaces=True)
-            fx = self.parent.fx
             # create item
             if fx and fx.get_fiat_address_config():
                 rate = fx.exchange_rate()
