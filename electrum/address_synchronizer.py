@@ -452,13 +452,15 @@ class AddressSynchronizer(PrintError):
                 return (1e9+1, 0)
 
     def with_local_height_cached(func):
-        # get local height only once, as it's relatively expensive
+        # get local height only once, as it's relatively expensive.
+        # take care that nested calls work as expected
         def f(self, *args, **kwargs):
-            self.threadlocal_cache.local_height = self.get_local_height()
+            orig_val = getattr(self.threadlocal_cache, 'local_height', None)
+            self.threadlocal_cache.local_height = orig_val or self.get_local_height()
             try:
                 return func(self, *args, **kwargs)
             finally:
-                self.threadlocal_cache.local_height = None
+                self.threadlocal_cache.local_height = orig_val
         return f
 
     @with_local_height_cached
@@ -725,8 +727,11 @@ class AddressSynchronizer(PrintError):
         received, sent = self.get_addr_io(address)
         return sum([v for height, v, is_cb in received.values()])
 
-    # return the balance of a bitcoin address: confirmed and matured, unconfirmed, unmatured
+    @with_local_height_cached
     def get_addr_balance(self, address):
+        """Return the balance of a bitcoin address:
+        confirmed and matured, unconfirmed, unmatured
+        """
         received, sent = self.get_addr_io(address)
         c = u = x = 0
         local_height = self.get_local_height()
@@ -744,6 +749,7 @@ class AddressSynchronizer(PrintError):
                     u -= v
         return c, u, x
 
+    @with_local_height_cached
     def get_utxos(self, domain=None, excluded=None, mature=False, confirmed_only=False):
         coins = []
         if domain is None:
