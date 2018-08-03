@@ -72,6 +72,8 @@ class AddressSynchronizer(PrintError):
         self.unverified_tx = defaultdict(int)
         # true when synchronized
         self.up_to_date = False
+        # thread local storage for caching stuff
+        self.threadlocal_cache = threading.local()
 
         self.load_and_cleanup()
 
@@ -449,6 +451,17 @@ class AddressSynchronizer(PrintError):
             else:
                 return (1e9+1, 0)
 
+    def with_local_height_cached(func):
+        # get local height only once, as it's relatively expensive
+        def f(self, *args, **kwargs):
+            self.threadlocal_cache.local_height = self.get_local_height()
+            try:
+                return func(self, *args, **kwargs)
+            finally:
+                self.threadlocal_cache.local_height = None
+        return f
+
+    @with_local_height_cached
     def get_history(self, domain=None):
         # get domain
         if domain is None:
@@ -562,6 +575,9 @@ class AddressSynchronizer(PrintError):
 
     def get_local_height(self):
         """ return last known height if we are offline """
+        cached_local_height = getattr(self.threadlocal_cache, 'local_height', None)
+        if cached_local_height is not None:
+            return cached_local_height
         return self.network.get_local_height() if self.network else self.storage.get('stored_height', 0)
 
     def get_tx_height(self, tx_hash: str) -> TxMinedStatus:
