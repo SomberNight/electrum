@@ -10,14 +10,14 @@ import traceback
 from electrum import bitcoin
 from electrum.bitcoin import TYPE_ADDRESS, int_to_hex
 from electrum.i18n import _
-from electrum.plugins import BasePlugin, Device
+from electrum.plugin import BasePlugin, Device
 from electrum.keystore import Hardware_KeyStore, xpubkey_to_pubkey
 from electrum.transaction import Transaction
 from electrum.wallet import Standard_Wallet
 from electrum.crypto import hash_160
 from ..hw_wallet import HW_PluginBase
 from ..hw_wallet.plugin import is_any_tx_output_on_change_branch
-from electrum.util import print_error, is_verbose, bfh, bh2u, versiontuple
+from electrum.util import print_error, bfh, bh2u, versiontuple
 from electrum.base_wizard import ScriptTypeNotSupported
 
 try:
