@@ -240,7 +240,7 @@ class HistoryList(MyTreeWidget, AcceptFileDragDrop):
             value = tx_item['value'].value
             balance = tx_item['balance'].value
             label = tx_item['label']
-            tx_mined_status = TxMinedStatus(height, conf, timestamp, None)
+            tx_mined_status = TxMinedStatus(height, timestamp, None, None, conf > 0)
             status, status_str = self.wallet.get_tx_status(tx_hash, tx_mined_status)
             has_invoice = self.wallet.invoices.paid.get(tx_hash)
             icon = self.icon_cache.get(":icons/" + TX_ICONS[status])
@@ -259,7 +259,7 @@ class HistoryList(MyTreeWidget, AcceptFileDragDrop):
             item = SortableTreeWidgetItem(entry)
             item.setIcon(0, icon)
             item.setToolTip(0, str(conf) + " confirmation" + ("s" if conf != 1 else ""))
-            item.setData(0, SortableTreeWidgetItem.DataRole, (status, conf))
+            item.setData(0, SortableTreeWidgetItem.DataRole, self.get_tx_sort_key(status, tx_mined_status))
             if has_invoice:
                 item.setIcon(3, self.icon_cache.get(":icons/seal"))
             for i in range(len(entry)):
@@ -311,15 +311,19 @@ class HistoryList(MyTreeWidget, AcceptFileDragDrop):
     def update_item(self, tx_hash, tx_mined_status):
         if self.wallet is None:
             return
-        conf = tx_mined_status.conf
         status, status_str = self.wallet.get_tx_status(tx_hash, tx_mined_status)
         icon = self.icon_cache.get(":icons/" +  TX_ICONS[status])
         items = self.findItems(tx_hash, Qt.UserRole|Qt.MatchContains|Qt.MatchRecursive, column=1)
         if items:
             item = items[0]
             item.setIcon(0, icon)
-            item.setData(0, SortableTreeWidgetItem.DataRole, (status, conf))
+            item.setData(0, SortableTreeWidgetItem.DataRole, self.get_tx_sort_key(status, tx_mined_status))
             item.setText(2, status_str)
+
+    @classmethod
+    def get_tx_sort_key(cls, status: int, tx_mined_status: TxMinedStatus):
+        verified_height = -tx_mined_status.height if tx_mined_status.verified else -float("inf")
+        return status, verified_height
 
     def create_menu(self, position):
         self.selectedIndexes()

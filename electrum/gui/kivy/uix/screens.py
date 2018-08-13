@@ -142,7 +142,6 @@ class HistoryScreen(CScreen):
         ri['icon'] = icon
         ri['date'] = status_str
         ri['message'] = label
-        ri['confirmations'] = tx_mined_status.conf
         if value is not None:
             ri['is_mine'] = value < 0
             if value < 0: value = - value

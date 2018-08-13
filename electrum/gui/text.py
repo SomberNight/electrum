@@ -108,10 +108,9 @@ class ElectrumGui:
         delta = (self.maxx - sum(width) - 4)/3
         format_str = "%"+"%d"%width[0]+"s"+"%"+"%d"%(width[1]+delta)+"s"+"%"+"%d"%(width[2]+delta)+"s"+"%"+"%d"%(width[3]+delta)+"s"
 
-        b = 0
         self.history = []
         for tx_hash, tx_mined_status, value, balance in self.wallet.get_history():
-            if tx_mined_status.conf:
+            if tx_mined_status.verified:
                 timestamp = tx_mined_status.timestamp
                 try:
                     time_str = datetime.datetime.fromtimestamp(timestamp).isoformat(' ')[:-3]

@@ -23,7 +23,7 @@
 
 from typing import Sequence, Optional
 
-from .util import ThreadJob, bh2u, VerifiedTxInfo
+from .util import ThreadJob, bh2u, TxMinedStatus
 from .bitcoin import Hash, hash_decode, hash_encode
 from .transaction import Transaction
 from .blockchain import hash_header
@@ -110,7 +110,7 @@ class SPV(ThreadJob):
         except KeyError: pass
         self.print_error("verified %s" % tx_hash)
         header_hash = hash_header(header)
-        vtx_info = VerifiedTxInfo(tx_height, header.get('timestamp'), pos, header_hash)
+        vtx_info = TxMinedStatus(tx_height, header.get('timestamp'), pos, header_hash, True)
         self.wallet.add_verified_tx(tx_hash, vtx_info)
         if self.is_up_to_date() and self.wallet.is_up_to_date():
             self.wallet.save_verified_tx(write=True)

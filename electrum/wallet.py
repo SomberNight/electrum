@@ -38,12 +38,13 @@ import traceback
 from functools import partial
 from numbers import Number
 from decimal import Decimal
+from typing import Tuple
 
 from .i18n import _
 from .util import (NotEnoughFunds, PrintError, UserCancelled, profiler,
                    format_satoshis, format_fee_satoshis, NoDynamicFeeEstimates,
                    TimeoutException, WalletFileException, BitcoinException,
-                   InvalidPassword, format_time)
+                   InvalidPassword, format_time, TxMinedStatus)
 
 from .bitcoin import *
 from .version import *
@@ -314,12 +315,14 @@ class Abstract_Wallet(AddressSynchronizer):
         can_bump = False
         label = ''
         height = conf = timestamp = None
+        local_height = self.get_local_height()
         tx_hash = tx.txid()
         if tx.is_complete():
             if tx_hash in self.transactions.keys():
                 label = self.get_label(tx_hash)
                 tx_mined_status = self.get_tx_height(tx_hash)
-                height, conf = tx_mined_status.height, tx_mined_status.conf
+                height = tx_mined_status.height
+                conf = tx_mined_status.conf(local_height)
                 if height > 0:
                     if conf:
                         status = _("{} confirmations").format(conf)
@@ -367,15 +370,6 @@ class Abstract_Wallet(AddressSynchronizer):
     def get_frozen_balance(self):
         return self.get_balance(self.frozen_addresses)
 
-    def balance_at_timestamp(self, domain, target_timestamp):
-        h = self.get_history(domain)
-        balance = 0
-        for tx_hash, tx_mined_status, value, balance in h:
-            if tx_mined_status.timestamp > target_timestamp:
-                return balance - value
-        # return last balance
-        return balance
-
     @profiler
     def get_full_history(self, domain=None, from_timestamp=None, to_timestamp=None, fx=None, show_addresses=False):
         from .util import timestamp_to_datetime, Satoshis, Fiat
@@ -386,6 +380,7 @@ class Abstract_Wallet(AddressSynchronizer):
         fiat_income = Decimal(0)
         fiat_expenditures = Decimal(0)
         h = self.get_history(domain)
+        local_height = self.get_local_height()
         now = time.time()
         for tx_hash, tx_mined_status, value, balance in h:
             timestamp = tx_mined_status.timestamp
@@ -396,7 +391,7 @@ class Abstract_Wallet(AddressSynchronizer):
             item = {
                 'txid': tx_hash,
                 'height': tx_mined_status.height,
-                'confirmations': tx_mined_status.conf,
+                'confirmations': tx_mined_status.conf(local_height),
                 'timestamp': timestamp,
                 'value': Satoshis(value),
                 'balance': Satoshis(balance),
@@ -486,10 +481,11 @@ class Abstract_Wallet(AddressSynchronizer):
             return ', '.join(labels)
         return ''
 
-    def get_tx_status(self, tx_hash, tx_mined_status):
+    def get_tx_status(self, tx_hash, tx_mined_status: TxMinedStatus) -> Tuple[int, str]:
         extra = []
         height = tx_mined_status.height
-        conf = tx_mined_status.conf
+        local_height = self.get_local_height()
+        conf = tx_mined_status.conf(local_height)
         timestamp = tx_mined_status.timestamp
         if conf == 0:
             tx = self.transactions.get(tx_hash)

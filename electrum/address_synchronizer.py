@@ -27,7 +27,7 @@ from collections import defaultdict
 
 from . import bitcoin
 from .bitcoin import COINBASE_MATURITY, TYPE_ADDRESS, TYPE_PUBKEY
-from .util import PrintError, profiler, bfh, VerifiedTxInfo, TxMinedStatus
+from .util import PrintError, profiler, bfh, TxMinedStatus
 from .transaction import Transaction, TxOutput
 from .synchronizer import Synchronizer
 from .verifier import SPV
@@ -63,11 +63,11 @@ class AddressSynchronizer(PrintError):
         self.transaction_lock = threading.RLock()
         # address -> list(txid, height)
         self.history = storage.get('addr_history',{})
-        # Verified transactions.  txid -> VerifiedTxInfo.  Access with self.lock.
+        # Verified transactions.  txid -> TxMinedStatus.  Access with self.lock.
         verified_tx = storage.get('verified_tx3', {})
         self.verified_tx = {}
         for txid, (height, timestamp, txpos, header_hash) in verified_tx.items():
-            self.verified_tx[txid] = VerifiedTxInfo(height, timestamp, txpos, header_hash)
+            self.verified_tx[txid] = TxMinedStatus(height, timestamp, txpos, header_hash, True)
         # Transactions pending verification.  txid -> tx_height. Access with self.lock.
         self.unverified_tx = defaultdict(int)
         # true when synchronized
@@ -423,7 +423,8 @@ class AddressSynchronizer(PrintError):
 
     def save_verified_tx(self, write=False):
         with self.lock:
-            self.storage.put('verified_tx3', self.verified_tx)
+            self.storage.put('verified_tx3', {txid: tx_mined_status.serialize_to_wallet_file()
+                                              for txid, tx_mined_status in self.verified_tx.items()})
             if write:
                 self.storage.write()
 
@@ -539,12 +540,11 @@ class AddressSynchronizer(PrintError):
             if self.verifier:
                 self.verifier.remove_spv_proof_for_tx(tx_hash)
 
-    def add_verified_tx(self, tx_hash: str, info: VerifiedTxInfo):
+    def add_verified_tx(self, tx_hash: str, tx_mined_status: TxMinedStatus):
         # Remove from the unverified map and add to the verified map
         with self.lock:
             self.unverified_tx.pop(tx_hash, None)
-            self.verified_tx[tx_hash] = info
-        tx_mined_status = self.get_tx_height(tx_hash)
+            self.verified_tx[tx_hash] = tx_mined_status
         self.network.trigger_callback('verified', tx_hash, tx_mined_status)
 
     def get_unverified_txs(self):
@@ -583,18 +583,14 @@ class AddressSynchronizer(PrintError):
         return self.network.get_local_height() if self.network else self.storage.get('stored_height', 0)
 
     def get_tx_height(self, tx_hash: str) -> TxMinedStatus:
-        """ Given a transaction, returns (height, conf, timestamp, header_hash) """
         with self.lock:
             if tx_hash in self.verified_tx:
-                info = self.verified_tx[tx_hash]
-                conf = max(self.get_local_height() - info.height + 1, 0)
-                return TxMinedStatus(info.height, conf, info.timestamp, info.header_hash)
+                return self.verified_tx[tx_hash]
             elif tx_hash in self.unverified_tx:
                 height = self.unverified_tx[tx_hash]
-                return TxMinedStatus(height, 0, None, None)
             else:
-                # local transaction
-                return TxMinedStatus(TX_HEIGHT_LOCAL, 0, None, None)
+                height = TX_HEIGHT_LOCAL  # local transaction
+            return TxMinedStatus(height, None, None, None, False)
 
     def set_up_to_date(self, up_to_date):
         with self.lock:

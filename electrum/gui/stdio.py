@@ -89,7 +89,7 @@ class ElectrumGui:
         messages = []
 
         for tx_hash, tx_mined_status, delta, balance in self.wallet.get_history():
-            if tx_mined_status.conf:
+            if tx_mined_status.verified:
                 timestamp = tx_mined_status.timestamp
                 try:
                     time_str = datetime.datetime.fromtimestamp(timestamp).isoformat(' ')[:-3]

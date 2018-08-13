@@ -23,7 +23,7 @@
 import binascii
 import os, sys, re, json
 from collections import defaultdict
-from typing import NamedTuple
+from typing import NamedTuple, Optional
 from datetime import datetime
 import decimal
 from decimal import Decimal
@@ -924,11 +924,14 @@ def make_dir(path, allow_symlink=True):
         os.chmod(path, stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR)
 
 
-TxMinedStatus = NamedTuple("TxMinedStatus", [("height", int),
-                                             ("conf", int),
-                                             ("timestamp", int),
-                                             ("header_hash", str)])
-VerifiedTxInfo = NamedTuple("VerifiedTxInfo", [("height", int),
-                                               ("timestamp", int),
-                                               ("txpos", int),
-                                               ("header_hash", str)])
+class TxMinedStatus(NamedTuple("TxMinedStatus", [("height", int),
+                                                 ("timestamp", Optional[int]),
+                                                 ("txpos", Optional[int]),
+                                                 ("header_hash", Optional[str]),
+                                                 ("verified", bool)])):
+
+    def conf(self, local_height: int) -> int:
+        return (local_height - self.height) if self.verified else 0
+
+    def serialize_to_wallet_file(self):
+        return self.height, self.timestamp, self.txpos, self.header_hash
