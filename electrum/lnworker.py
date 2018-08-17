@@ -5,6 +5,7 @@ import random
 import time
 from typing import Optional, Sequence
 import threading
+from functools import partial
 
 import dns.resolver
 import dns.exception
@@ -48,9 +49,11 @@ class LNWorker(PrintError):
         self.config = network.config
         self.peers = {}  # pubkey -> Peer
         self.channels = {x.channel_id: x for x in map(HTLCStateMachine, wallet.storage.get("channels", []))}
+        for c in self.channels.values():
+            c.set_lnwatcher(network.lnwatcher)
         self.invoices = wallet.storage.get('lightning_invoices', {})
         for chan_id, chan in self.channels.items():
-            self.network.lnwatcher.watch_channel(chan, self.sweep_address, self.on_channel_utxos)
+            self.network.lnwatcher.watch_channel(chan, self.sweep_address, partial(self.on_channel_utxos, chan))
         self._last_tried_peer = {}  # LNPeerAddr -> unix timestamp
         self._add_peers_from_config()
         # wait until we see confirmations
@@ -119,14 +122,11 @@ class LNWorker(PrintError):
             return True
         return False
 
-    def on_channel_utxos(self, chan, utxos):
-        outpoints = [Outpoint(x["tx_hash"], x["tx_pos"]) for x in utxos]
-        if chan.funding_outpoint not in outpoints:
-            chan.set_funding_txo_spentness(True)
+    def on_channel_utxos(self, chan, is_funding_txo_spent: bool):
+        chan.set_funding_txo_spentness(is_funding_txo_spent)
+        if is_funding_txo_spent:
             chan.set_state("CLOSED")
             self.channel_db.remove_channel(chan.short_channel_id)
-        else:
-            chan.set_funding_txo_spentness(False)
         self.network.trigger_callback('channel', chan)
 
     def on_network_update(self, event, *args):
@@ -159,12 +159,16 @@ class LNWorker(PrintError):
 
     async def _open_channel_coroutine(self, node_id, local_amount_sat, push_sat, password):
         peer = self.peers[node_id]
-        openingchannel = await peer.channel_establishment_flow(self.wallet, self.config, password, local_amount_sat + push_sat, push_sat * 1000, temp_channel_id=os.urandom(32))
+        openingchannel = await peer.channel_establishment_flow(self.wallet, self.config, password,
+                                                               funding_sat=local_amount_sat + push_sat,
+                                                               push_msat=push_sat * 1000,
+                                                               temp_channel_id=os.urandom(32),
+                                                               sweep_address=self.sweep_address)
         if not openingchannel:
             self.print_error("Channel_establishment_flow returned None")
             return
         self.save_channel(openingchannel)
-        self.network.lnwatcher.watch_channel(openingchannel, self.sweep_address, self.on_channel_utxos)
+        self.network.lnwatcher.watch_channel(openingchannel, self.sweep_address, partial(self.on_channel_utxos, openingchannel))
         self.on_channels_updated()
 
     def on_channels_updated(self):

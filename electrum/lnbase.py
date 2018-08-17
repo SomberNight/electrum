@@ -292,6 +292,7 @@ class Peer(PrintError):
         self.lnworker = lnworker
         self.privkey = lnworker.privkey
         self.network = lnworker.network
+        self.lnwatcher = lnworker.network.lnwatcher
         self.channel_db = lnworker.network.channel_db
         self.read_buffer = b''
         self.ping_time = 0
@@ -487,7 +488,7 @@ class Peer(PrintError):
             self.network.trigger_callback('channel', chan)
 
     @aiosafe
-    async def channel_establishment_flow(self, wallet, config, password, funding_sat, push_msat, temp_channel_id):
+    async def channel_establishment_flow(self, wallet, config, password, funding_sat, push_msat, temp_channel_id, sweep_address):
         await self.initialized
         # see lnd/keychain/derivation.go
         keyfamilymultisig = 0
@@ -598,9 +599,12 @@ class Peer(PrintError):
                     current_htlc_signatures = None,
                     feerate=local_feerate
                 ),
-                "constraints": ChannelConstraints(capacity=funding_sat, is_initiator=True, funding_txn_minimum_depth=funding_txn_minimum_depth)
+                "constraints": ChannelConstraints(capacity=funding_sat, is_initiator=True, funding_txn_minimum_depth=funding_txn_minimum_depth),
+                "remote_commitment_to_be_revoked": None,
         }
         m = HTLCStateMachine(chan)
+        m.set_lnwatcher(self.lnwatcher)
+        m.sweep_address = sweep_address
         sig_64, _ = m.sign_next_commitment()
         self.send_message(gen_msg("funding_created",
             temporary_channel_id=temp_channel_id,
@@ -614,6 +618,7 @@ class Peer(PrintError):
         # broadcast funding tx
         success, _txid = self.network.broadcast_transaction(funding_tx)
         assert success, success
+        m.remote_commitment_to_be_revoked = m.pending_remote_commitment
         m.remote_state = m.remote_state._replace(ctn=0)
         m.local_state = m.local_state._replace(ctn=0, current_commitment_signature=remote_sig)
         m.set_state('OPENING')
@@ -905,8 +910,10 @@ class Peer(PrintError):
             chan.receive_htlc_settle(preimage, int.from_bytes(update_fulfill_htlc_msg["id"], "big"))
             await self.receive_commitment(chan)
             self.revoke(chan)
+            # FIXME why is this not using the HTLC state machine?
             bare_ctx = chan.make_commitment(chan.remote_state.ctn + 1, False, chan.remote_state.next_per_commitment_point,
                 msat_remote, msat_local)
+            self.lnwatcher.process_new_offchain_ctx(chan, bare_ctx, ours=False)
             sig_64 = sign_and_get_sig_string(bare_ctx, chan.local_config, chan.remote_config)
             res = bh2u(preimage)
             payment_succeeded = True
@@ -937,8 +944,6 @@ class Peer(PrintError):
         data = commitment_signed_msg["htlc_signature"]
         htlc_sigs = [data[i:i+64] for i in range(0, len(data), 64)]
         m.receive_new_commitment(commitment_signed_msg["signature"], htlc_sigs)
-
-        self.lnwatcher.add_sweep_ctx(m)
 
         return len(htlc_sigs)
 
@@ -976,8 +981,10 @@ class Peer(PrintError):
         self.send_message(gen_msg("update_fulfill_htlc", channel_id=channel_id, id=htlc_id, payment_preimage=payment_preimage))
 
         # remote commitment transaction without htlcs
+        # FIXME why is this not using the HTLC state machine?
         bare_ctx = chan.make_commitment(chan.remote_state.ctn + 1, False, chan.remote_state.next_per_commitment_point,
             chan.remote_state.amount_msat - expected_received_msat, chan.local_state.amount_msat + expected_received_msat)
+        self.lnwatcher.process_new_offchain_ctx(chan, bare_ctx, ours=False)
         sig_64 = sign_and_get_sig_string(bare_ctx, chan.local_config, chan.remote_config)
         self.send_message(gen_msg("commitment_signed", channel_id=channel_id, signature=sig_64, num_htlcs=0))
 
