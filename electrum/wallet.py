@@ -112,7 +112,7 @@ def sweep_preparations(privkeys, network, imax=100):
     inputs = []
     keypairs = {}
     for sec in privkeys:
-        txin_type, privkey, compressed = bitcoin.deserialize_privkey(sec)
+        txin_type, privkey, compressed = bitcoin.deserialize_privkey_and_enforce_consensus(sec)
         find_utxos_for_privkey(txin_type, privkey, compressed)
         # do other lookups to increase support coverage
         if is_minikey(sec):

@@ -470,6 +470,19 @@ def deserialize_privkey(key: str) -> (str, bytes, bool):
     return txin_type, secret_bytes, compressed
 
 
+def deserialize_privkey_and_enforce_consensus(key: str) -> (str, bytes, bool):
+    """Deserialize the key but ignore and try to resolve properties that
+    are forbidden by consensus.
+
+    For now, only: segwit addresses MUST use compressed pubkeys
+    """
+    txin_type, secret_bytes, compressed = deserialize_privkey(key)
+    from .transaction import Transaction
+    if Transaction.is_segwit_inputtype(txin_type):
+        compressed = True
+    return txin_type, secret_bytes, compressed
+
+
 def is_compressed(sec):
     return deserialize_privkey(sec)[2]
 

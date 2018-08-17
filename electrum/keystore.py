@@ -141,7 +141,7 @@ class Imported_KeyStore(Software_KeyStore):
         self.get_private_key(pubkey, password)
 
     def import_privkey(self, sec, password):
-        txin_type, privkey, compressed = deserialize_privkey(sec)
+        txin_type, privkey, compressed = deserialize_privkey_and_enforce_consensus(sec)
         pubkey = ecc.ECPrivkey(privkey).get_public_key_hex(compressed=compressed)
         # re-serialize the key so the internal storage format is consistent
         serialized_privkey = serialize_privkey(
