@@ -8,7 +8,7 @@ import os, sys, time, io
 import traceback
 
 from electrum import bitcoin
-from electrum.bitcoin import serialize_xpub, deserialize_xpub
+from electrum.bitcoin import serialize_xpub, deserialize_xpub, InvalidMasterKeyVersionBytes
 from electrum import constants
 from electrum.bitcoin import TYPE_ADDRESS, int_to_hex
 from electrum.i18n import _
@@ -87,7 +87,8 @@ class CKCCClient:
     # Challenge: I haven't found anywhere that defines a base class for this 'client',
     # nor an API (interface) to be met. Winging it. Gets called from lib/plugins.py mostly?
 
-    def __init__(self, handler, dev_path, is_simulator=False):
+    def __init__(self, plugin, handler, dev_path, is_simulator=False):
+        self.device = plugin.device
         self.handler = handler
 
         # if we know what the (xfp, xpub) "should be" then track it here
@@ -190,8 +191,12 @@ class CKCCClient:
         xpub = self.dev.send_recv(CCProtocolPacker.get_xpub(bip32_path), timeout=5000)
         # TODO handle timeout?
         # change type of xpub to the requested type
+        try:
+            __, depth, fingerprint, child_number, c, cK = deserialize_xpub(xpub)
+        except InvalidMasterKeyVersionBytes:
+            raise Exception(_('Invalid xpub magic. Make sure your {} device is set to the correct chain.')
+                            .format(self.device)) from None
         if xtype != 'standard':
-            _, depth, fingerprint, child_number, c, cK = deserialize_xpub(xpub)
             xpub = serialize_xpub(xtype, c, cK, depth, fingerprint, child_number)
         return xpub
 
@@ -619,7 +624,7 @@ class ColdcardPlugin(HW_PluginBase):
         # Not sure why not we aren't just given a HID library handle, but
         # the 'path' is unabiguous, so we'll use that.
         try:
-            rv = CKCCClient(handler, device.path, 
+            rv = CKCCClient(self, handler, device.path,
                     is_simulator=(device.product_key[1] == CKCC_SIMULATED_PID))
             return rv
         except:
