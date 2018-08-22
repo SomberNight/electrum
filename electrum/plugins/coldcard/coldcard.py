@@ -479,8 +479,8 @@ class Coldcard_KeyStore(Hardware_KeyStore):
             # wallet.add_hw_info() adds some data about change outputs into tx.output_info
             if o.address in tx.output_info:
                 # this address "is_mine" but might not be change (I like to sent to myself)
-                #
-                index, xpubs, _multisig = tx.output_info.get(o.address)
+                output_info = tx.output_info.get(o.address)
+                index, xpubs = output_info.address_index, output_info.sorted_xpubs
 
                 if index[0] == 1 and len(index) == 2:
                     # it is a change output (based on our standard derivation path)
