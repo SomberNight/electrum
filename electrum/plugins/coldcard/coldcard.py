@@ -46,7 +46,7 @@ try:
             from electrum.ecc import ECPubkey
 
             xtype, depth, parent_fingerprint, child_number, chain_code, K_or_k \
-                = bitcoin.deserialize_xpub(expect_xpub, net=constants.BitcoinMainnet)
+                = bitcoin.deserialize_xpub(expect_xpub)
 
             pubkey = ECPubkey(K_or_k)
             try:
@@ -189,10 +189,9 @@ class CKCCClient:
         print_error('[coldcard]', 'Derive xtype = %r' % xtype)
         xpub = self.dev.send_recv(CCProtocolPacker.get_xpub(bip32_path), timeout=5000)
         # TODO handle timeout?
-        # Change type of xpub to the requested type. The firmware
-        # only ever returns the mainnet standard type.
-        if xtype != 'standard' or constants.net.TESTNET:
-            _, depth, fingerprint, child_number, c, cK = deserialize_xpub(xpub, net=constants.BitcoinMainnet)
+        # change type of xpub to the requested type
+        if xtype != 'standard':
+            _, depth, fingerprint, child_number, c, cK = deserialize_xpub(xpub)
             xpub = serialize_xpub(xtype, c, cK, depth, fingerprint, child_number)
         return xpub
 
@@ -448,7 +447,7 @@ class Coldcard_KeyStore(Hardware_KeyStore):
             @classmethod
             def input_script(cls, txin, estimate_size=False):
                 return ''
-        unsigned = bfh(CustomTXSerialization(tx.serialize()).serialize_to_network())
+        unsigned = bfh(CustomTXSerialization(tx.serialize()).serialize_to_network(witness=False))
         write_kv(PSBT_GLOBAL_UNSIGNED_TX, unsigned)
 
         # end globals section
@@ -591,7 +590,7 @@ class ColdcardPlugin(HW_PluginBase):
     ]
 
     #SUPPORTED_XTYPES = ('standard', 'p2wpkh-p2sh', 'p2wpkh', 'p2wsh-p2sh', 'p2wsh')
-    SUPPORTED_XTYPES = ('standard',)
+    SUPPORTED_XTYPES = ('standard', 'p2wpkh')
 
     def __init__(self, parent, config, name):
         HW_PluginBase.__init__(self, parent, config, name)
