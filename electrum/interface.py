@@ -258,49 +258,18 @@ class BlockHeaderInterface(PrintError):
                 self.tip = max(self.height, self.tip)
         return last
 
+    # TODO remove self.height  ~ next_height
     async def step(self, header=None):
         assert self.height != 0
         if header is None:
             header = await self.conn.get_block_header(self.height, 'catchup')
         can_connect = blockchain.can_connect(header) if 'mock' not in header else header['mock']['connect'](self)
 
-        bad_header = None
         if not can_connect:
             self.print_error("can't connect", self.height)
-            #backward
-            bad = self.height
-            bad_header = header
-            self.height -= 1
-            checkp = False
-            if self.height <= self.iface.network.max_checkpoint():
-                self.height = self.iface.network.max_checkpoint() + 1
-                checkp = True
-
-            header = await self.conn.get_block_header(self.height, 'backward')
-            chain = blockchain.check_header(header) if 'mock' not in header else header['mock']['check'](header)
-            can_connect = blockchain.can_connect(header) if 'mock' not in header else header['mock']['connect'](self)
-            if checkp:
-                assert can_connect or chain, (can_connect, chain)
-            while not chain and not can_connect:
-                bad = self.height
-                bad_header = header
-                delta = self.tip - self.height
-                next_height = self.tip - 2 * delta
-                checkp = False
-                if next_height <= self.iface.network.max_checkpoint():
-                    next_height = self.iface.network.max_checkpoint() + 1
-                    checkp = True
-                self.height = next_height
-
-                header = await self.conn.get_block_header(self.height, 'backward')
-                chain = blockchain.check_header(header) if 'mock' not in header else header['mock']['check'](header)
-                can_connect = blockchain.can_connect(header) if 'mock' not in header else header['mock']['connect'](self)
-                if checkp:
-                    assert can_connect or chain, (can_connect, chain)
-            self.print_error("exiting backward mode at", self.height)
+            bad, bad_header, chain, can_connect = await self.go_backwards(header)
         if can_connect:
             self.print_error("could connect", self.height)
-            chain = blockchain.check_header(header) if 'mock' not in header else header['mock']['check'](header)
 
             if type(can_connect) is bool:
                 # mock
@@ -321,6 +290,42 @@ class BlockHeaderInterface(PrintError):
             pass # mock
         else:
             self.iface.blockchain = chain
+        return await self.do_binary_search(bad, bad_header)
+
+    async def go_backwards(self, header):
+        bad = self.height
+        bad_header = header
+        self.height -= 1
+        checkp = False
+        if self.height <= self.iface.network.max_checkpoint():
+            self.height = self.iface.network.max_checkpoint() + 1
+            checkp = True
+
+        header = await self.conn.get_block_header(self.height, 'backward')
+        chain = blockchain.check_header(header) if 'mock' not in header else header['mock']['check'](header)
+        can_connect = blockchain.can_connect(header) if 'mock' not in header else header['mock']['connect'](self)
+        if checkp:
+            assert can_connect or chain, (can_connect, chain)
+        while not chain and not can_connect:
+            bad = self.height
+            bad_header = header
+            delta = self.tip - self.height
+            next_height = self.tip - 2 * delta
+            checkp = False
+            if next_height <= self.iface.network.max_checkpoint():
+                next_height = self.iface.network.max_checkpoint() + 1
+                checkp = True
+            self.height = next_height
+
+            header = await self.conn.get_block_header(self.height, 'backward')
+            chain = blockchain.check_header(header) if 'mock' not in header else header['mock']['check'](header)
+            can_connect = blockchain.can_connect(header) if 'mock' not in header else header['mock']['connect'](self)
+            if checkp:
+                assert can_connect or chain, (can_connect, chain)
+        self.print_error("exiting backward mode at", self.height)
+        return bad, bad_header, chain, can_connect
+
+    async def do_binary_search(self, bad, bad_header):
         good = self.height
         self.height = (bad + good) // 2
         header = await self.conn.get_block_header(self.height, 'binary')
@@ -339,31 +344,33 @@ class BlockHeaderInterface(PrintError):
                 self.height = (bad + good) // 2
                 header = await self.conn.get_block_header(self.height, 'binary')
                 continue
+
             mock = bad_header and 'mock' in bad_header and bad_header['mock']['connect'](self)
             real = not mock and self.iface.blockchain.can_connect(bad_header, check_height=False)
             if not real and not mock:
                 raise Exception('unexpected bad header during binary' + str(bad_header)) # line 948 in 8e69174374aee87d73cd2f8005fbbe87c93eee9c's network.py
             branch = blockchain.blockchains.get(bad)
             if branch is not None:
-                ismocking = False
-                if type(branch) is dict:
-                    ismocking = True
+                ismocking = type(branch) is dict
                 # FIXME: it does not seem sufficient to check that the branch
                 # contains the bad_header. what if self.blockchain doesn't?
                 # the chains shouldn't be joined then. observe the incorrect
                 # joining on regtest with a server that has a fork of height
                 # one. the problem is observed only if forking is not during
                 # electrum runtime
-                if ismocking and branch['check'](bad_header) or not ismocking and branch.check_header(bad_header):
+                if not ismocking and branch.check_header(bad_header) \
+                        or ismocking and branch['check'](bad_header):
                     self.print_error('joining chain', bad)
                     self.height += 1
                     return 'join'
                 else:
-                    if ismocking and branch['parent']['check'](header) or not ismocking and branch.parent().check_header(header):
+                    if not ismocking and branch.parent().check_header(header) \
+                            or ismocking and branch['parent']['check'](header):
                         self.print_error('reorg', bad, self.tip)
                         self.iface.blockchain = branch.parent() if not ismocking else branch['parent']
                         self.height = bad
                         header = await self.conn.get_block_header(self.height, 'binary')
+                        continue  # do another iteration
                     else:
                         if ismocking:
                             self.height = bad + 1

@@ -178,6 +178,7 @@ class Network(PrintError):
         self.config = SimpleConfig(config) if isinstance(config, dict) else config
         self.num_server = 10 if not self.config.get('oneserver') else 0
         blockchain.blockchains = blockchain.read_blockchains(self.config)  # note: needs self.blockchains_lock
+        self.blockchains = blockchain.blockchains  # TODO temp
         self.print_error("blockchains", list(blockchain.blockchains.keys()))
         self.blockchain_index = config.get('blockchain_index', 0)
         if self.blockchain_index not in blockchain.blockchains.keys():
@@ -675,6 +676,7 @@ class Network(PrintError):
 
     @aiosafe
     async def new_interface(self, server):
+        #if not server.startswith("testnet.qtornado.com"): return  # TODO temp
         # todo: get tip first, then decide which checkpoint to use.
         self.add_recent_server(server)
 
