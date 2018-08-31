@@ -934,7 +934,9 @@ def aiosafe(f):
             return await f(*args, **kwargs)
         except BaseException as e:
             self.print_error("Exception in", f.__name__, ":", e.__class__.__name__, str(e))
+            #print("aiosafe................1")
             traceback.print_exc(file=sys.stderr)
+            #print("aiosafe................2")
             self.exception = e
     return f2
 

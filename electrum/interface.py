@@ -46,6 +46,10 @@ from .version import ELECTRUM_VERSION, PROTOCOL_VERSION
 from .util import NotificationSession
 from . import blockchain
 
+
+class GracefulDisconnect(Exception): pass
+
+
 class Interface(PrintError):
 
     def __init__(self, network, server, config_path, proxy):
@@ -125,7 +129,11 @@ class Interface(PrintError):
         else:
             sslc = ssl.create_default_context(ssl.Purpose.SERVER_AUTH, cafile=self.cert_path)
             sslc.check_hostname = 0
-        await self.open_session(sslc, execute_after_connect=self.mark_ready)
+        try:
+            await self.open_session(sslc, execute_after_connect=self.mark_ready)
+        except GracefulDisconnect as e:
+            self.print_error('disconnecting: {}'.format(e))
+            return
         assert False
 
     def mark_ready(self):
@@ -174,7 +182,11 @@ class Interface(PrintError):
     async def open_session(self, sslc, do_sleep=True, execute_after_connect=lambda: None):
         q = asyncio.Queue()
         async with NotificationSession(None, q, self.host, self.port, ssl=sslc, proxy=self.proxy) as session:
-            ver = await session.send_request('server.version', [ELECTRUM_VERSION, PROTOCOL_VERSION])
+            try:
+                ver = await session.send_request('server.version', [ELECTRUM_VERSION, PROTOCOL_VERSION])
+            except aiorpcx.jsonrpc.RPCError as e:
+                raise GracefulDisconnect(e) from None
+
             self.print_error(ver, do_sleep, self.host)
             connect_hook_executed = False
             block_retriever = None
@@ -205,6 +217,8 @@ class Interface(PrintError):
 
     @aiosafe
     async def run_fetch_blocks(self, sub_reply, replies, conniface):
+        # TODO if this method raises, disconnect from server??
+
         async with self.network.bhi_lock:
             bhi = BlockHeaderInterface(conniface, sub_reply['height'], self.blockchain.height()+1, self)
             await replies.put(blockchain.deserialize_header(bfh(sub_reply['hex']), sub_reply['height']))
@@ -246,6 +260,8 @@ class BlockHeaderInterface(PrintError):
                 could_connect, num_headers = await self.conn.request_chunk(self.height, next_height)
                 self.tip = max(self.height + num_headers, self.tip)
                 if not could_connect:
+                    if self.height <= self.iface.network.max_checkpoint():
+                        raise Exception('server chain conflicts with checkpoints or genesis')
                     last = await self.step()
                     self.tip = max(self.height, self.tip)
                     continue
@@ -328,7 +344,8 @@ class BlockHeaderInterface(PrintError):
             self.print_error("binary step")
             chain = blockchain.check_header(header) if 'mock' not in header else header['mock']['check'](header)
             if chain:
-                assert bad != self.height, (bad, self.height)
+                #traceback.print_stack()
+                assert bad != self.height, (bad, self.height)  #
                 good = self.height
                 self.iface.blockchain = self.iface.blockchain if type(chain) in [bool, int] else chain
             else:
@@ -341,7 +358,7 @@ class BlockHeaderInterface(PrintError):
                 continue
             mock = bad_header and 'mock' in bad_header and bad_header['mock']['connect'](self)
             real = not mock and self.iface.blockchain.can_connect(bad_header, check_height=False)
-            if not real and not mock:
+            if not real and not mock:  #
                 raise Exception('unexpected bad header during binary' + str(bad_header)) # line 948 in 8e69174374aee87d73cd2f8005fbbe87c93eee9c's network.py
             branch = blockchain.blockchains.get(bad)
             if branch is not None:

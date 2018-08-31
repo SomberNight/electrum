@@ -178,6 +178,7 @@ class Network(util.PrintError):
         self.config = SimpleConfig(config) if isinstance(config, dict) else config
         self.num_server = 10 if not self.config.get('oneserver') else 0
         blockchain.blockchains = blockchain.read_blockchains(self.config)  # note: needs self.blockchains_lock
+        self.blockchains = blockchain.blockchains  # TODO temp
         self.print_error("blockchains", list(blockchain.blockchains.keys()))
         self.blockchain_index = config.get('blockchain_index', 0)
         if self.blockchain_index not in blockchain.blockchains.keys():
@@ -645,6 +646,7 @@ class Network(util.PrintError):
 
     @aiosafe
     async def new_interface(self, server):
+        #if not server.startswith("testnet.qtornado.com"): return  # TODO temp
         # todo: get tip first, then decide which checkpoint to use.
         self.add_recent_server(server)
 
@@ -652,8 +654,8 @@ class Network(util.PrintError):
         try:
             await asyncio.wait_for(interface.ready, 5)
         except BaseException as e:
-            #import traceback
-            #traceback.print_exc()
+            import traceback
+            traceback.print_exc()
             self.print_error(interface.server, "couldn't launch because", str(e), str(type(e)))
             self.connection_down(interface.server)
             return
@@ -779,14 +781,16 @@ class Network(util.PrintError):
                 asyncio.get_event_loop().create_task(self.new_interface(server))
             remove = []
             for k, i in self.interfaces.items():
-                if i.fut.done():
-                    if i.exception:
-                        try:
-                            raise i.exception
-                        except BaseException as e:
-                            self.print_error(i.server, "errored because", str(e), str(type(e)))
-                    else:
-                        assert False, "interface future should not finish without exception"
+                if i.fut.done() and not i.exception:
+                    assert False, "interface future should not finish without exception"
+                if i.exception:
+                    if not i.fut.done():
+                        try: i.fut.cancel()
+                        except Exception as e: self.print_error('exception while cancelling fut', e)
+                    try:
+                        raise i.exception
+                    except BaseException as e:
+                        self.print_error(i.server, "errored because", str(e), str(type(e)))
                     remove.append(k)
             changed = False
             for k in remove:
