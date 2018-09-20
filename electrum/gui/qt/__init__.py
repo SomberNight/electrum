@@ -26,6 +26,7 @@
 import signal
 import sys
 import traceback
+import threading
 
 
 try:
@@ -99,6 +100,7 @@ class ElectrumGui(PrintError):
             QtCore.QCoreApplication.setAttribute(QtCore.Qt.AA_ShareOpenGLContexts)
         if hasattr(QGuiApplication, 'setDesktopFileName'):
             QGuiApplication.setDesktopFileName('electrum.desktop')
+        threading.current_thread().setName('GUI')
         self.config = config
         self.daemon = daemon
         self.plugins = plugins

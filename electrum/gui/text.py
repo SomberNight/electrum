@@ -410,7 +410,8 @@ class ElectrumGui:
                         return False
             if out.get('server') or out.get('proxy'):
                 proxy = electrum.network.deserialize_proxy(out.get('proxy')) if out.get('proxy') else proxy_config
-                self.network.set_parameters(NetworkParameters(host, port, protocol, proxy, auto_connect))
+                net_params = NetworkParameters(host, port, protocol, proxy, auto_connect)
+                self.network.run_from_another_thread(self.network.set_parameters(net_params))
 
     def settings_dialog(self):
         fee = str(Decimal(self.config.fee_per_kb()) / COIN)

@@ -392,6 +392,8 @@ class Abstract_Wallet(AddressSynchronizer):
         capital_gains = Decimal(0)
         fiat_income = Decimal(0)
         fiat_expenditures = Decimal(0)
+        import threading
+        assert 'GUI' == threading.current_thread().getName()
         h = self.get_history(domain)
         now = time.time()
         for tx_hash, tx_mined_status, value, balance in h:
