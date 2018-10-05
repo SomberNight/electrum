@@ -3,7 +3,7 @@ import os
 from decimal import Decimal
 import random
 import time
-from typing import Optional, Sequence, Tuple, List
+from typing import Optional, Sequence, Tuple, List, Dict
 import threading
 from functools import partial
 import socket
@@ -17,15 +17,14 @@ from . import bitcoin
 from .keystore import BIP32_KeyStore
 from .bitcoin import sha256, COIN
 from .util import bh2u, bfh, PrintError, InvoiceError, resolve_dns_srv, is_ip_address
-from .lnbase import Peer, privkey_to_pubkey, aiosafe
+from .lnbase import Peer, aiosafe
 from .lnaddr import lnencode, LnAddr, lndecode
 from .ecc import der_sig_from_sig_string
 from .lnhtlc import HTLCStateMachine
 from .lnutil import (Outpoint, calc_short_channel_id, LNPeerAddr,
                      get_compressed_pubkey_from_bech32, extract_nodeid,
                      PaymentFailure, split_host_port, ConnStringFormatError,
-                     generate_keypair, LnKeyFamily)
-from electrum.lnaddr import lndecode
+                     generate_keypair, LnKeyFamily, HTLCOwner)
 from .i18n import _
 
 
@@ -35,6 +34,7 @@ PEER_RETRY_INTERVAL_FOR_CHANNELS = 30  # seconds
 
 FALLBACK_NODE_LIST = (
     LNPeerAddr('ecdsa.net', 9735, bfh('038370f0e7a03eded3e1d41dc081084a87f0afa1c5b22090b4f3abb391eb15d8ff')),
+    LNPeerAddr('35.158.243.90', 9735, bfh('0277622bf4c497475960bf91bd3c673a4cb4e9b589cebfde9700c197b3989cc1b8')),
 )
 
 class LNWorker(PrintError):
@@ -48,8 +48,8 @@ class LNWorker(PrintError):
         self.ln_keystore = self._read_ln_keystore()
         self.node_keypair = generate_keypair(self.ln_keystore, LnKeyFamily.NODE_KEY, 0)
         self.config = network.config
-        self.peers = {}  # pubkey -> Peer
-        self.channels = {x.channel_id: x for x in map(HTLCStateMachine, wallet.storage.get("channels", []))}
+        self.peers = {}  # type: Dict[bytes, Peer]  # pubkey -> Peer
+        self.channels = {x.channel_id: x for x in map(HTLCStateMachine, wallet.storage.get("channels", []))}  # type: Dict[bytes, HTLCStateMachine]
         for c in self.channels.values():
             c.lnwatcher = network.lnwatcher
         self.invoices = wallet.storage.get('lightning_invoices', {})
@@ -235,6 +235,7 @@ class LNWorker(PrintError):
         if amount_sat is None:
             raise InvoiceError(_("Missing amount"))
         amount_msat = int(amount_sat * 1000)
+        # TODO use 'r' field from invoice
         path = self.network.path_finder.find_path_for_payment(self.node_keypair.pubkey, invoice_pubkey, amount_msat)
         if path is None:
             raise PaymentFailure(_("No path found"))
@@ -254,11 +255,37 @@ class LNWorker(PrintError):
         payment_preimage = os.urandom(32)
         RHASH = sha256(payment_preimage)
         amount_btc = amount_sat/Decimal(COIN) if amount_sat else None
-        pay_req = lnencode(LnAddr(RHASH, amount_btc, tags=[('d', message)]), self.node_keypair.privkey)
+        routing_hints = self._calc_routing_hints_for_invoice(amount_sat)
+        pay_req = lnencode(LnAddr(RHASH, amount_btc, tags=[('d', message)]+routing_hints),
+                           self.node_keypair.privkey)
         self.invoices[bh2u(payment_preimage)] = pay_req
         self.wallet.storage.put('lightning_invoices', self.invoices)
         self.wallet.storage.write()
         return pay_req
+
+    def _calc_routing_hints_for_invoice(self, amount_sat):
+        """calculate routing hints (BOLT-11 'r' field)"""
+        routing_hints = []
+        with self.lock:
+            channels = list(self.channels.values())
+        # note: currently we add *all* our channels; but this might be a privacy leak?
+        for chan in channels:
+            # check channel is open
+            if chan.get_state() != "OPEN": continue
+            # check channel has sufficient balance
+            if amount_sat and chan.balance(HTLCOwner.REMOTE) // 1000 < amount_sat: continue
+            chan_id = chan.short_channel_id
+            assert type(chan_id) is bytes, chan_id
+            channel_info = self.channel_db.get_channel_info(chan_id)
+            if not channel_info: continue
+            policy = channel_info.get_policy_for_node(chan.node_id)
+            if not policy: continue
+            routing_hints.append(('r', [(chan.node_id,
+                                         chan_id,
+                                         policy.fee_base_msat,
+                                         policy.fee_proportional_millionths,
+                                         policy.cltv_expiry_delta)]))
+        return routing_hints
 
     def delete_invoice(self, payreq_key):
         try:

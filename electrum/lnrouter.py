@@ -28,7 +28,7 @@ import os
 import json
 import threading
 from collections import namedtuple, defaultdict
-from typing import Sequence, Union, Tuple, Optional
+from typing import Sequence, Union, Tuple, Optional, Dict
 import binascii
 import base64
 
@@ -125,7 +125,7 @@ class ChannelInfo(PrintError):
         else:
             self.policy_node2 = new_policy
 
-    def get_policy_for_node(self, node_id):
+    def get_policy_for_node(self, node_id: bytes) -> 'ChannelInfoDirectedPolicy':
         if node_id == self.node_id_1:
             return self.policy_node1
         elif node_id == self.node_id_2:
@@ -270,7 +270,7 @@ class ChannelDB(JsonDB):
         JsonDB.__init__(self, path)
 
         self.lock = threading.RLock()
-        self._id_to_channel_info = {}
+        self._id_to_channel_info = {}  # type: Dict[bytes, ChannelInfo]
         self._channels_for_node = defaultdict(set)  # node -> set(short_channel_id)
         self.nodes = {}  # node_id -> NodeInfo
         self._recent_peers = []
@@ -337,7 +337,7 @@ class ChannelDB(JsonDB):
         # number of channels
         return len(self._id_to_channel_info)
 
-    def get_channel_info(self, channel_id) -> Optional[ChannelInfo]:
+    def get_channel_info(self, channel_id: bytes) -> Optional[ChannelInfo]:
         return self._id_to_channel_info.get(channel_id, None)
 
     def get_channels_for_node(self, node_id):
@@ -397,7 +397,7 @@ class ChannelDB(JsonDB):
             # (maybe this is redundant but this should prevent a race..)
             channel_info = self._id_to_channel_info.get(short_channel_id, None)
         if channel_info is None:
-            self.print_error("could not find", short_channel_id)
+            self.print_error(">>>>>>>>>>>>>>>> could not find", short_channel_id)  # FIXME tmp
             return
         channel_info.on_channel_update(msg_payload, trusted=trusted)
 

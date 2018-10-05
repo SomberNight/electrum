@@ -405,7 +405,7 @@ class Peer(PrintError):
             asyncio.ensure_future(execution_result)
 
     def on_error(self, payload):
-        self.print_error("error", payload["data"].decode("ascii"))
+        self.print_error("on_error:", payload["data"].decode("ascii"))
 
     def on_ping(self, payload):
         l = int.from_bytes(payload['num_pong_bytes'], 'big')
@@ -544,7 +544,7 @@ class Peer(PrintError):
             first_per_commitment_point=per_commitment_point_first,
             to_self_delay=local_config.to_self_delay,
             max_htlc_value_in_flight_msat=local_config.max_htlc_value_in_flight_msat,
-            channel_flags=0x01, # publicly announcing channel
+            channel_flags=0x00,  # not willing to announce channel
             channel_reserve_satoshis=546
         )
         self.send_message(msg)
@@ -825,6 +825,9 @@ class Peer(PrintError):
         Runs on the Network thread.
         """
         if not chan.local_state.was_announced and funding_tx_depth >= 6:
+            # don't announce our channels
+            # FIXME should this be a field in chan.local_state maybe?
+            return
             chan.local_state=chan.local_state._replace(was_announced=True)
             coro = self.handle_announcements(chan)
             self.lnworker.save_channel(chan)
@@ -879,22 +882,30 @@ class Peer(PrintError):
         chan.set_state("OPEN")
         self.network.trigger_callback('channel', chan)
         # add channel to database
-        node_ids = [self.pubkey, self.lnworker.node_keypair.pubkey]
+        pubkey_ours = self.lnworker.node_keypair.pubkey
+        pubkey_theirs = self.pubkey
+        node_ids = [pubkey_theirs, pubkey_ours]
         bitcoin_keys = [chan.local_config.multisig_key.pubkey, chan.remote_config.multisig_key.pubkey]
         sorted_node_ids = list(sorted(node_ids))
         if sorted_node_ids != node_ids:
             node_ids = sorted_node_ids
             bitcoin_keys.reverse()
-        now = int(time.time()).to_bytes(4, byteorder="big")
+        # note: we inject a channel announcement, and a channel update (for outgoing direction)
+        # This is atm needed for
+        # - finding routes
+        # - the ChanAnn is needed so that we can anchor to it a future ChanUpd
+        #   that the remote sends, even if the channel was not announced
+        #   (from BOLT-07: "MAY create a channel_update to communicate the channel
+        #    parameters to the final node, even though the channel has not yet been announced")
+        #   FIXME race ^
         self.channel_db.on_channel_announcement({"short_channel_id": chan.short_channel_id, "node_id_1": node_ids[0], "node_id_2": node_ids[1],
                                                  'chain_hash': constants.net.rev_genesis_bytes(), 'len': b'\x00\x00', 'features': b'',
                                                  'bitcoin_key_1': bitcoin_keys[0], 'bitcoin_key_2': bitcoin_keys[1]},
                                                 trusted=True)
-        self.channel_db.on_channel_update({"short_channel_id": chan.short_channel_id, 'flags': b'\x01', 'cltv_expiry_delta': b'\x90',
-                                           'htlc_minimum_msat': b'\x03\xe8', 'fee_base_msat': b'\x03\xe8', 'fee_proportional_millionths': b'\x01',
-                                           'chain_hash': constants.net.rev_genesis_bytes(), 'timestamp': now},
-                                          trusted=True)
-        self.channel_db.on_channel_update({"short_channel_id": chan.short_channel_id, 'flags': b'\x00', 'cltv_expiry_delta': b'\x90',
+        # only inject outgoing direction:
+        flags = b'\x00' if node_ids[0] == pubkey_ours else b'\x01'
+        now = int(time.time()).to_bytes(4, byteorder="big")
+        self.channel_db.on_channel_update({"short_channel_id": chan.short_channel_id, 'flags': flags, 'cltv_expiry_delta': b'\x90',
                                            'htlc_minimum_msat': b'\x03\xe8', 'fee_base_msat': b'\x03\xe8', 'fee_proportional_millionths': b'\x01',
                                            'chain_hash': constants.net.rev_genesis_bytes(), 'timestamp': now},
                                           trusted=True)
