@@ -16,6 +16,7 @@ from functools import partial
 import cryptography.hazmat.primitives.ciphers.aead as AEAD
 import aiorpcx
 
+from .util import AIOSafeException
 from . import bitcoin
 from . import ecc
 from .ecc import sig_string_from_r_and_s, get_r_and_s_from_sig_string
@@ -524,6 +525,7 @@ class Peer(PrintError):
         per_commitment_secret_seed = keypair_generator(LnKeyFamily.REVOCATION_ROOT).privkey
         return local_config, per_commitment_secret_seed
 
+    @aiosafe
     async def channel_establishment_flow(self, password, funding_sat, push_msat, temp_channel_id):
         await self.initialized
         local_config, per_commitment_secret_seed = self.make_local_config(funding_sat, push_msat, LOCAL)
@@ -555,7 +557,7 @@ class Peer(PrintError):
         self.send_message(msg)
         payload = await self.channel_accepted[temp_channel_id].get()
         if payload.get('error'):
-            raise Exception(payload.get('error'))
+            raise AIOSafeException(payload.get('error'))
         remote_per_commitment_point = payload['first_per_commitment_point']
         remote_config=ChannelConfig(
             payment_basepoint=OnlyPubkeyKeypair(payload['payment_basepoint']),

@@ -850,7 +850,7 @@ def make_dir(path, allow_symlink=True):
         os.chmod(path, stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR)
 
 
-class AIOSafeSilentException(Exception): pass
+class AIOSafeException(Exception): pass
 
 
 def aiosafe(f):
@@ -861,8 +861,8 @@ def aiosafe(f):
         self = args[0]
         try:
             return await f(*args, **kwargs)
-        except AIOSafeSilentException as e:
-            self.exception = e
+        except AIOSafeException as e:
+            raise(e)
         except asyncio.CancelledError as e:
             self.exception = e
         except BaseException as e:

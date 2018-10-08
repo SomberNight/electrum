@@ -34,7 +34,7 @@ from collections import defaultdict
 import aiorpcx
 from aiorpcx import ClientSession, Notification
 
-from .util import PrintError, aiosafe, bfh, AIOSafeSilentException, SilentTaskGroup
+from .util import PrintError, aiosafe, bfh, SilentTaskGroup
 from . import util
 from . import x509
 from . import pem
