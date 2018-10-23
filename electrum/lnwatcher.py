@@ -184,6 +184,7 @@ class LNWatcher(PrintError):
             if self.get_tx_mined_depth(prev_txid) == TxMinedDepth.DEEP:
                 self.print_error('have no follow-up transactions and prevtx', prev_txid, 'mined deep, returning')
                 return False
+            return True
         # check if any response applies
         keep_watching_this = False
         local_height = self.network.get_local_height()
