@@ -26,7 +26,7 @@ from collections import namedtuple, defaultdict
 import binascii
 import json
 from enum import Enum, auto
-from typing import Optional, Dict, List, Tuple, NamedTuple, Set, Callable, Iterable
+from typing import Optional, Dict, List, Tuple, NamedTuple, Set, Callable, Iterable, Sequence
 from copy import deepcopy
 
 from .util import bfh, PrintError, bh2u
@@ -386,7 +386,7 @@ class Channel(PrintError):
 
         self.process_new_offchain_ctx(pending_local_commitment, ours=True)
 
-    def verify_htlc(self, htlc, htlc_sigs, we_receive):
+    def verify_htlc(self, htlc: UpdateAddHtlc, htlc_sigs: Sequence[bytes], we_receive: bool) -> int:
         _, this_point, _ = self.points
         _script, htlc_tx = make_htlc_tx_with_open_channel(self, this_point, True, we_receive, self.pending_local_commitment, htlc)
         pre_hash = sha256d(bfh(htlc_tx.serialize_preimage(0)))
@@ -396,6 +396,13 @@ class Channel(PrintError):
                 return idx
         else:
             raise Exception(f'failed verifying HTLC signatures: {htlc}')
+
+    def get_remote_htlc_sig_for_htlc(self, htlc: UpdateAddHtlc, we_receive: bool) -> bytes:
+        data = self.config[LOCAL].current_htlc_signatures
+        htlc_sigs = [data[i:i + 64] for i in range(0, len(data), 64)]
+        idx = self.verify_htlc(htlc, htlc_sigs, we_receive=we_receive)
+        remote_htlc_sig = ecc.der_sig_from_sig_string(htlc_sigs[idx]) + b'\x01'
+        return remote_htlc_sig
 
     def revoke_current_commitment(self):
         self.print_error("revoke_current_commitment")
