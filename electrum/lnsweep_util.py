@@ -10,7 +10,7 @@ from . import ecc
 from .lnutil import (EncumberedTransaction,
                      make_commitment_output_to_remote_address, make_commitment_output_to_local_witness_script,
                      derive_privkey, derive_pubkey, derive_blinded_pubkey, derive_blinded_privkey,
-                     privkey_to_pubkey, make_htlc_tx_witness,
+                     privkey_to_pubkey, make_htlc_tx_witness, make_received_htlc,
                      make_htlc_tx_with_open_channel, make_offered_htlc,
                      LOCAL, REMOTE)
 from .transaction import Transaction, TxOutput, construct_witness
@@ -69,12 +69,15 @@ def maybe_create_sweeptx_for_their_ctx_to_local(chan: 'Channel', ctx: Transactio
 
 def create_sweeptxs_for_our_ctx(chan: 'Channel', ctx: Transaction, our_pcp: bytes,
                                 sweep_address: str) -> List[Tuple[Optional[str],EncumberedTransaction]]:
+    # prep
     delayed_bp_privkey = ecc.ECPrivkey(chan.config[LOCAL].delayed_basepoint.privkey)
     our_localdelayed_privkey = derive_privkey(delayed_bp_privkey.secret_scalar, our_pcp)
     our_localdelayed_privkey = ecc.ECPrivkey.from_secret_scalar(our_localdelayed_privkey)
     remote_revocation_pubkey = derive_blinded_pubkey(chan.config[REMOTE].revocation_basepoint.pubkey, our_pcp)
     to_self_delay = chan.config[REMOTE].to_self_delay
-
+    local_htlc_privkey = derive_privkey(secret=int.from_bytes(chan.config[LOCAL].htlc_basepoint.privkey, 'big'),
+                                        per_commitment_point=our_pcp).to_bytes(32, 'big')
+    # to_local
     txs = []
     sweep_tx = create_sweeptx_that_spends_to_local_in_our_ctx(ctx=ctx,
                                                               sweep_address=sweep_address,
@@ -83,27 +86,49 @@ def create_sweeptxs_for_our_ctx(chan: 'Channel', ctx: Transaction, our_pcp: byte
                                                               to_self_delay=to_self_delay)
     if sweep_tx:
         txs.append((None, EncumberedTransaction('our_ctx_to_local', sweep_tx, csv_delay=to_self_delay, cltv_expiry=0)))
-
-    # TODO htlc successes
-    offered_htlcs = list(chan.included_htlcs(LOCAL, LOCAL)) # timeouts
+    # offered HTLCs
+    offered_htlcs = list(chan.included_htlcs(LOCAL, LOCAL)) # type: List[UpdateAddHtlc]  # timeouts
     for htlc in offered_htlcs:
-        htlctx_witness_script, htlc_tx = create_htlctx_our_ctx_offered(chan=chan, our_pcp=our_pcp, ctx=ctx, htlc=htlc)
-
-        to_wallet_tx = create_sweeptx_that_spends_htlctx_that_spends_offered_htlc_in_our_ctx(
+        htlctx_witness_script, htlc_tx = create_htlctx_that_spends_from_our_ctx(chan=chan,
+                                                                                our_pcp=our_pcp,
+                                                                                ctx=ctx,
+                                                                                htlc=htlc,
+                                                                                local_htlc_privkey=local_htlc_privkey,
+                                                                                preimage=None,
+                                                                                is_received_htlc=False)
+        to_wallet_tx = create_sweeptx_that_spends_htlctx_that_spends_htlc_in_our_ctx(
             to_self_delay=to_self_delay,
             htlc_tx=htlc_tx,
             htlctx_witness_script=htlctx_witness_script,
             sweep_address=sweep_address,
             our_localdelayed_privkey=our_localdelayed_privkey
         )
-
         txs.append((htlc_tx.txid(), EncumberedTransaction(f'second_stage_to_wallet_{bh2u(htlc.payment_hash)}', to_wallet_tx, csv_delay=to_self_delay, cltv_expiry=0)))
         txs.append((ctx.txid(), EncumberedTransaction(f'our_ctx_htlc_tx_{bh2u(htlc.payment_hash)}', htlc_tx, csv_delay=0, cltv_expiry=htlc.cltv_expiry)))
-
+    # received HTLCs
+    received_htlcs = list(chan.included_htlcs(LOCAL, REMOTE))  # type: List[UpdateAddHtlc]  # successes
+    for htlc in received_htlcs:
+        preimage, invoice = chan.get_preimage_and_invoice(htlc.payment_hash)
+        htlctx_witness_script, htlc_tx = create_htlctx_that_spends_from_our_ctx(chan=chan,
+                                                                                our_pcp=our_pcp,
+                                                                                ctx=ctx,
+                                                                                htlc=htlc,
+                                                                                local_htlc_privkey=local_htlc_privkey,
+                                                                                preimage=preimage,
+                                                                                is_received_htlc=True)
+        to_wallet_tx = create_sweeptx_that_spends_htlctx_that_spends_htlc_in_our_ctx(
+            to_self_delay=to_self_delay,
+            htlc_tx=htlc_tx,
+            htlctx_witness_script=htlctx_witness_script,
+            sweep_address=sweep_address,
+            our_localdelayed_privkey=our_localdelayed_privkey
+        )
+        txs.append((htlc_tx.txid(), EncumberedTransaction(f'second_stage_to_wallet_{bh2u(htlc.payment_hash)}', to_wallet_tx, csv_delay=to_self_delay, cltv_expiry=0)))
+        txs.append((ctx.txid(), EncumberedTransaction(f'our_ctx_htlc_tx_{bh2u(htlc.payment_hash)}', htlc_tx, csv_delay=0, cltv_expiry=0)))
     return txs
 
 
-def create_sweeptx_that_spends_htlctx_that_spends_offered_htlc_in_our_ctx(
+def create_sweeptx_that_spends_htlctx_that_spends_htlc_in_our_ctx(
         to_self_delay: int, htlc_tx: Transaction,
         htlctx_witness_script: bytes, sweep_address: str,
         our_localdelayed_privkey: ecc.ECPrivkey, fee_per_kb: int=None) -> Transaction:
@@ -128,7 +153,8 @@ def create_sweeptx_that_spends_htlctx_that_spends_offered_htlc_in_our_ctx(
     tx = Transaction.from_io(second_stage_inputs, second_stage_outputs, version=2)
 
     our_localdelayed_privkey_bytes = our_localdelayed_privkey.get_secret_bytes()
-    witness = construct_witness([bfh(tx.sign_txin(0, our_localdelayed_privkey_bytes)), 0, htlctx_witness_script])
+    local_delayed_sig = bfh(tx.sign_txin(0, our_localdelayed_privkey_bytes))
+    witness = construct_witness([local_delayed_sig, 0, htlctx_witness_script])
     tx.inputs()[0]['witness'] = witness
     assert tx.is_complete()
     return tx
@@ -154,30 +180,24 @@ def create_sweeptx_that_spends_to_local_in_our_ctx(
     return None
 
 
-def create_htlctx_our_ctx_offered(chan: 'Channel', our_pcp: bytes,
-                                  ctx: Transaction, htlc: 'UpdateAddHtlc') -> Tuple[bytes, Transaction]:
+def create_htlctx_that_spends_from_our_ctx(chan: 'Channel', our_pcp: bytes,
+                                           ctx: Transaction, htlc: 'UpdateAddHtlc',
+                                           local_htlc_privkey: bytes, preimage: Optional[bytes],
+                                           is_received_htlc: bool) -> Tuple[bytes, Transaction]:
+    assert is_received_htlc == bool(preimage), 'preimage is required iff htlc is received'
+    preimage = preimage or b''
     witness_script, htlc_tx = make_htlc_tx_with_open_channel(chan=chan,
                                                              pcp=our_pcp,
                                                              for_us=True,
-                                                             we_receive=False,
+                                                             we_receive=is_received_htlc,
                                                              commit=ctx,
                                                              htlc=htlc)
-
-    remote_htlc_sig = chan.get_remote_htlc_sig_for_htlc(htlc, we_receive=False)
-
-    remote_revocation_pubkey = derive_blinded_pubkey(chan.config[REMOTE].revocation_basepoint.pubkey, our_pcp)
-    remote_htlc_pubkey = derive_pubkey(chan.config[REMOTE].htlc_basepoint.pubkey, our_pcp)
-    local_htlc_key = derive_privkey(secret=int.from_bytes(chan.config[LOCAL].htlc_basepoint.privkey, 'big'),
-                                    per_commitment_point=our_pcp).to_bytes(32, 'big')
-
-    local_htlc_sig = bfh(htlc_tx.sign_txin(0, local_htlc_key))
-
-    program = make_offered_htlc(revocation_pubkey=remote_revocation_pubkey,
-                                remote_htlcpubkey=remote_htlc_pubkey,
-                                local_htlcpubkey=privkey_to_pubkey(local_htlc_key),
-                                payment_hash=htlc.payment_hash)
-    htlc_tx.inputs()[0]['witness'] = bh2u(make_htlc_tx_witness(remote_htlc_sig, local_htlc_sig, b'', program))
-    return htlc_tx, witness_script
+    remote_htlc_sig = chan.get_remote_htlc_sig_for_htlc(htlc, we_receive=is_received_htlc)
+    local_htlc_sig = bfh(htlc_tx.sign_txin(0, local_htlc_privkey))
+    txin = htlc_tx.inputs()[0]
+    witness_program = bfh(Transaction.get_preimage_script(txin))
+    txin['witness'] = bh2u(make_htlc_tx_witness(remote_htlc_sig, local_htlc_sig, preimage, witness_program))
+    return witness_script, htlc_tx
 
 
 def create_sweeptx_their_ctx_to_remote(sweep_address: str, ctx: Transaction, output_idx: int,

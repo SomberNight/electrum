@@ -444,8 +444,6 @@ class Channel(PrintError):
         next_point = secret_to_pubkey(int.from_bytes(next_secret, 'big'))
         return last_secret, this_point, next_point
 
-    # TODO batch sweeps
-    # TODO sweep HTLC outputs
     def process_new_offchain_ctx(self, ctx, ours: bool):
         if not self.lnwatcher:
             return

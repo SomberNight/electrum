@@ -5,7 +5,7 @@
 from enum import IntFlag, IntEnum
 import json
 from collections import namedtuple
-from typing import NamedTuple, List, Tuple, Mapping, Optional
+from typing import NamedTuple, List, Tuple, Mapping, Optional, TYPE_CHECKING
 import re
 
 from .util import bfh, bh2u, inv_dict
@@ -13,12 +13,15 @@ from .crypto import sha256
 from .transaction import Transaction
 from .ecc import CURVE_ORDER, sig_string_from_der_sig, ECPubkey, string_to_number
 from . import ecc, bitcoin, crypto, transaction
-from .transaction import opcodes, TxOutput
+from .transaction import opcodes, TxOutput, Transaction
 from .bitcoin import push_script
 from . import segwit_addr
 from .i18n import _
 from .lnaddr import lndecode
 from .keystore import BIP32_KeyStore
+
+if TYPE_CHECKING:
+    from .lnchan import Channel, UpdateAddHtlc
 
 
 HTLC_TIMEOUT_WEIGHT = 663
@@ -238,14 +241,16 @@ def make_htlc_tx_output(amount_msat, local_feerate, revocationpubkey, local_dela
     output = TxOutput(bitcoin.TYPE_ADDRESS, p2wsh, final_amount_sat)
     return script, output
 
-def make_htlc_tx_witness(remotehtlcsig, localhtlcsig, payment_preimage, witness_script):
+def make_htlc_tx_witness(remotehtlcsig: bytes, localhtlcsig: bytes,
+                         payment_preimage: bytes, witness_script: bytes) -> bytes:
     assert type(remotehtlcsig) is bytes
     assert type(localhtlcsig) is bytes
     assert type(payment_preimage) is bytes
     assert type(witness_script) is bytes
     return bfh(transaction.construct_witness([0, remotehtlcsig, localhtlcsig, payment_preimage, witness_script]))
 
-def make_htlc_tx_inputs(htlc_output_txid, htlc_output_index, revocationpubkey, local_delayedpubkey, amount_msat, witness_script):
+def make_htlc_tx_inputs(htlc_output_txid: str, htlc_output_index: int, revocationpubkey: bytes,
+                        local_delayedpubkey: bytes, amount_msat: int, witness_script: str) -> List[dict]:
     assert type(htlc_output_txid) is str
     assert type(htlc_output_index) is int
     assert type(revocationpubkey) is bytes
@@ -272,7 +277,8 @@ def make_htlc_tx(cltv_timeout, inputs, output):
     tx = Transaction.from_io(inputs, c_outputs, locktime=cltv_timeout, version=2)
     return tx
 
-def make_offered_htlc(revocation_pubkey, remote_htlcpubkey, local_htlcpubkey, payment_hash):
+def make_offered_htlc(revocation_pubkey: bytes, remote_htlcpubkey: bytes,
+                      local_htlcpubkey: bytes, payment_hash: bytes) -> bytes:
     assert type(revocation_pubkey) is bytes
     assert type(remote_htlcpubkey) is bytes
     assert type(local_htlcpubkey) is bytes
@@ -285,7 +291,8 @@ def make_offered_htlc(revocation_pubkey, remote_htlcpubkey, local_htlcpubkey, pa
         + bytes([opcodes.OP_CHECKMULTISIG, opcodes.OP_ELSE, opcodes.OP_HASH160])\
         + bfh(push_script(bh2u(crypto.ripemd(payment_hash)))) + bytes([opcodes.OP_EQUALVERIFY, opcodes.OP_CHECKSIG, opcodes.OP_ENDIF, opcodes.OP_ENDIF])
 
-def make_received_htlc(revocation_pubkey, remote_htlcpubkey, local_htlcpubkey, payment_hash, cltv_expiry):
+def make_received_htlc(revocation_pubkey: bytes, remote_htlcpubkey: bytes,
+                       local_htlcpubkey: bytes, payment_hash: bytes, cltv_expiry: int) -> bytes:
     for i in [revocation_pubkey, remote_htlcpubkey, local_htlcpubkey, payment_hash]:
         assert type(i) is bytes
     assert type(cltv_expiry) is int
@@ -307,7 +314,8 @@ def make_received_htlc(revocation_pubkey, remote_htlcpubkey, local_htlcpubkey, p
         + bitcoin.add_number_to_script(cltv_expiry) \
         + bytes([opcodes.OP_CLTV, opcodes.OP_DROP, opcodes.OP_CHECKSIG, opcodes.OP_ENDIF, opcodes.OP_ENDIF])
 
-def make_htlc_tx_with_open_channel(chan, pcp, for_us, we_receive, commit, htlc):
+def make_htlc_tx_with_open_channel(chan: 'Channel', pcp: bytes, for_us: bool,
+                                   we_receive: bool, commit: Transaction, htlc: 'UpdateAddHtlc'):
     amount_msat, cltv_expiry, payment_hash = htlc.amount_msat, htlc.cltv_expiry, htlc.payment_hash
     conf =       chan.config[LOCAL] if     for_us else chan.config[REMOTE]
     other_conf = chan.config[LOCAL] if not for_us else chan.config[REMOTE]
