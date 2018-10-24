@@ -314,6 +314,20 @@ def make_received_htlc(revocation_pubkey: bytes, remote_htlcpubkey: bytes,
         + bitcoin.add_number_to_script(cltv_expiry) \
         + bytes([opcodes.OP_CLTV, opcodes.OP_DROP, opcodes.OP_CHECKSIG, opcodes.OP_ENDIF, opcodes.OP_ENDIF])
 
+def make_htlc_output_witness_script(is_received_htlc: bool, remote_revocation_pubkey: bytes, remote_htlc_pubkey: bytes,
+                                    local_htlc_pubkey: bytes, payment_hash: bytes, cltv_expiry: Optional[int]) -> bytes:
+    if is_received_htlc:
+        return make_received_htlc(revocation_pubkey=remote_revocation_pubkey,
+                                  remote_htlcpubkey=remote_htlc_pubkey,
+                                  local_htlcpubkey=local_htlc_pubkey,
+                                  payment_hash=payment_hash,
+                                  cltv_expiry=cltv_expiry)
+    else:
+        return make_offered_htlc(revocation_pubkey=remote_revocation_pubkey,
+                                 remote_htlcpubkey=remote_htlc_pubkey,
+                                 local_htlcpubkey=local_htlc_pubkey,
+                                 payment_hash=payment_hash)
+
 def make_htlc_tx_with_open_channel(chan: 'Channel', pcp: bytes, for_us: bool,
                                    we_receive: bool, commit: Transaction, htlc: 'UpdateAddHtlc'):
     amount_msat, cltv_expiry, payment_hash = htlc.amount_msat, htlc.cltv_expiry, htlc.payment_hash
@@ -335,10 +349,12 @@ def make_htlc_tx_with_open_channel(chan: 'Channel', pcp: bytes, for_us: bool,
         local_delayedpubkey=delayedpubkey,
         success = is_htlc_success,
         to_self_delay = other_conf.to_self_delay)
-    if is_htlc_success:
-        preimage_script = make_received_htlc(other_revocation_pubkey, other_htlc_pubkey, htlc_pubkey, payment_hash, cltv_expiry)
-    else:
-        preimage_script = make_offered_htlc(other_revocation_pubkey, other_htlc_pubkey, htlc_pubkey, payment_hash)
+    preimage_script = make_htlc_output_witness_script(is_received_htlc=is_htlc_success,
+                                                      remote_revocation_pubkey=other_revocation_pubkey,
+                                                      remote_htlc_pubkey=other_htlc_pubkey,
+                                                      local_htlc_pubkey=htlc_pubkey,
+                                                      payment_hash=payment_hash,
+                                                      cltv_expiry=cltv_expiry)
     output_idx = commit.htlc_output_indices[htlc.payment_hash]
     htlc_tx_inputs = make_htlc_tx_inputs(
         commit.txid(), output_idx,
@@ -409,7 +425,7 @@ def make_commitment(ctn, local_funding_pubkey, remote_funding_pubkey,
                     delayed_pubkey, to_self_delay, funding_txid,
                     funding_pos, funding_sat, local_amount, remote_amount,
                     dust_limit_sat, fees_per_participant,
-                    htlcs):
+                    htlcs: List[ScriptHtlc]) -> Transaction:
     c_input = make_funding_input(local_funding_pubkey, remote_funding_pubkey,
                                  funding_pos, funding_txid, funding_sat)
     obs = get_obscured_ctn(ctn, funder_payment_basepoint, fundee_payment_basepoint)
@@ -434,6 +450,7 @@ def make_commitment(ctn, local_funding_pubkey, remote_funding_pubkey,
 
     tx.htlc_output_indices = {}
     assert len(htlcs) == len(htlc_outputs)
+    # FIXME quadratic in num htlcs
     for script_htlc, output in zip(htlcs, htlc_outputs):
         if output in tx.outputs():
             # minus the first two outputs (to_local, to_remote)

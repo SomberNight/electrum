@@ -41,9 +41,9 @@ from .lnutil import sign_and_get_sig_string
 from .lnutil import make_htlc_tx_with_open_channel, make_commitment, make_received_htlc, make_offered_htlc
 from .lnutil import HTLC_TIMEOUT_WEIGHT, HTLC_SUCCESS_WEIGHT
 from .lnutil import funding_output_script, LOCAL, REMOTE, HTLCOwner, make_closing_tx, make_commitment_outputs
-from .lnutil import ScriptHtlc, PaymentFailure, calc_onchain_fees, RemoteMisbehaving
+from .lnutil import ScriptHtlc, PaymentFailure, calc_onchain_fees, RemoteMisbehaving, make_htlc_output_witness_script
 from .transaction import Transaction
-from .lnsweep_util import (create_sweeptxs_for_our_ctx, maybe_create_sweeptx_for_their_ctx_to_remote,
+from .lnsweep_util import (create_sweeptxs_for_our_latest_ctx, create_sweeptxs_for_their_latest_ctx,
                            maybe_create_sweeptx_for_their_ctx_to_local)
 
 
@@ -453,10 +453,10 @@ class Channel(PrintError):
             our_per_commitment_secret = get_per_commitment_secret_from_seed(
                 self.config[LOCAL].per_commitment_secret_seed, RevocationStore.START_INDEX - ctn)
             our_cur_pcp = ecc.ECPrivkey(our_per_commitment_secret).get_public_key_bytes(compressed=True)
-            encumbered_sweeptxs = create_sweeptxs_for_our_ctx(self, ctx, our_cur_pcp, self.sweep_address)
+            encumbered_sweeptxs = create_sweeptxs_for_our_latest_ctx(self, ctx, our_cur_pcp, self.sweep_address)
         else:
             their_cur_pcp = self.config[REMOTE].next_per_commitment_point
-            encumbered_sweeptxs = [(None, maybe_create_sweeptx_for_their_ctx_to_remote(self, ctx, their_cur_pcp, self.sweep_address))]
+            encumbered_sweeptxs = create_sweeptxs_for_their_latest_ctx(self, ctx, their_cur_pcp, self.sweep_address)
         for prev_txid, encumbered_tx in encumbered_sweeptxs:
             if prev_txid is None:
                 prev_txid = ctx.txid()
@@ -788,21 +788,19 @@ class Channel(PrintError):
         other_htlc_pubkey = derive_pubkey(other_config.htlc_basepoint.pubkey, this_point)
         this_htlc_pubkey = derive_pubkey(this_config.htlc_basepoint.pubkey, this_point)
         other_revocation_pubkey = derive_blinded_pubkey(other_config.revocation_basepoint.pubkey, this_point)
-        htlcs = []
+        htlcs = []  # type: List[ScriptHtlc]
+        def append_htlc(htlc: UpdateAddHtlc, is_received_htlc: bool):
+            htlcs.append(ScriptHtlc(make_htlc_output_witness_script(
+                is_received_htlc=is_received_htlc,
+                remote_revocation_pubkey=other_revocation_pubkey,
+                remote_htlc_pubkey=other_htlc_pubkey,
+                local_htlc_pubkey=this_htlc_pubkey,
+                payment_hash=htlc.payment_hash,
+                cltv_expiry=htlc.cltv_expiry), htlc))
         for htlc in self.included_htlcs(subject, -subject):
-            htlcs.append( ScriptHtlc( make_received_htlc(
-                other_revocation_pubkey,
-                other_htlc_pubkey,
-                this_htlc_pubkey,
-                htlc.payment_hash,
-                htlc.cltv_expiry), htlc))
+            append_htlc(htlc, is_received_htlc=True)
         for htlc in self.included_htlcs(subject, subject):
-            htlcs.append(
-                ScriptHtlc( make_offered_htlc(
-                    other_revocation_pubkey,
-                    other_htlc_pubkey,
-                    this_htlc_pubkey,
-                    htlc.payment_hash), htlc))
+            append_htlc(htlc, is_received_htlc=False)
         if subject != LOCAL:
             remote_msat, local_msat = local_msat, remote_msat
         payment_pubkey = derive_pubkey(other_config.payment_basepoint.pubkey, this_point)
