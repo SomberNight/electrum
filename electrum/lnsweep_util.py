@@ -5,7 +5,7 @@
 from typing import Optional, Dict, List, Tuple, TYPE_CHECKING
 
 from .util import bfh, bh2u, print_error
-from .bitcoin import TYPE_ADDRESS, redeem_script_to_address
+from .bitcoin import TYPE_ADDRESS, redeem_script_to_address, dust_threshold
 from . import ecc
 from .lnutil import (EncumberedTransaction,
                      make_commitment_output_to_remote_address, make_commitment_output_to_local_witness_script,
@@ -61,12 +61,13 @@ def maybe_create_sweeptx_for_their_ctx_to_local(chan: 'Channel', ctx: Transactio
                                            witness_script=witness_script,
                                            privkey=revocation_privkey,
                                            is_revocation=True)
+    if sweep_tx is None: return None
     return EncumberedTransaction('their_ctx_to_local', sweep_tx, csv_delay=0, cltv_expiry=0)
 
 
 def create_sweeptxs_for_our_latest_ctx(chan: 'Channel', ctx: Transaction, our_pcp: bytes,
                                        sweep_address: str) -> List[Tuple[Optional[str],EncumberedTransaction]]:
-    assert hasattr(ctx, 'htlc_output_indices'), "our latest ctx missing htlc indices dictionary"  # FIXME?
+    assert hasattr(ctx, 'htlc_output_indices'), "our latest ctx missing htlc indices dictionary"  # FIXME
     # prep
     delayed_bp_privkey = ecc.ECPrivkey(chan.config[LOCAL].delayed_basepoint.privkey)
     our_localdelayed_privkey = derive_privkey(delayed_bp_privkey.secret_scalar, our_pcp)
@@ -132,6 +133,10 @@ def create_sweeptxs_for_our_latest_ctx(chan: 'Channel', ctx: Transaction, our_pc
 def create_sweeptxs_for_their_latest_ctx(chan: 'Channel', ctx: Transaction, their_pcp: bytes,
                                          sweep_address: str) -> List[Tuple[Optional[str],EncumberedTransaction]]:
     # assert ctn(ctx) == ctn(their_pcp)
+    # FIXME ^ use correct pcp...
+    # try with self.config[REMOTE].next_per_commitment_point
+    #     and also try with both self.config[REMOTE].current_per_commitment_point
+    # add assert that compares extracted ctn to self.config[REMOTE].ctn
     # prep
     remote_revocation_pubkey = derive_blinded_pubkey(chan.config[REMOTE].revocation_basepoint.pubkey, their_pcp)
     local_htlc_privkey = derive_privkey(secret=int.from_bytes(chan.config[LOCAL].htlc_basepoint.privkey, 'big'),
@@ -235,6 +240,7 @@ def maybe_create_sweeptx_that_spends_to_local_in_our_ctx(
                                            privkey=our_localdelayed_privkey.get_secret_bytes(),
                                            is_revocation=False,
                                            to_self_delay=to_self_delay)
+    if sweep_tx is None: return None
     return sweep_tx
 
 
@@ -277,7 +283,7 @@ def maybe_create_sweeptx_for_their_latest_ctx_htlc(ctx: Transaction, sweep_addre
 def create_sweeptx_their_latest_ctx_htlc(ctx: Transaction, witness_script: bytes, sweep_address: str,
                                          preimage: Optional[bytes], output_idx: int,
                                          our_local_htlc_privkey: ecc.ECPrivkey,
-                                         fee_per_kb: int=None) -> Transaction:
+                                         fee_per_kb: int=None) -> Optional[Transaction]:
     preimage = preimage or b''  # preimage is required iff htlc is offered
     val = ctx.outputs()[output_idx].value
     sweep_inputs = [{
@@ -294,7 +300,9 @@ def create_sweeptx_their_latest_ctx_htlc(ctx: Transaction, witness_script: bytes
     tx_size_bytes = 200  # TODO
     if fee_per_kb is None: fee_per_kb = FEERATE_FALLBACK_STATIC_FEE
     fee = SimpleConfig.estimate_fee_for_feerate(fee_per_kb, tx_size_bytes)
-    sweep_outputs = [TxOutput(TYPE_ADDRESS, sweep_address, val - fee)]
+    outvalue = val - fee
+    if outvalue <= dust_threshold(): return None
+    sweep_outputs = [TxOutput(TYPE_ADDRESS, sweep_address, outvalue)]
     tx = Transaction.from_io(sweep_inputs, sweep_outputs, version=2)
 
     our_local_htlc_privkey_bytes = our_local_htlc_privkey.get_secret_bytes()
@@ -307,7 +315,7 @@ def create_sweeptx_their_latest_ctx_htlc(ctx: Transaction, witness_script: bytes
 
 def create_sweeptx_their_ctx_to_remote(sweep_address: str, ctx: Transaction, output_idx: int,
                                        our_payment_privkey: ecc.ECPrivkey,
-                                       fee_per_kb: int=None) -> Transaction:
+                                       fee_per_kb: int=None) -> Optional[Transaction]:
     our_payment_pubkey = our_payment_privkey.get_public_key_hex(compressed=True)
     val = ctx.outputs()[output_idx].value
     sweep_inputs = [{
@@ -323,7 +331,9 @@ def create_sweeptx_their_ctx_to_remote(sweep_address: str, ctx: Transaction, out
     tx_size_bytes = 110  # approx size of p2wpkh->p2wpkh
     if fee_per_kb is None: fee_per_kb = FEERATE_FALLBACK_STATIC_FEE
     fee = SimpleConfig.estimate_fee_for_feerate(fee_per_kb, tx_size_bytes)
-    sweep_outputs = [TxOutput(TYPE_ADDRESS, sweep_address, val-fee)]
+    outvalue = val - fee
+    if outvalue <= dust_threshold(): return None
+    sweep_outputs = [TxOutput(TYPE_ADDRESS, sweep_address, outvalue)]
     sweep_tx = Transaction.from_io(sweep_inputs, sweep_outputs)
     sweep_tx.set_rbf(True)
     sweep_tx.sign({our_payment_pubkey: (our_payment_privkey.get_secret_bytes(), True)})
@@ -335,7 +345,7 @@ def create_sweeptx_their_ctx_to_remote(sweep_address: str, ctx: Transaction, out
 def create_sweeptx_ctx_to_local(sweep_address: str, ctx: Transaction, output_idx: int, witness_script: str,
                                 privkey: bytes, is_revocation: bool,
                                 to_self_delay: int=None,
-                                fee_per_kb: int=None) -> Transaction:
+                                fee_per_kb: int=None) -> Optional[Transaction]:
     """Create a txn that sweeps the 'to_local' output of a commitment
     transaction into our wallet.
 
@@ -359,7 +369,9 @@ def create_sweeptx_ctx_to_local(sweep_address: str, ctx: Transaction, output_idx
     tx_size_bytes = 121  # approx size of to_local -> p2wpkh
     if fee_per_kb is None: fee_per_kb = FEERATE_FALLBACK_STATIC_FEE
     fee = SimpleConfig.estimate_fee_for_feerate(fee_per_kb, tx_size_bytes)
-    sweep_outputs = [TxOutput(TYPE_ADDRESS, sweep_address, val - fee)]
+    outvalue = val - fee
+    if outvalue <= dust_threshold(): return None
+    sweep_outputs = [TxOutput(TYPE_ADDRESS, sweep_address, outvalue)]
     sweep_tx = Transaction.from_io(sweep_inputs, sweep_outputs, version=2)
     sig = sweep_tx.sign_txin(0, privkey)
     witness = construct_witness([sig, int(is_revocation), witness_script])
