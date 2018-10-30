@@ -44,7 +44,7 @@ from .lnutil import funding_output_script, LOCAL, REMOTE, HTLCOwner, make_closin
 from .lnutil import ScriptHtlc, PaymentFailure, calc_onchain_fees, RemoteMisbehaving, make_htlc_output_witness_script
 from .transaction import Transaction
 from .lnsweep_util import (create_sweeptxs_for_our_latest_ctx, create_sweeptxs_for_their_latest_ctx,
-                           maybe_create_sweeptx_for_their_ctx_to_local)
+                           create_sweeptxs_for_their_just_revoked_ctx)
 
 
 class ChannelJsonEncoder(json.JSONEncoder):
@@ -310,11 +310,16 @@ class Channel(PrintError):
         htlcsigs = []
         for we_receive, htlcs in zip([True, False], [self.included_htlcs(REMOTE, REMOTE), self.included_htlcs(REMOTE, LOCAL)]):
             for htlc in htlcs:
-                args = [self.config[REMOTE].next_per_commitment_point, for_us, we_receive, pending_remote_commitment, htlc]
-                _script, htlc_tx = make_htlc_tx_with_open_channel(self, *args)
+                _script, htlc_tx = make_htlc_tx_with_open_channel(chan=self,
+                                                                  pcp=self.config[REMOTE].next_per_commitment_point,
+                                                                  for_us=for_us,
+                                                                  we_receive=we_receive,
+                                                                  commit=pending_remote_commitment,
+                                                                  htlc=htlc)
                 sig = bfh(htlc_tx.sign_txin(0, their_remote_htlc_privkey))
                 htlc_sig = ecc.sig_string_from_der_sig(sig[:-1])
-                htlcsigs.append((pending_remote_commitment.htlc_output_indices[htlc.payment_hash], htlc_sig))
+                htlc_output_idx = htlc_tx.inputs()[0]['prevout_n']
+                htlcsigs.append((htlc_output_idx, htlc_sig))
 
         self.process_new_offchain_ctx(pending_remote_commitment, ours=False)
 
@@ -388,7 +393,12 @@ class Channel(PrintError):
 
     def verify_htlc(self, htlc: UpdateAddHtlc, htlc_sigs: Sequence[bytes], we_receive: bool) -> int:
         _, this_point, _ = self.points
-        _script, htlc_tx = make_htlc_tx_with_open_channel(self, this_point, True, we_receive, self.pending_local_commitment, htlc)
+        _script, htlc_tx = make_htlc_tx_with_open_channel(chan=self,
+                                                          pcp=this_point,
+                                                          for_us=True,
+                                                          we_receive=we_receive,
+                                                          commit=self.pending_local_commitment,
+                                                          htlc=htlc)
         pre_hash = sha256d(bfh(htlc_tx.serialize_preimage(0)))
         remote_htlc_pubkey = derive_pubkey(self.config[REMOTE].htlc_basepoint.pubkey, this_point)
         for idx, sig in enumerate(htlc_sigs):
@@ -467,10 +477,13 @@ class Channel(PrintError):
         if not self.lnwatcher:
             return
         outpoint = self.funding_outpoint.to_str()
-        ctx = self.remote_commitment_to_be_revoked
-        encumbered_sweeptx = maybe_create_sweeptx_for_their_ctx_to_local(self, ctx, per_commitment_secret, self.sweep_address)
-        if encumbered_sweeptx:
-            self.lnwatcher.add_sweep_tx(outpoint, ctx.txid(), encumbered_sweeptx.to_json())
+        ctx = self.remote_commitment_to_be_revoked  # FIXME can't we just reconstruct it?
+        encumbered_sweeptxs = create_sweeptxs_for_their_just_revoked_ctx(self, ctx, per_commitment_secret, self.sweep_address)
+        for prev_txid, encumbered_tx in encumbered_sweeptxs:
+            if prev_txid is None:
+                prev_txid = ctx.txid()
+            if encumbered_tx is not None:
+                self.lnwatcher.add_sweep_tx(outpoint, prev_txid, encumbered_tx.to_json())
 
     def receive_revocation(self, revocation) -> Tuple[int, int]:
         self.print_error("receive_revocation")
@@ -483,12 +496,6 @@ class Channel(PrintError):
             self.log = old_logs
             raise Exception('revoked secret not for current point')
 
-        for pending_fee in self.fee_mgr:
-            if not self.constraints.is_initiator:
-                pending_fee[FUNDEE_SIGNED] = True
-            if self.constraints.is_initiator and pending_fee[FUNDEE_ACKED]:
-                pending_fee[FUNDER_SIGNED] = True
-
         # FIXME not sure this is correct... but it seems to work
         # if there are update_add_htlc msgs between commitment_signed and rev_ack,
         # this might break
@@ -496,6 +503,14 @@ class Channel(PrintError):
 
         self.config[REMOTE].revocation_store.add_next_entry(revocation.per_commitment_secret)
         self.process_new_revocation_secret(revocation.per_commitment_secret)
+
+        ##### start applying fee/htlc changes
+
+        for pending_fee in self.fee_mgr:
+            if not self.constraints.is_initiator:
+                pending_fee[FUNDEE_SIGNED] = True
+            if self.constraints.is_initiator and pending_fee[FUNDEE_ACKED]:
+                pending_fee[FUNDER_SIGNED] = True
 
         def mark_settled(subject):
             """

@@ -14,7 +14,7 @@ from .transaction import Transaction
 from .ecc import CURVE_ORDER, sig_string_from_der_sig, ECPubkey, string_to_number
 from . import ecc, bitcoin, crypto, transaction
 from .transaction import opcodes, TxOutput, Transaction
-from .bitcoin import push_script
+from .bitcoin import push_script, redeem_script_to_address, TYPE_ADDRESS
 from . import segwit_addr
 from .i18n import _
 from .lnaddr import lndecode
@@ -249,12 +249,10 @@ def make_htlc_tx_witness(remotehtlcsig: bytes, localhtlcsig: bytes,
     assert type(witness_script) is bytes
     return bfh(transaction.construct_witness([0, remotehtlcsig, localhtlcsig, payment_preimage, witness_script]))
 
-def make_htlc_tx_inputs(htlc_output_txid: str, htlc_output_index: int, revocationpubkey: bytes,
-                        local_delayedpubkey: bytes, amount_msat: int, witness_script: str) -> List[dict]:
+def make_htlc_tx_inputs(htlc_output_txid: str, htlc_output_index: int,
+                        amount_msat: int, witness_script: str) -> List[dict]:
     assert type(htlc_output_txid) is str
     assert type(htlc_output_index) is int
-    assert type(revocationpubkey) is bytes
-    assert type(local_delayedpubkey) is bytes
     assert type(amount_msat) is int
     assert type(witness_script) is str
     c_inputs = [{
@@ -328,13 +326,19 @@ def make_htlc_output_witness_script(is_received_htlc: bool, remote_revocation_pu
                                  local_htlcpubkey=local_htlc_pubkey,
                                  payment_hash=payment_hash)
 
-def make_htlc_tx_with_open_channel(chan: 'Channel', pcp: bytes, for_us: bool,
-                                   we_receive: bool, commit: Transaction, htlc: 'UpdateAddHtlc'):
-    amount_msat, cltv_expiry, payment_hash = htlc.amount_msat, htlc.cltv_expiry, htlc.payment_hash
+
+def get_ordered_channel_configs(chan: 'Channel', for_us: bool):
     conf =       chan.config[LOCAL] if     for_us else chan.config[REMOTE]
     other_conf = chan.config[LOCAL] if not for_us else chan.config[REMOTE]
+    return conf, other_conf
 
-    revocation_pubkey = derive_blinded_pubkey(other_conf.revocation_basepoint.pubkey, pcp)
+
+def make_htlc_tx_with_open_channel(chan: 'Channel', pcp: bytes, for_us: bool,
+                                   we_receive: bool, commit: Transaction,
+                                   htlc: 'UpdateAddHtlc') -> Tuple[bytes, Transaction]:
+    amount_msat, cltv_expiry, payment_hash = htlc.amount_msat, htlc.cltv_expiry, htlc.payment_hash
+    conf, other_conf = get_ordered_channel_configs(chan=chan, for_us=for_us)
+
     delayedpubkey = derive_pubkey(conf.delayed_basepoint.pubkey, pcp)
     other_revocation_pubkey = derive_blinded_pubkey(other_conf.revocation_basepoint.pubkey, pcp)
     other_htlc_pubkey = derive_pubkey(other_conf.htlc_basepoint.pubkey, pcp)
@@ -345,7 +349,7 @@ def make_htlc_tx_with_open_channel(chan: 'Channel', pcp: bytes, for_us: bool,
     script, htlc_tx_output = make_htlc_tx_output(
         amount_msat = amount_msat,
         local_feerate = chan.pending_feerate(LOCAL if for_us else REMOTE),
-        revocationpubkey=revocation_pubkey,
+        revocationpubkey=other_revocation_pubkey,
         local_delayedpubkey=delayedpubkey,
         success = is_htlc_success,
         to_self_delay = other_conf.to_self_delay)
@@ -355,11 +359,13 @@ def make_htlc_tx_with_open_channel(chan: 'Channel', pcp: bytes, for_us: bool,
                                                       local_htlc_pubkey=htlc_pubkey,
                                                       payment_hash=payment_hash,
                                                       cltv_expiry=cltv_expiry)
-    output_idx = commit.htlc_output_indices[htlc.payment_hash]
+    htlc_address = redeem_script_to_address('p2wsh', bh2u(preimage_script))
+    # FIXME handle htlc_address collision
+    # also: https://github.com/lightningnetwork/lightning-rfc/issues/448
+    prevout_idx = commit.get_output_idx_from_address(htlc_address)
+    assert prevout_idx is not None
     htlc_tx_inputs = make_htlc_tx_inputs(
-        commit.txid(), output_idx,
-        revocationpubkey=revocation_pubkey,
-        local_delayedpubkey=delayedpubkey,
+        commit.txid(), prevout_idx,
         amount_msat=amount_msat,
         witness_script=bh2u(preimage_script))
     if is_htlc_success:
@@ -447,16 +453,6 @@ def make_commitment(ctn, local_funding_pubkey, remote_funding_pubkey,
 
     # create commitment tx
     tx = Transaction.from_io(c_inputs, c_outputs_filtered, locktime=locktime, version=2)
-
-    tx.htlc_output_indices = {}
-    assert len(htlcs) == len(htlc_outputs)
-    # FIXME quadratic in num htlcs
-    for script_htlc, output in zip(htlcs, htlc_outputs):
-        if output in tx.outputs():
-            # minus the first two outputs (to_local, to_remote)
-            assert script_htlc.htlc.payment_hash not in tx.htlc_output_indices
-            tx.htlc_output_indices[script_htlc.htlc.payment_hash] = tx.outputs().index(output)
-
     return tx
 
 def make_commitment_output_to_local_witness_script(
