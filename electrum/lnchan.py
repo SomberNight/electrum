@@ -321,8 +321,6 @@ class Channel(PrintError):
                 htlc_output_idx = htlc_tx.inputs()[0]['prevout_n']
                 htlcsigs.append((htlc_output_idx, htlc_sig))
 
-        self.process_new_offchain_ctx(pending_remote_commitment, ours=False)
-
         htlcsigs.sort()
         htlcsigs = [x[1] for x in htlcsigs]
 
@@ -389,8 +387,6 @@ class Channel(PrintError):
             if self.constraints.is_initiator and pending_fee[FUNDEE_ACKED]:
                 pending_fee[FUNDER_SIGNED] = True
 
-        self.process_new_offchain_ctx(pending_local_commitment, ours=True)
-
     def verify_htlc(self, htlc: UpdateAddHtlc, htlc_sigs: Sequence[bytes], we_receive: bool) -> int:
         _, this_point, _ = self.points
         _script, htlc_tx = make_htlc_tx_with_open_channel(chan=self,
@@ -453,25 +449,6 @@ class Channel(PrintError):
         next_secret = get_per_commitment_secret_from_seed(self.config[LOCAL].per_commitment_secret_seed, RevocationStore.START_INDEX - next_small_num)
         next_point = secret_to_pubkey(int.from_bytes(next_secret, 'big'))
         return last_secret, this_point, next_point
-
-    def process_new_offchain_ctx(self, ctx, ours: bool):
-        if not self.lnwatcher:
-            return
-        outpoint = self.funding_outpoint.to_str()
-        if ours:
-            ctn = self.config[LOCAL].ctn + 1
-            our_per_commitment_secret = get_per_commitment_secret_from_seed(
-                self.config[LOCAL].per_commitment_secret_seed, RevocationStore.START_INDEX - ctn)
-            our_cur_pcp = ecc.ECPrivkey(our_per_commitment_secret).get_public_key_bytes(compressed=True)
-            encumbered_sweeptxs = create_sweeptxs_for_our_latest_ctx(self, ctx, our_cur_pcp, self.sweep_address)
-        else:
-            their_cur_pcp = self.config[REMOTE].next_per_commitment_point
-            encumbered_sweeptxs = create_sweeptxs_for_their_latest_ctx(self, ctx, their_cur_pcp, self.sweep_address)
-        for prev_txid, encumbered_tx in encumbered_sweeptxs:
-            if prev_txid is None:
-                prev_txid = ctx.txid()
-            if encumbered_tx is not None:
-                self.lnwatcher.add_sweep_tx(outpoint, prev_txid, encumbered_tx.to_json())
 
     def process_new_revocation_secret(self, per_commitment_secret: bytes):
         if not self.lnwatcher:
@@ -884,16 +861,14 @@ class Channel(PrintError):
         assert tx.is_complete()
         return tx
 
-    def included_htlcs_in_latest_ctxs(self):
+    def included_htlcs_in_their_latest_ctxs(self, htlc_initiator) -> Dict[int, List[UpdateAddHtlc]]:
         """ A map from commitment number to list of HTLCs in
             their latest two commitment transactions.
             The oldest might have been revoked.  """
-        old_htlcs = list(self.included_htlcs(REMOTE, REMOTE, only_pending=False)) \
-                  + list(self.included_htlcs(REMOTE, LOCAL,  only_pending=False))
+        old_htlcs = list(self.included_htlcs(REMOTE, htlc_initiator, only_pending=False))
 
         old_logs = dict(self.lock_in_htlc_changes(LOCAL))
-        new_htlcs = list(self.included_htlcs(REMOTE, REMOTE)) \
-                  + list(self.included_htlcs(REMOTE, LOCAL))
+        new_htlcs = list(self.included_htlcs(REMOTE, htlc_initiator))
         self.log = old_logs
 
         return {self.config[REMOTE].ctn:   old_htlcs,

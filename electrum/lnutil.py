@@ -5,7 +5,7 @@
 from enum import IntFlag, IntEnum
 import json
 from collections import namedtuple
-from typing import NamedTuple, List, Tuple, Mapping, Optional, TYPE_CHECKING
+from typing import NamedTuple, List, Tuple, Mapping, Optional, TYPE_CHECKING, Union
 import re
 
 from .util import bfh, bh2u, inv_dict
@@ -327,7 +327,8 @@ def make_htlc_output_witness_script(is_received_htlc: bool, remote_revocation_pu
                                  payment_hash=payment_hash)
 
 
-def get_ordered_channel_configs(chan: 'Channel', for_us: bool):
+def get_ordered_channel_configs(chan: 'Channel', for_us: bool) -> Tuple[Union[LocalConfig, RemoteConfig],
+                                                                        Union[LocalConfig, RemoteConfig]]:
     conf =       chan.config[LOCAL] if     for_us else chan.config[REMOTE]
     other_conf = chan.config[LOCAL] if not for_us else chan.config[REMOTE]
     return conf, other_conf
@@ -508,7 +509,7 @@ def extract_ctn_from_tx(tx, txin_index: int, funder_payment_basepoint: bytes,
     obs = ((sequence & 0xffffff) << 24) + (locktime & 0xffffff)
     return get_obscured_ctn(obs, funder_payment_basepoint, fundee_payment_basepoint)
 
-def extract_ctn_from_tx_and_chan(tx, chan) -> int:
+def extract_ctn_from_tx_and_chan(tx: Transaction, chan: 'Channel') -> int:
     funder_conf = chan.config[LOCAL] if     chan.constraints.is_initiator else chan.config[REMOTE]
     fundee_conf = chan.config[LOCAL] if not chan.constraints.is_initiator else chan.config[REMOTE]
     return extract_ctn_from_tx(tx, txin_index=0,

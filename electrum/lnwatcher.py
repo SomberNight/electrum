@@ -36,9 +36,6 @@ class TxMinedDepth(IntEnum):
 
 
 class LNWatcher(PrintError):
-    # TODO if verifier gets an incorrect merkle proof, that tx will never verify!!
-    # similarly, what if server ignores request for merkle proof?
-    # maybe we should disconnect from server in these cases
     verbosity_filter = 'W'
 
     def __init__(self, network: 'Network'):
@@ -245,7 +242,7 @@ class LNWatcher(PrintError):
 
     def get_tx_mined_depth(self, txid: str):
         if not txid:
-            return TxMinedStatus.FREE
+            return TxMinedDepth.FREE
         tx_mined_depth = self.addr_sync.get_tx_height(txid)
         height, conf = tx_mined_depth.height, tx_mined_depth.conf
         if conf > 100:

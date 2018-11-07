@@ -12,7 +12,8 @@ from .lnutil import (EncumberedTransaction,
                      derive_privkey, derive_pubkey, derive_blinded_pubkey, derive_blinded_privkey,
                      make_htlc_tx_witness, make_htlc_tx_with_open_channel,
                      LOCAL, REMOTE, make_htlc_output_witness_script, UnknownPaymentHash,
-                     get_ordered_channel_configs, privkey_to_pubkey)
+                     get_ordered_channel_configs, privkey_to_pubkey, get_per_commitment_secret_from_seed,
+                     RevocationStore, extract_ctn_from_tx_and_chan, UnableToDeriveSecret)
 from .transaction import Transaction, TxOutput, construct_witness
 from .simple_config import SimpleConfig, FEERATE_FALLBACK_STATIC_FEE
 
@@ -61,10 +62,6 @@ def create_sweeptxs_for_their_just_revoked_ctx(chan: 'Channel', ctx: Transaction
                                                       per_commitment_secret)
     to_self_delay = other_conf.to_self_delay
     this_delayed_pubkey = derive_pubkey(this_conf.delayed_basepoint.pubkey, pcp)
-    other_payment_bp_privkey = ecc.ECPrivkey(other_conf.payment_basepoint.privkey)
-    other_payment_privkey = derive_privkey(other_payment_bp_privkey.secret_scalar, pcp)
-    other_payment_privkey = ecc.ECPrivkey.from_secret_scalar(other_payment_privkey)
-
     txs = []
     # to_local
     sweep_tx = maybe_create_sweeptx_for_their_ctx_to_local(ctx=ctx,
@@ -74,12 +71,6 @@ def create_sweeptxs_for_their_just_revoked_ctx(chan: 'Channel', ctx: Transaction
                                                            sweep_address=sweep_address)
     if sweep_tx:
         txs.append((None, EncumberedTransaction('their_ctx_to_local', sweep_tx, csv_delay=0, cltv_expiry=0)))
-    # to_remote  # TODO don't presign
-    sweep_tx = maybe_create_sweeptx_for_their_ctx_to_remote(ctx=ctx,
-                                                            sweep_address=sweep_address,
-                                                            our_payment_privkey=other_payment_privkey)
-    if sweep_tx:
-        txs.append((None, EncumberedTransaction('their_ctx_to_remote', sweep_tx, csv_delay=0, cltv_expiry=0)))
     # HTLCs
     def create_sweeptx_for_htlc(htlc: UpdateAddHtlc, is_received_htlc: bool) -> Tuple[Optional[Transaction],
                                                                                       Optional[Transaction],
@@ -109,7 +100,7 @@ def create_sweeptxs_for_their_just_revoked_ctx(chan: 'Channel', ctx: Transaction
             is_revocation=True)
         return direct_sweep_tx, secondstage_sweep_tx, htlc_tx
     # received HTLCs, in their ctx
-    # FIXME don't use included_htlcs here. it's incorrect.
+    # TODO consider carefully if "included_htlcs" is what we need here
     received_htlcs = list(chan.included_htlcs(REMOTE, LOCAL))  # type: List[UpdateAddHtlc]
     for htlc in received_htlcs:
         direct_sweep_tx, secondstage_sweep_tx, htlc_tx = create_sweeptx_for_htlc(htlc, is_received_htlc=True)
@@ -118,7 +109,7 @@ def create_sweeptxs_for_their_just_revoked_ctx(chan: 'Channel', ctx: Transaction
         if secondstage_sweep_tx:
             txs.append((htlc_tx.txid(), EncumberedTransaction(f'their_htlctx_{bh2u(htlc.payment_hash)}', secondstage_sweep_tx, csv_delay=0, cltv_expiry=0)))
     # offered HTLCs, in their ctx
-    # FIXME don't use included_htlcs here. it's incorrect.
+    # TODO consider carefully if "included_htlcs" is what we need here
     offered_htlcs = list(chan.included_htlcs(REMOTE, REMOTE))  # type: List[UpdateAddHtlc]
     for htlc in offered_htlcs:
         direct_sweep_tx, secondstage_sweep_tx, htlc_tx = create_sweeptx_for_htlc(htlc, is_received_htlc=False)
@@ -129,10 +120,14 @@ def create_sweeptxs_for_their_just_revoked_ctx(chan: 'Channel', ctx: Transaction
     return txs
 
 
-def create_sweeptxs_for_our_latest_ctx(chan: 'Channel', ctx: Transaction, our_pcp: bytes,
+def create_sweeptxs_for_our_latest_ctx(chan: 'Channel', ctx: Transaction,
                                        sweep_address: str) -> List[Tuple[Optional[str],EncumberedTransaction]]:
-    # prep
     this_conf, other_conf = get_ordered_channel_configs(chan=chan, for_us=True)
+    ctn = extract_ctn_from_tx_and_chan(ctx, chan)
+    our_per_commitment_secret = get_per_commitment_secret_from_seed(
+        this_conf.per_commitment_secret_seed, RevocationStore.START_INDEX - ctn)
+    our_pcp = ecc.ECPrivkey(our_per_commitment_secret).get_public_key_bytes(compressed=True)
+    # prep
     this_delayed_bp_privkey = ecc.ECPrivkey(this_conf.delayed_basepoint.privkey)
     this_localdelayed_privkey = derive_privkey(this_delayed_bp_privkey.secret_scalar, our_pcp)
     this_localdelayed_privkey = ecc.ECPrivkey.from_secret_scalar(this_localdelayed_privkey)
@@ -176,7 +171,7 @@ def create_sweeptxs_for_our_latest_ctx(chan: 'Channel', ctx: Transaction, our_pc
             is_revocation=False)
         return htlc_tx, to_wallet_tx
     # offered HTLCs, in our ctx --> "timeout"
-    # FIXME don't use included_htlcs here. it's incorrect.
+    # TODO consider carefully if "included_htlcs" is what we need here
     offered_htlcs = list(chan.included_htlcs(LOCAL, LOCAL))  # type: List[UpdateAddHtlc]
     for htlc in offered_htlcs:
         htlc_tx, to_wallet_tx = create_txns_for_htlc(htlc, is_received_htlc=False)
@@ -184,7 +179,7 @@ def create_sweeptxs_for_our_latest_ctx(chan: 'Channel', ctx: Transaction, our_pc
             txs.append((htlc_tx.txid(), EncumberedTransaction(f'second_stage_to_wallet_{bh2u(htlc.payment_hash)}', to_wallet_tx, csv_delay=to_self_delay, cltv_expiry=0)))
             txs.append((ctx.txid(), EncumberedTransaction(f'our_ctx_htlc_tx_{bh2u(htlc.payment_hash)}', htlc_tx, csv_delay=0, cltv_expiry=htlc.cltv_expiry)))
     # received HTLCs, in our ctx --> "success"
-    # FIXME don't use included_htlcs here. it's incorrect.
+    # TODO consider carefully if "included_htlcs" is what we need here
     received_htlcs = list(chan.included_htlcs(LOCAL, REMOTE))  # type: List[UpdateAddHtlc]
     for htlc in received_htlcs:
         htlc_tx, to_wallet_tx = create_txns_for_htlc(htlc, is_received_htlc=True)
@@ -194,17 +189,29 @@ def create_sweeptxs_for_our_latest_ctx(chan: 'Channel', ctx: Transaction, our_pc
     return txs
 
 
-# FIXME 'latest ctx'.. but they sometimes have two valid non-revoked commitment transactions,
-# either of which could be broadcast.
-def create_sweeptxs_for_their_latest_ctx(chan: 'Channel', ctx: Transaction, their_pcp: bytes,
+def create_sweeptxs_for_their_latest_ctx(chan: 'Channel', ctx: Transaction,
                                          sweep_address: str) -> List[Tuple[Optional[str],EncumberedTransaction]]:
-    # assert ctn(ctx) == ctn(their_pcp)
-    # FIXME ^ use correct pcp...
-    # try with self.config[REMOTE].next_per_commitment_point
-    #     and also try with both self.config[REMOTE].current_per_commitment_point
-    # add assert that compares extracted ctn to self.config[REMOTE].ctn
-    # prep
+    """Handle the case when the remote force-closes with their ctx.
+    Regardless of it is a breach or not, construct sweep tx for "to_remote".
+    If it is not a breach, also construct sweep txns for HTLCs.
+    """
     this_conf, other_conf = get_ordered_channel_configs(chan=chan, for_us=False)
+    ctn = extract_ctn_from_tx_and_chan(ctx, chan)
+    # note: the remote sometimes has two valid non-revoked commitment transactions,
+    # either of which could be broadcast (this_conf.ctn, this_conf.ctn+1)
+    if ctn == this_conf.ctn:
+        their_pcp = this_conf.current_per_commitment_point
+    elif ctn == this_conf.ctn + 1:
+        their_pcp = this_conf.next_per_commitment_point
+    elif ctn < this_conf.ctn:  # breach
+        try:
+            per_commitment_secret = this_conf.revocation_store.retrieve_secret(RevocationStore.START_INDEX - ctn)
+        except UnableToDeriveSecret:
+            return []
+        their_pcp = ecc.ECPrivkey(per_commitment_secret).get_public_key_bytes(compressed=True)
+    else:
+        return []
+    # prep
     other_revocation_pubkey = derive_blinded_pubkey(other_conf.revocation_basepoint.pubkey, their_pcp)
     other_htlc_privkey = derive_privkey(secret=int.from_bytes(other_conf.htlc_basepoint.privkey, 'big'),
                                         per_commitment_point=their_pcp)
@@ -221,6 +228,11 @@ def create_sweeptxs_for_their_latest_ctx(chan: 'Channel', ctx: Transaction, thei
     if sweep_tx:
         txs.append((None, EncumberedTransaction('their_ctx_to_remote', sweep_tx, csv_delay=0, cltv_expiry=0)))
     # HTLCs
+    # from their ctx, we can only redeem HTLCs if the ctx was not revoked,
+    # as old HTLCs are not stored. (if it was revoked, then we should have presigned txns
+    # to handle the breach already; out of scope here)
+    if ctn not in (this_conf.ctn, this_conf.ctn + 1):
+        return txs
     def create_sweeptx_for_htlc(htlc: UpdateAddHtlc, is_received_htlc: bool) -> Optional[Transaction]:
         if not is_received_htlc:
             try:
@@ -246,15 +258,13 @@ def create_sweeptxs_for_their_latest_ctx(chan: 'Channel', ctx: Transaction, thei
             is_revocation=False)
         return sweep_tx
     # received HTLCs, in their ctx --> "timeout"
-    # FIXME don't use included_htlcs here. it's incorrect.
-    received_htlcs = list(chan.included_htlcs(REMOTE, LOCAL))  # type: List[UpdateAddHtlc]
+    received_htlcs = chan.included_htlcs_in_their_latest_ctxs(LOCAL)[ctn]  # type: List[UpdateAddHtlc]
     for htlc in received_htlcs:
         sweep_tx = create_sweeptx_for_htlc(htlc, is_received_htlc=True)
         if sweep_tx:
             txs.append((ctx.txid(), EncumberedTransaction(f'their_ctx_sweep_htlc_{bh2u(htlc.payment_hash)}', sweep_tx, csv_delay=0, cltv_expiry=htlc.cltv_expiry)))
     # offered HTLCs, in their ctx --> "success"
-    # FIXME don't use included_htlcs here. it's incorrect.
-    offered_htlcs = list(chan.included_htlcs(REMOTE, REMOTE))  # type: List[UpdateAddHtlc]
+    offered_htlcs = chan.included_htlcs_in_their_latest_ctxs(REMOTE)[ctn]  # type: List[UpdateAddHtlc]
     for htlc in offered_htlcs:
         sweep_tx = create_sweeptx_for_htlc(htlc, is_received_htlc=False)
         if sweep_tx:
