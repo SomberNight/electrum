@@ -32,6 +32,7 @@ from typing import Union
 import pyaes
 
 from .util import assert_bytes, InvalidPassword, to_bytes, to_string
+from .i18n import _
 
 
 try:
@@ -106,21 +107,48 @@ def DecodeAES(secret: bytes, ciphertext_b64: Union[bytes, str]) -> bytes:
     return s
 
 
-def pw_encode(data: str, password: Union[bytes, str]) -> str:
+PW_HASH_VERSION_LATEST = 2
+KNOWN_PW_HASH_VERSIONS = (1, 2)
+assert PW_HASH_VERSION_LATEST in KNOWN_PW_HASH_VERSIONS
+
+
+class UnexpectedPasswordHashVersion(InvalidPassword):
+    def __init__(self, version):
+        self.version = version
+
+    def __str__(self):
+        return "{unexpected}: {version}\n{please_update}".format(
+            unexpected=_("Unexpected password hash version"),
+            version=self.version,
+            please_update=_('You are most likely using an outdated version of Electrum. Please update.'))
+
+
+def _hash_password(password: Union[bytes, str], *, version: int) -> bytes:
+    pw = to_bytes(password, 'utf8')
+    if version == 1:
+        return sha256d(pw)
+    elif version == 2:
+        return hashlib.pbkdf2_hmac(hash_name='sha256', password=pw, salt=b'ELECTRUM_PW_HASH_V2', iterations=50_000)
+    else:
+        assert version not in KNOWN_PW_HASH_VERSIONS
+        raise UnexpectedPasswordHashVersion(version)
+
+
+def pw_encode(data: str, password: Union[bytes, str, None], *, version: int) -> str:
     if not password:
         return data
-    secret = sha256d(password)
+    secret = _hash_password(password, version=version)
     return EncodeAES(secret, to_bytes(data, "utf8")).decode('utf8')
 
 
-def pw_decode(data: str, password: Union[bytes, str]) -> str:
+def pw_decode(data: str, password: Union[bytes, str, None], *, version: int) -> str:
     if password is None:
         return data
-    secret = sha256d(password)
+    secret = _hash_password(password, version=version)
     try:
         d = to_string(DecodeAES(secret, data), "utf8")
-    except Exception:
-        raise InvalidPassword()
+    except Exception as e:
+        raise InvalidPassword() from e
     return d
 
 
