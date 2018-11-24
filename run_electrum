@@ -25,6 +25,7 @@
 # SOFTWARE.
 import os
 import sys
+import time
 
 script_dir = os.path.dirname(os.path.realpath(__file__))
 is_bundle = getattr(sys, 'frozen', False)
@@ -330,6 +331,15 @@ if __name__ == '__main__':
         constants.set_regtest()
     elif config.get('simnet'):
         constants.set_simnet()
+
+    # if android, wait until we have storage R/W permissions.
+    # the user is being prompted for these in a separate thread handled by p4a
+    if is_android:
+        fdir = util.get_headers_dir(config)
+        while True:
+            try: os.listdir(fdir)
+            except OSError: time.sleep(0.1)
+            else: break
 
     if cmdname == 'gui':
         fd, server = daemon.get_fd_or_server(config)
