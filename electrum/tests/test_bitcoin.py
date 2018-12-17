@@ -219,9 +219,10 @@ class Test_bitcoin(SequentialTestCase):
         """Make sure AES is homomorphic."""
         payload = u'\u66f4\u7a33\u5b9a\u7684\u4ea4\u6613\u5e73\u53f0'
         password = u'secret'
+        salt = b'\x8f\x0bX\xa5\xb4\x14l\xc0\x80\xdbB\x05\xb7\xabcd'
         for version in KNOWN_PW_HASH_VERSIONS:
-            enc = crypto.pw_encode(payload, password, version=version)
-            dec = crypto.pw_decode(enc, password, version=version)
+            enc = crypto.pw_encode(payload, password, version=version, salt=salt)
+            dec = crypto.pw_decode(enc, password, version=version, salt=salt)
             self.assertEqual(dec, payload)
 
     @needs_test_with_all_aes_implementations
@@ -246,10 +247,11 @@ class Test_bitcoin(SequentialTestCase):
         payload = u"blah"
         password = u"uber secret"
         wrong_password = u"not the password"
+        salt = b'\x8f\x0bX\xa5\xb4\x14l\xc0\x80\xdbB\x05\xb7\xabcd'
         for version in KNOWN_PW_HASH_VERSIONS:
-            enc = crypto.pw_encode(payload, password, version=version)
+            enc = crypto.pw_encode(payload, password, version=version, salt=salt)
             with self.assertRaises(InvalidPassword):
-                crypto.pw_decode(enc, wrong_password, version=version)
+                crypto.pw_decode(enc, wrong_password, version=version, salt=salt)
 
     def test_sha256d(self):
         self.assertEqual(b'\x95MZI\xfdp\xd9\xb8\xbc\xdb5\xd2R&x)\x95\x7f~\xf7\xfalt\xf8\x84\x19\xbd\xc5\xe8"\t\xf4',

@@ -116,8 +116,8 @@ def DecodeAES_bytes(secret: bytes, ciphertext: bytes) -> bytes:
     return s
 
 
-PW_HASH_VERSION_LATEST = 2
-KNOWN_PW_HASH_VERSIONS = (1, 2)
+PW_HASH_VERSION_LATEST = 3
+KNOWN_PW_HASH_VERSIONS = (1, 2, 3)
 assert PW_HASH_VERSION_LATEST in KNOWN_PW_HASH_VERSIONS
 
 
@@ -132,7 +132,7 @@ class UnexpectedPasswordHashVersion(InvalidPassword):
             please_update=_('You are most likely using an outdated version of Electrum. Please update.'))
 
 
-def _hash_password(password: Union[bytes, str], *, version: int, salt: bytes) -> bytes:
+def get_cipher_key_of_keystore(password: Union[bytes, str], *, version: int, salt: bytes) -> bytes:
     pw = to_bytes(password, 'utf8')
     if version == 1:
         return sha256d(pw)
@@ -143,12 +143,20 @@ def _hash_password(password: Union[bytes, str], *, version: int, salt: bytes) ->
                                    password=pw,
                                    salt=b'ELECTRUM_PW_HASH_V2'+salt,
                                    iterations=50_000)
+    elif version == 3:
+        if not isinstance(salt, bytes) or len(salt) < 16:
+            raise Exception('too weak salt', salt)
+        return hashlib.pbkdf2_hmac(hash_name='sha256',
+                                   password=pw,
+                                   salt=b'ELECTRUM_PW_HASH_V3'+salt,
+                                   iterations=50_000)
     else:
         assert version not in KNOWN_PW_HASH_VERSIONS
         raise UnexpectedPasswordHashVersion(version)
 
 
-def pw_encode(data: str, password: Union[bytes, str, None], *, version: int) -> str:
+def pw_encode(data: str, password: Union[bytes, str, None], *, version: int, salt: bytes=None,
+              precomputed_cipher_key: bytes = None) -> str:
     if not password:
         return data
     if version not in KNOWN_PW_HASH_VERSIONS:
@@ -158,18 +166,26 @@ def pw_encode(data: str, password: Union[bytes, str, None], *, version: int) -> 
         salt = b''
     elif version == 2:
         salt = bytes(os.urandom(16))
-    else:
-        assert False, version
-    secret = _hash_password(password, version=version, salt=salt)
+    elif version == 3:
+        if salt is None: raise ValueError(f'salt cannot be None for pw version {version}')
+    else: assert False, version
+    cipher_key = precomputed_cipher_key or \
+                 get_cipher_key_of_keystore(password, version=version, salt=salt)
     # encrypt given data
-    e = EncodeAES_bytes(secret, to_bytes(data, "utf8"))
-    # return base64(salt + encrypted data)
-    ciphertext = salt + e
+    e = EncodeAES_bytes(cipher_key, to_bytes(data, "utf8"))
+    if version == 1:
+        ciphertext = e
+    elif version == 2:
+        ciphertext = salt + e
+    elif version == 3:
+        ciphertext = e
+    else: assert False, version
     ciphertext_b64 = base64.b64encode(ciphertext)
     return ciphertext_b64.decode('utf8')
 
 
-def pw_decode(data: str, password: Union[bytes, str, None], *, version: int) -> str:
+def pw_decode(data: str, password: Union[bytes, str, None], *, version: int, salt: bytes=None,
+              precomputed_cipher_key: bytes=None) -> str:
     if password is None:
         return data
     if version not in KNOWN_PW_HASH_VERSIONS:
@@ -180,15 +196,22 @@ def pw_decode(data: str, password: Union[bytes, str, None], *, version: int) -> 
         salt = b''
     elif version == 2:
         salt, data_bytes = data_bytes[:16], data_bytes[16:]
+    elif version == 3:
+        if salt is None: raise ValueError(f'salt cannot be None for pw version {version}')
     else:
         assert False, version
-    secret = _hash_password(password, version=version, salt=salt)
+    cipher_key = precomputed_cipher_key or \
+                 get_cipher_key_of_keystore(password, version=version, salt=salt)
     # decrypt given data
     try:
-        d = to_string(DecodeAES_bytes(secret, data_bytes), "utf8")
+        d = to_string(DecodeAES_bytes(cipher_key, data_bytes), "utf8")
     except Exception as e:
         raise InvalidPassword() from e
     return d
+
+
+def get_new_pw_salt() -> bytes:
+    return bytes(os.urandom(16))
 
 
 def sha256(x: Union[bytes, str]) -> bytes:
