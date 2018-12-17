@@ -26,6 +26,7 @@
 
 from unicodedata import normalize
 import hashlib
+from typing import Optional
 
 from . import bitcoin, ecc, constants, bip32
 from .bitcoin import (deserialize_privkey, serialize_privkey,
@@ -36,7 +37,7 @@ from .bip32 import (bip32_public_derivation, deserialize_xpub, CKD_pub,
                     is_xpub, is_xprv)
 from .ecc import string_to_number, number_to_string
 from .crypto import (pw_decode, pw_encode, sha256d, PW_HASH_VERSION_LATEST,
-                     get_new_pw_salt)
+                     get_new_pw_salt, get_cipher_key_of_keystore, KeystoreCipherKey)
 from .util import (PrintError, InvalidPassword, hfu, WalletFileException,
                    BitcoinException, bh2u, bfh, print_error, inv_dict)
 from .mnemonic import Mnemonic, load_wordlist
@@ -136,6 +137,10 @@ class Software_KeyStore(KeyStore):
     def check_password(self, password):
         raise NotImplementedError()  # implemented by subclasses
 
+    def get_cipher_key_for_encryption(self, password) -> Optional[KeystoreCipherKey]:
+        if not password: return None
+        return get_cipher_key_of_keystore(password, version=self.pw_hash_version, salt=self.pw_salt)
+
 
 class Imported_KeyStore(Software_KeyStore):
     # keystore for imported private keys
@@ -167,7 +172,7 @@ class Imported_KeyStore(Software_KeyStore):
         pubkey = list(self.keypairs.keys())[0]
         self.get_private_key(pubkey, password)
 
-    def import_privkey(self, sec, password):
+    def import_privkey(self, sec: str, *, password, cipher_key: KeystoreCipherKey):
         txin_type, privkey, compressed = deserialize_privkey(sec)
         pubkey = ecc.ECPrivkey(privkey).get_public_key_hex(compressed=compressed)
         # re-serialize the key so the internal storage format is consistent
@@ -177,7 +182,8 @@ class Imported_KeyStore(Software_KeyStore):
         # there will only be one pubkey-privkey pair for it in self.keypairs,
         # and the privkey will encode a txin_type but that txin_type cannot be trusted.
         # Removing keys complicates this further.
-        self.keypairs[pubkey] = pw_encode(serialized_privkey, password,
+        self.keypairs[pubkey] = pw_encode(serialized_privkey, password=password,
+                                          precomputed_cipher_key=cipher_key,
                                           version=self.pw_hash_version, salt=self.pw_salt)
         return txin_type, pubkey
 
@@ -185,7 +191,7 @@ class Imported_KeyStore(Software_KeyStore):
         self.keypairs.pop(key)
 
     def get_private_key(self, pubkey, password):
-        sec = pw_decode(self.keypairs[pubkey], password, version=self.pw_hash_version, salt=self.pw_salt)
+        sec = pw_decode(self.keypairs[pubkey], password=password, version=self.pw_hash_version, salt=self.pw_salt)
         txin_type, privkey, compressed = deserialize_privkey(sec)
         # this checks the password
         if pubkey != ecc.ECPrivkey(privkey).get_public_key_hex(compressed=compressed):
@@ -842,7 +848,7 @@ def from_seed(seed, passphrase, is_p2sh=False):
 def from_private_key_list(text):
     keystore = Imported_KeyStore({})
     for x in get_private_keys(text):
-        keystore.import_privkey(x, None)
+        keystore.import_privkey(x, None)  #
     return keystore
 
 def from_old_mpk(mpk):

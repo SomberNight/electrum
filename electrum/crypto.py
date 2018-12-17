@@ -27,7 +27,7 @@ import base64
 import os
 import hashlib
 import hmac
-from typing import Union
+from typing import Union, NamedTuple
 
 import pyaes
 
@@ -132,32 +132,39 @@ class UnexpectedPasswordHashVersion(InvalidPassword):
             please_update=_('You are most likely using an outdated version of Electrum. Please update.'))
 
 
-def get_cipher_key_of_keystore(password: Union[bytes, str], *, version: int, salt: bytes) -> bytes:
+class KeystoreCipherKey(NamedTuple):
+    cipher_key_bytes: bytes
+    version: int
+    salt: bytes = None
+
+
+def get_cipher_key_of_keystore(password: Union[bytes, str], *, version: int, salt: bytes) -> KeystoreCipherKey:
     pw = to_bytes(password, 'utf8')
     if version == 1:
-        return sha256d(pw)
+        cipher_key = sha256d(pw)
     elif version == 2:
         if not isinstance(salt, bytes) or len(salt) < 16:
             raise Exception('too weak salt', salt)
-        return hashlib.pbkdf2_hmac(hash_name='sha256',
-                                   password=pw,
-                                   salt=b'ELECTRUM_PW_HASH_V2'+salt,
-                                   iterations=50_000)
+        cipher_key = hashlib.pbkdf2_hmac(hash_name='sha256',
+                                         password=pw,
+                                         salt=b'ELECTRUM_PW_HASH_V2'+salt,
+                                         iterations=50_000)
     elif version == 3:
         if not isinstance(salt, bytes) or len(salt) < 16:
             raise Exception('too weak salt', salt)
-        return hashlib.pbkdf2_hmac(hash_name='sha256',
-                                   password=pw,
-                                   salt=b'ELECTRUM_PW_HASH_V3'+salt,
-                                   iterations=50_000)
+        cipher_key = hashlib.pbkdf2_hmac(hash_name='sha256',
+                                         password=pw,
+                                         salt=b'ELECTRUM_PW_HASH_V3'+salt,
+                                         iterations=50_000)
     else:
         assert version not in KNOWN_PW_HASH_VERSIONS
         raise UnexpectedPasswordHashVersion(version)
+    return KeystoreCipherKey(cipher_key_bytes=cipher_key, version=version, salt=salt)
 
 
-def pw_encode(data: str, password: Union[bytes, str, None], *, version: int, salt: bytes=None,
-              precomputed_cipher_key: bytes = None) -> str:
-    if not password:
+def pw_encode(data: str, *, password: Union[bytes, str]=None, version: int, salt: bytes=None,
+              precomputed_cipher_key: KeystoreCipherKey = None) -> str:
+    if not password and not precomputed_cipher_key:
         return data
     if version not in KNOWN_PW_HASH_VERSIONS:
         raise UnexpectedPasswordHashVersion(version)
@@ -169,8 +176,10 @@ def pw_encode(data: str, password: Union[bytes, str, None], *, version: int, sal
     elif version == 3:
         if salt is None: raise ValueError(f'salt cannot be None for pw version {version}')
     else: assert False, version
-    cipher_key = precomputed_cipher_key or \
-                 get_cipher_key_of_keystore(password, version=version, salt=salt)
+    if precomputed_cipher_key and precomputed_cipher_key.salt == salt and precomputed_cipher_key.version == version:
+        cipher_key = precomputed_cipher_key.cipher_key_bytes
+    else:
+        cipher_key = get_cipher_key_of_keystore(password, version=version, salt=salt).cipher_key_bytes
     # encrypt given data
     e = EncodeAES_bytes(cipher_key, to_bytes(data, "utf8"))
     if version == 1:
@@ -184,9 +193,9 @@ def pw_encode(data: str, password: Union[bytes, str, None], *, version: int, sal
     return ciphertext_b64.decode('utf8')
 
 
-def pw_decode(data: str, password: Union[bytes, str, None], *, version: int, salt: bytes=None,
-              precomputed_cipher_key: bytes=None) -> str:
-    if password is None:
+def pw_decode(data: str, *, password: Union[bytes, str]=None, version: int, salt: bytes=None,
+              precomputed_cipher_key: KeystoreCipherKey=None) -> str:
+    if not password and not precomputed_cipher_key:
         return data
     if version not in KNOWN_PW_HASH_VERSIONS:
         raise UnexpectedPasswordHashVersion(version)
@@ -200,8 +209,10 @@ def pw_decode(data: str, password: Union[bytes, str, None], *, version: int, sal
         if salt is None: raise ValueError(f'salt cannot be None for pw version {version}')
     else:
         assert False, version
-    cipher_key = precomputed_cipher_key or \
-                 get_cipher_key_of_keystore(password, version=version, salt=salt)
+    if precomputed_cipher_key and precomputed_cipher_key.salt == salt and precomputed_cipher_key.version == version:
+        cipher_key = precomputed_cipher_key.cipher_key_bytes
+    else:
+        cipher_key = get_cipher_key_of_keystore(password, version=version, salt=salt).cipher_key_bytes
     # decrypt given data
     try:
         d = to_string(DecodeAES_bytes(cipher_key, data_bytes), "utf8")
