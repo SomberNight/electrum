@@ -227,7 +227,7 @@ class WalletStorage(JsonDB):
             return STO_EV_PLAINTEXT
 
     @staticmethod
-    def get_eckey_from_password(password):
+    def get_eckey_from_password(password: str):
         secret = hashlib.pbkdf2_hmac('sha512', password.encode('utf-8'), b'', iterations=1024)
         ec_key = ecc.ECPrivkey.from_arbitrary_size_secret(secret)
         return ec_key

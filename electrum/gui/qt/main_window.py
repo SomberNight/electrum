@@ -2486,7 +2486,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         addresses = self.wallet.get_addresses()
         done = False
         cancelled = False
-        def privkeys_thread():
+        def privkeys_thread():  #
             for addr in addresses:
                 time.sleep(0.1)
                 if done or cancelled:

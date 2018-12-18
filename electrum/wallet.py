@@ -310,7 +310,7 @@ class Abstract_Wallet(AddressSynchronizer):
     def get_redeem_script(self, address):
         return None
 
-    def export_private_key(self, address, password):
+    def export_private_key(self, address, password):  #
         if self.is_watching_only():
             return []
         index = self.get_address_index(address)
@@ -1413,6 +1413,7 @@ class Imported_Wallet(Simple_Wallet):
                             write_to_disk=True) -> Tuple[List[str], List[Tuple[str, str]]]:
         good_addr = []  # type: List[str]
         bad_keys = []  # type: List[Tuple[str, str]]
+        #
         for key in keys:
             try:
                 txin_type, pubkey = self.keystore.import_privkey(key, password)
