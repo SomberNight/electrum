@@ -592,14 +592,19 @@ class ButtonsWidget(QWidget):
         x = self.rect().right() - frameWidth
         y = self.rect().bottom() - frameWidth
         for button in self.buttons:
-            sz = button.sizeHint()
-            x -= sz.width()
-            button.move(x, y - sz.height())
+            # size
+            button_height = min(0.9 * self.height(), button.height())
+            button_width = button.width() / button.height() * button_height
+            button.setIconSize(QSize(button_width, button_height))
+            # positioning
+            x -= button_width + 2
+            button.move(x, y - button_height)
 
     def addButton(self, icon_name, on_click, tooltip):
         button = QToolButton(self)
         button.setIcon(read_QIcon(icon_name))
-        button.setIconSize(QSize(25,25))
+        button.setIconSize(QSize(25, 25))
+        button.setCursor(QCursor(Qt.PointingHandCursor))
         button.setStyleSheet("QToolButton { border: none; hover {border: 1px} pressed {border: 1px} padding: 0px; }")
         button.setVisible(True)
         button.setToolTip(tooltip)
