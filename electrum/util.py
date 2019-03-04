@@ -756,10 +756,19 @@ def parse_URI(uri: str, on_pr: Callable=None) -> dict:
             raise Exception('Duplicate Key', k)
 
     out = {k: v[0] for k, v in pq.items()}
-    if address:
-        if not bitcoin.is_address(address):
-            raise Exception("Invalid bitcoin address:" + address)
-        out['address'] = address
+    # destination address
+    alt_addresses = pq.get('address', [''])[0]
+    alt_addresses = alt_addresses.split(sep=',')
+    for alt_addr in alt_addresses:
+        if bitcoin.is_address(alt_addr):
+            out['address'] = alt_addr
+            break
+    else:
+        if address:
+            if not bitcoin.is_address(address):
+                raise Exception(f"Invalid bitcoin address: {address}")
+            out['address'] = address
+
     if 'amount' in out:
         am = out['amount']
         m = re.match('([0-9\.]+)X([0-9])', am)
