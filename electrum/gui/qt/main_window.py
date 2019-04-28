@@ -190,6 +190,12 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         tabs.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.setCentralWidget(tabs)
 
+        # img = QPixmap(icon_path("trustedcoin-status.png"))
+        # lbl = QLabel(tabs)
+        # lbl.setPixmap(img)
+        # lbl.setGeometry(50,50,50,50)
+        # lbl.show()
+
         if self.config.get("is_maximized"):
             self.showMaximized()
 
@@ -235,7 +241,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         gui_object.timer.timeout.connect(self.timer_actions)
         self.fetch_alias()
 
-        # If the option hasn't been set yet
+        # If the option hasn't been set yet  #
         if config.get('check_updates') is None:
             choice = QMessageBox.question(self,
                                  "Electrum - " + _("Enable update check"),
@@ -256,6 +262,13 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
             self._update_check_thread = UpdateCheckThread(self)
             self._update_check_thread.checked.connect(on_version_received)
             self._update_check_thread.start()
+
+        # bkgnd = QPixmap(icon_path("trustedcoin-status.png"))
+        # #bkgnd = bkgnd.scaled(w.size(), Qt.IgnoreAspectRatio)
+        # from PyQt5.QtGui import QPalette, QBrush
+        # palette = QPalette()
+        # palette.setBrush(QPalette.Background, QBrush(bkgnd))
+        # self.setPalette(palette)
 
     def on_history(self, b):
         self.wallet.clear_coin_price_cache()

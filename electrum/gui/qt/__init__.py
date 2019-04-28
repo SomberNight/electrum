@@ -198,7 +198,24 @@ class ElectrumGui(PrintError):
         self.build_tray_menu()
         # FIXME: Remove in favour of the load_wallet hook
         run_hook('on_new_window', w)
-        w.warn_if_watching_only()
+        # w.warn_if_watching_only()
+        #
+        # from .console import OverlayLabel
+        # self.messageOverlay = OverlayLabel("TESTNET\nThese coins are NOT real money.", w.tabs)
+        # self.messageOverlay.show()
+
+        from PyQt5.QtGui import QFont
+        from PyQt5.QtWidgets import QLabel
+        lbl = QLabel("TESTNET", w.tabs)
+        lbl.setAlignment(PyQt5.QtCore.Qt.AlignCenter)
+        font = QFont('Arial', 72, QFont.Bold)
+        lbl.setFont(font)
+        lbl.setStyleSheet("color: rgba(0,0,0,8%);")
+        #lbl.setStyleSheet("background-color: rgba(0,0,0,50%);")
+        lbl.setGeometry(w.rect())
+        lbl.setAttribute(PyQt5.QtCore.Qt.WA_TransparentForMouseEvents)
+        lbl.show()
+
         return w
 
     def count_wizards_in_progress(func):

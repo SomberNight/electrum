@@ -32,7 +32,6 @@ class OverlayLabel(QtWidgets.QLabel):
         self.setGeometry(0, 0, self.width(), self.height())
         self.setStyleSheet(self.STYLESHEET)
         self.setMargin(0)
-        parent.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
         self.setWordWrap(True)
 
     def mousePressEvent(self, e):
@@ -54,6 +53,7 @@ class Console(QtWidgets.QPlainTextEdit):
 
         self.setGeometry(50, 75, 600, 400)
         self.setWordWrapMode(QtGui.QTextOption.WrapAnywhere)
+        self.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
         self.setUndoRedoEnabled(False)
         self.document().setDefaultFont(QtGui.QFont(MONOSPACE_FONT, 10, QtGui.QFont.Normal))
         self.showMessage(startup_message)
