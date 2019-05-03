@@ -37,7 +37,10 @@ from aiorpcx import RPCSession, Notification, NetAddress
 from aiorpcx.curio import timeout_after, TaskTimeout
 import certifi
 
-from .util import ignore_exceptions, log_exceptions, bfh, SilentTaskGroup
+from .util import (ignore_exceptions, log_exceptions, bfh, SilentTaskGroup,
+                   TxBroadcastError, TxBroadcastHashMismatch,
+                   TxBroadcastServerReturnedError, TxBroadcastUnknownError,
+                   sanitize_tx_broadcast_response, send_exception_to_crash_reporter)
 from . import util
 from . import x509
 from . import pem
@@ -653,6 +656,36 @@ class Interface(Logger):
         if not self._ipaddr_bucket:
             self._ipaddr_bucket = do_bucket()
         return self._ipaddr_bucket
+
+    async def broadcast_transaction(self, tx, *, timeout=None) -> None:
+        """Broadcast a transaction on this interface.
+
+        Raises: RequestTimedOut, TxBroadcastError
+        """
+        timeout_ready = self.network.get_network_timeout_seconds(NetworkTimeout.Urgent)
+        try:
+            await asyncio.wait_for(self.ready, timeout_ready)
+            out = await self.session.send_request('blockchain.transaction.broadcast', [str(tx)], timeout=timeout)
+            # note: both 'out' and exception messages are untrusted input from the server
+        except asyncio.CancelledError:
+            raise  # pass-through
+        except RequestTimedOut:
+            self.logger.debug(f"timed out while broadcasting {tx.txid()}")
+            raise
+        except asyncio.TimeoutError as e:
+            self.logger.debug(f"timed out while broadcasting {tx.txid()}")
+            raise RequestTimedOut("broadcast_transaction timed out") from e
+        except aiorpcx.jsonrpc.CodeMessageError as e:
+            self.logger.info(f"broadcast_transaction error [DO NOT TRUST THIS MESSAGE]: {repr(e)}")
+            raise TxBroadcastServerReturnedError(sanitize_tx_broadcast_response(e.message)) from e
+        except BaseException as e:  # intentional BaseException for sanity!
+            self.logger.info(f"broadcast_transaction error2 [DO NOT TRUST THIS MESSAGE]: {repr(e)}")
+            send_exception_to_crash_reporter(e)
+            raise TxBroadcastUnknownError() from e
+        if out != tx.txid():
+            self.logger.info(f"unexpected txid for broadcast_transaction [DO NOT TRUST THIS MESSAGE]: {out} != {tx.txid()}")
+            raise TxBroadcastHashMismatch(_("Server returned unexpected transaction ID."))
+        self.logger.debug(f"successfully broadcasted {tx.txid()}")
 
 
 def _assert_header_does_not_check_against_any_chain(header: dict) -> None:

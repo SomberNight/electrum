@@ -4,10 +4,10 @@ import datetime
 import logging
 
 from electrum import WalletStorage, Wallet
-from electrum.util import format_satoshis
+from electrum.util import format_satoshis, TxBroadcastError
 from electrum.bitcoin import is_address, COIN, TYPE_ADDRESS
 from electrum.transaction import TxOutput
-from electrum.network import TxBroadcastError, BestEffortRequestFailed
+from electrum.network import BestEffortRequestFailed
 from electrum.logging import console_stderr_handler
 
 _ = lambda x:x  # i18n

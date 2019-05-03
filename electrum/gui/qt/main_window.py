@@ -60,13 +60,14 @@ from electrum.util import (format_time, format_satoshis, format_fee_satoshis,
                            base_units, base_units_list, base_unit_name_to_decimal_point,
                            decimal_point_to_base_unit_name, quantize_feerate,
                            UnknownBaseUnit, DECIMAL_POINT_DEFAULT, UserFacingException,
-                           get_new_wallet_name, send_exception_to_crash_reporter)
+                           get_new_wallet_name, send_exception_to_crash_reporter,
+                           TxBroadcastError)
 from electrum.transaction import Transaction, TxOutput
 from electrum.address_synchronizer import AddTransactionException
 from electrum.wallet import (Multisig_Wallet, CannotBumpFee, Abstract_Wallet,
                              sweep_preparations, InternalAddressCorruption)
 from electrum.version import ELECTRUM_VERSION
-from electrum.network import Network, TxBroadcastError, BestEffortRequestFailed
+from electrum.network import Network, BestEffortRequestFailed
 from electrum.exchange_rate import FxThread
 from electrum.simple_config import SimpleConfig
 from electrum.logging import Logger
@@ -1730,25 +1731,41 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, Logger):
             if pr and pr.has_expired():
                 self.payment_request = None
                 return False, _("Payment request has expired")
-            status = False
-            try:
-                self.network.run_from_another_thread(self.network.broadcast_transaction(tx))
-            except TxBroadcastError as e:
-                msg = e.get_message_for_gui()
-            except BestEffortRequestFailed as e:
-                msg = repr(e)
-            else:
-                status, msg = True, tx.txid()
+            status, msg = do_broadcast()
             if pr and status is True:
-                self.invoices.set_paid(pr, tx.txid())
-                self.invoices.save()
-                self.payment_request = None
-                refund_address = self.wallet.get_receiving_address()
-                coro = pr.send_payment_and_receive_paymentack(str(tx), refund_address)
-                fut = asyncio.run_coroutine_threadsafe(coro, self.network.asyncio_loop)
-                ack_status, ack_msg = fut.result(timeout=20)
-                self.logger.info(f"Payment ACK: {ack_status}. Ack message: {ack_msg}")
+                do_bip70_paymentack(pr)
             return status, msg
+
+        def do_broadcast():
+            status = False
+            if self.config.get('broadcast_tx_on_all_servers', False):
+                # broadcast on ALL connected servers
+                results = self.network.run_from_another_thread(self.network.broadcast_transaction_on_all_connected_servers(tx))
+                for res in results:
+                    # TxBroadcastError
+                    pass  # TODO
+            else:
+                # broadcast on main server only
+                try:
+                    self.network.run_from_another_thread(self.network.broadcast_transaction(tx))
+                except TxBroadcastError as e:
+                    msg = e.get_message_for_gui()
+                except BestEffortRequestFailed as e:
+                    msg = repr(e)
+                else:
+                    status, msg = True, tx.txid()
+            return status, msg
+
+        def do_bip70_paymentack(pr):
+            assert pr
+            self.invoices.set_paid(pr, tx.txid())
+            self.invoices.save()
+            self.payment_request = None
+            refund_address = self.wallet.get_receiving_address()
+            coro = pr.send_payment_and_receive_paymentack(str(tx), refund_address)
+            fut = asyncio.run_coroutine_threadsafe(coro, self.network.asyncio_loop)
+            ack_status, ack_msg = fut.result(timeout=20)
+            self.logger.info(f"Payment ACK: {ack_status}. Ack message: {ack_msg}")
 
         # Capture current TL window; override might be removed on return
         parent = self.top_level_window(lambda win: isinstance(win, MessageBoxMixin))

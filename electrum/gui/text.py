@@ -8,12 +8,12 @@ import getpass
 import logging
 
 import electrum
-from electrum.util import format_satoshis
+from electrum.util import format_satoshis, TxBroadcastError
 from electrum.bitcoin import is_address, COIN, TYPE_ADDRESS
 from electrum.transaction import TxOutput
 from electrum.wallet import Wallet
 from electrum.storage import WalletStorage
-from electrum.network import NetworkParameters, TxBroadcastError, BestEffortRequestFailed
+from electrum.network import NetworkParameters, BestEffortRequestFailed
 from electrum.interface import deserialize_server
 from electrum.logging import console_stderr_handler
 
