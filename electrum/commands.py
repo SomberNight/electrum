@@ -784,8 +784,8 @@ class Commands:
         self.lnworker.reestablish_channel()
 
     @command('wn')
-    def lnpay(self, invoice, timeout=10):
-        return self.lnworker.pay(invoice, timeout=timeout)
+    def lnpay(self, invoice, attempts=1, timeout=10):
+        return self.lnworker.pay(invoice, attempts=attempts, timeout=timeout)
 
     @command('wn')
     def addinvoice(self, requested_amount, message):
@@ -906,6 +906,7 @@ command_options = {
     'domain':      ("-D", "List of addresses"),
     'memo':        ("-m", "Description of the request"),
     'expiration':  (None, "Time in seconds"),
+    'attempts':    (None, "Number of payment attempts"),
     'timeout':     (None, "Timeout in seconds"),
     'force':       (None, "Create new address beyond gap limit, if no more addresses are available."),
     'pending':     (None, "Show only pending requests."),
