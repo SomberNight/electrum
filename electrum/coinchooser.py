@@ -74,6 +74,7 @@ class Bucket(NamedTuple):
     desc: str
     weight: int         # as in BIP-141
     value: int          # in satoshis
+    effective_value: int   # estimate of value left after subtracting fees. in satoshis
     coins: List[dict]   # UTXOs
     min_height: int     # min block height where a coin was confirmed
     witness: bool       # whether any coin uses segwit
@@ -103,11 +104,14 @@ class CoinChooserBase(Logger):
     def keys(self, coins):
         raise NotImplementedError
 
-    def bucketize_coins(self, coins):
+    def bucketize_coins(self, coins, *, fee_estimator_w):
         keys = self.keys(coins)
         buckets = defaultdict(list)
         for key, coin in zip(keys, coins):
             buckets[key].append(coin)
+        # fee_estimator_w returns fee to be paid, for given weight.
+        # guess whether it is just returning a constant as follows.
+        constant_fee = fee_estimator_w(5000) == fee_estimator_w(500)
 
         def make_Bucket(desc, coins):
             witness = any(Transaction.is_segwit_input(coin, guess_for_address=True) for coin in coins)
@@ -117,7 +121,14 @@ class CoinChooserBase(Logger):
                          for coin in coins)
             value = sum(coin['value'] for coin in coins)
             min_height = min(coin['height'] for coin in coins)
-            return Bucket(desc, weight, value, coins, min_height, witness)
+            # the fee estimator is typically either a constant or a linear function,
+            # so the "function:" effective_value(bucket) will be homomorphic for addition
+            # i.e. effective_value(b1) + effective_value(b2) = effective_value(b1 + b2)
+            if constant_fee:
+                effective_value = value
+            else:
+                effective_value = value - fee_estimator_w(weight)
+            return Bucket(desc, weight, value, effective_value, coins, min_height, witness)
 
         return list(map(make_Bucket, buckets.keys(), buckets.values()))
 
@@ -252,7 +263,8 @@ class CoinChooserBase(Logger):
             return total_input >= spent_amount + fee_estimator_w(total_weight)
 
         # Collect the coins into buckets, choose a subset of the buckets
-        buckets = self.bucketize_coins(coins)
+        buckets = self.bucketize_coins(coins, fee_estimator_w=fee_estimator_w)
+        buckets = list(filter(lambda b: b.effective_value > 0, buckets))
         buckets = self.choose_buckets(buckets, sufficient_funds,
                                       self.penalty_func(tx))
 
