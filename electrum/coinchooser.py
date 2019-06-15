@@ -25,6 +25,7 @@
 from collections import defaultdict
 from math import floor, log10
 from typing import NamedTuple, List
+from decimal import Decimal
 
 from .bitcoin import sha256, COIN, TYPE_ADDRESS, is_address
 from .transaction import Transaction, TxOutput
@@ -91,6 +92,31 @@ def strip_unneeded(bkts, sufficient_funds):
         if sufficient_funds(bkts[:i+1], bucket_value_sum=bucket_value_sum):
             return bkts[:i+1]
     raise Exception("keeping all buckets is still not enough")
+
+
+# TODO config option?? now it's "impossible" to spend dust...
+def filter_negative_effective_value_coins(coins, *, fee_estimator):
+    # fee_estimator_w returns fee to be paid, for given vbytes.
+    # guess whether it is just returning a constant as follows.
+    constant_fee = fee_estimator(1000) == fee_estimator(200)
+
+    def effective_value(coin):
+        """estimate value of coin after subtracting fees"""
+        # the fee estimator is typically either a constant or a linear function,
+        # so the "function:" effective_value(coins) will be homomorphic for addition
+        # i.e. effective_value(c1) + effective_value(c2) = effective_value(c1 + c2)
+        is_segwit = Transaction.is_segwit_input(coin, guess_for_address=True)
+        weight = Transaction.estimated_input_weight(coin, is_segwit)
+        value = coin['value']
+        if constant_fee:
+            return value
+        else:
+            # when converting from weight to vBytes, instead of rounding up,
+            # keep fractional part, to avoid overestimating fee
+            fee = fee_estimator(Decimal(weight / 4))
+            return value - fee
+
+    return list(filter(lambda coin: effective_value(coin) > 0, coins))
 
 
 class CoinChooserBase(Logger):
@@ -252,6 +278,7 @@ class CoinChooserBase(Logger):
             return total_input >= spent_amount + fee_estimator_w(total_weight)
 
         # Collect the coins into buckets, choose a subset of the buckets
+        coins = filter_negative_effective_value_coins(coins, fee_estimator=fee_estimator)
         buckets = self.bucketize_coins(coins)
         buckets = self.choose_buckets(buckets, sufficient_funds,
                                       self.penalty_func(tx))
@@ -312,8 +339,7 @@ class CoinChooserRandom(CoinChooserBase):
                     candidates.add(tuple(sorted(permutation[:count + 1])))
                     break
             else:
-                # FIXME this assumes that the effective value of any bkt is >= 0
-                # we should make sure not to choose buckets with <= 0 eff. val.
+                # note: this assumes that the effective value of any bkt is >= 0
                 raise NotEnoughFunds()
 
         candidates = [[buckets[n] for n in c] for c in candidates]

@@ -752,16 +752,17 @@ class Abstract_Wallet(AddressSynchronizer):
             tx = coin_chooser.make_tx(coins, txi, outputs[:] + txo, change_addrs[:max_change],
                                       fee_estimator, self.dust_threshold())
         else:
-            # FIXME?? this might spend inputs with negative effective value...
-            sendable = sum(map(lambda x:x['value'], coins))
+            # "send max". select all coins (except dust)
+            nondust_coins = coinchooser.filter_negative_effective_value_coins(coins, fee_estimator=fee_estimator)  # FIXME or just do this further up in the common code path?
+            sendable = sum(map(lambda x:x['value'], nondust_coins))
             outputs[i_max] = outputs[i_max]._replace(value=0)
-            tx = Transaction.from_io(coins, outputs[:])
+            tx = Transaction.from_io(nondust_coins, outputs[:])
             fee = fee_estimator(tx.estimated_size())
             amount = sendable - tx.output_value() - fee
             if amount < 0:
                 raise NotEnoughFunds()
             outputs[i_max] = outputs[i_max]._replace(value=amount)
-            tx = Transaction.from_io(coins, outputs[:])
+            tx = Transaction.from_io(nondust_coins, outputs[:])
 
         # Timelock tx to current height.
         tx.locktime = get_locktime_for_new_transaction(self.network)
