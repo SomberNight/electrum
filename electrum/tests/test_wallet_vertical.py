@@ -895,7 +895,7 @@ class TestWalletSending(TestCaseForTestnet):
         self.assertEqual((0, funding_output_value - 2500000 - 5000, 0), wallet.get_balance())
 
         # bump tx
-        tx = wallet.bump_fee(tx=Transaction(tx.serialize()), delta=5000)
+        tx = wallet.bump_fee(tx=Transaction(tx.serialize()), delta=5000)  # FIXME
         tx.locktime = 1325501
         tx.version = 1
         self.assertFalse(tx.is_complete())
@@ -984,7 +984,7 @@ class TestWalletSending(TestCaseForTestnet):
         self.assertEqual((0, funding_output_value - 2500000 - 5000, 0), wallet.get_balance())
 
         # bump tx
-        tx = wallet.bump_fee(tx=Transaction(tx.serialize()), delta=5000)
+        tx = wallet.bump_fee(tx=Transaction(tx.serialize()), delta=5000)  # FIXME
         tx.locktime = 1325500
         tx.version = 1
         self.assertFalse(tx.is_complete())
