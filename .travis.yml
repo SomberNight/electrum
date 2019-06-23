@@ -41,6 +41,13 @@ jobs:
       script:
         - sudo docker run --name electrum-wine-builder-cont -v $PWD:/opt/wine64/drive_c/electrum --rm --workdir /opt/wine64/drive_c/electrum/contrib/build-wine electrum-wine-builder-img ./build.sh
       after_success: true
+      deploy:
+        provider: releases
+        api_key: '$GITHUB_API_KEY'
+        file_glob: true
+        file: contrib/build-wine/dist/*.exe
+        skip_cleanup: true
+        draft: true
     - name: "Android build"
       language: python
       python: 3.7
