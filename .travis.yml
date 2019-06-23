@@ -48,6 +48,7 @@ jobs:
         file: contrib/build-wine/dist/*.exe
         skip_cleanup: true
         draft: true
+        all_branches: true
     - name: "Android build"
       language: python
       python: 3.7
