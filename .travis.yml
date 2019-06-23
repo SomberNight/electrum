@@ -39,7 +39,9 @@ jobs:
       install:
         - sudo docker build --no-cache -t electrum-wine-builder-img ./contrib/build-wine/
       script:
+        - ls -la ./contrib/build-wine/nsis/
         - sudo docker run --name electrum-wine-builder-cont -v $PWD:/opt/wine64/drive_c/electrum --rm --workdir /opt/wine64/drive_c/electrum/contrib/build-wine electrum-wine-builder-img ./build.sh
+        - ls -la ./contrib/build-wine/nsis/
       after_success: true
       deploy:
         provider: releases
