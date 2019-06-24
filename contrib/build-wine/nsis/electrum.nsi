@@ -40,10 +40,11 @@
   InstallColors /windows
   
   ;This command sets the compression algorithm used to compress files/data in the installer. (http://nsis.sourceforge.net/Reference/SetCompressor)
-  SetCompressor /SOLID lzma
+  SetCompress off
+  ;SetCompressor /SOLID lzma
   
   ;Sets the dictionary size in megabytes (MB) used by the LZMA compressor (default is 8 MB).
-  SetCompressorDictSize 64
+  ;SetCompressorDictSize 64
   
   ;Sets the text that is shown (by default it is 'Nullsoft Install System vX.XX') in the bottom of the install window. Setting this to an empty string ("") uses the default; to set the string to blank, use " " (a space).
   BrandingText "${PRODUCT_NAME} Installer v${PRODUCT_VERSION}" 
