@@ -118,8 +118,8 @@ Section
   WriteRegStr HKCU "Software\${PRODUCT_NAME}" "" $INSTDIR
 
   ;Create uninstaller
-  DetailPrint "Creating uninstaller..."
-  WriteUninstaller "$INSTDIR\Uninstall.exe"
+  ;DetailPrint "Creating uninstaller..."
+  ;WriteUninstaller "$INSTDIR\Uninstall.exe"
 
   ;Create desktop shortcut
   DetailPrint "Creating desktop shortcut..."
