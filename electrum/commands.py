@@ -759,6 +759,46 @@ class Commands:
             "confirmations": self.wallet.get_tx_height(txid).conf,
         }
 
+    @command('n')
+    def find_phishing_servers(self):
+        tx = "0100000001f6b6cb07b58be954850c2ad3b899bedef61a1486aabd2a619fc2c4df3652beb4020000006a473044022069e19833fda07b295e139dee2b78c2075a6d8cb1b11afc0ce51cc56f201631190220193f552ef2d4252868ff69f32aee8a30b5a188adc5f420d7df7fd2e9d7850f41012103b17b5d84ce6267c90d7fdf85d04f2bbf7a64191e85e36c78760c43bcde8a66e6feffffff030000000000000000166a146f6d6e69000000000000001f0000000ba43b740022020000000000001976a914085be98b6a8b09c67cae7faf411af59efd2fe2ed88ac124ac102000000001976a9149f49be31daef15cf73028bd15261511d0eb6fc7988ac46e80800"
+
+        import re
+        import aiorpcx
+
+        def extract_url(text):
+            return set(re.findall('https?://(?:[-\w.]|(?:%[\da-fA-F]{2}))+', text))
+
+        async def broadcast_on_interface(iface):
+            try:
+                return await iface.session.send_request('blockchain.transaction.broadcast', [tx], timeout=30)
+            except aiorpcx.jsonrpc.CodeMessageError as e:
+                return e.message
+            except BaseException:
+                return ""
+
+        async def broadcast_on_all_interfaces():
+            host_to_task_map = {}
+            async with aiorpcx.TaskGroup() as group:
+                for iface in list(self.network.interfaces.values()):
+                    task = await group.spawn(broadcast_on_interface(iface=iface))
+                    host_to_task_map[iface.host] = task
+
+            # map from "electrum server" to "domains it mentions in response text"
+            res = {host: extract_url((str(fut.result())))
+                   for host, fut in host_to_task_map.items()
+                   if not fut.cancelled()}
+            filtered_res = {host: val for host, val in res.items()
+                            if val not in (set(), {'https://electrum.org'})}
+            return filtered_res
+
+        filtered_res = self.network.run_from_another_thread(broadcast_on_all_interfaces())
+
+        # import pprint
+        # return pprint.pformat(filtered_res)
+
+        return filtered_res
+
     @command('')
     def help(self):
         # for the python console

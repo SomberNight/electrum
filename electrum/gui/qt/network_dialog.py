@@ -355,7 +355,15 @@ class NetworkChoiceLayout(object):
             for w in [self.autoconnect_cb, self.server_host, self.server_port, self.servers_list]:
                 w.setEnabled(False)
 
+    last_update = 0
     def update(self):
+        # rate-limit updates
+        import time
+        now = time.time()
+        if self.last_update + 5 > now:
+            return
+        self.last_update = now
+
         net_params = self.network.get_parameters()
         host, port, protocol = net_params.host, net_params.port, net_params.protocol
         proxy_config, auto_connect = net_params.proxy, net_params.auto_connect

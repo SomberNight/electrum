@@ -63,10 +63,10 @@ from .logging import get_logger, Logger
 _logger = get_logger(__name__)
 
 
-NODES_RETRY_INTERVAL = 60
+NODES_RETRY_INTERVAL = 30
 SERVER_RETRY_INTERVAL = 10
-NUM_TARGET_CONNECTED_SERVERS = 10
-NUM_RECENT_SERVERS = 20
+NUM_TARGET_CONNECTED_SERVERS = 500
+NUM_RECENT_SERVERS = 100
 
 
 def parse_servers(result: Sequence[Tuple[str, str, List[str]]]) -> Dict[str, dict]:
@@ -395,10 +395,7 @@ class Network(Logger):
             self.donation_address = addr
         async def get_server_peers():
             server_peers = await session.send_request('server.peers.subscribe')
-            random.shuffle(server_peers)
-            max_accepted_peers = len(constants.net.DEFAULT_SERVERS) + NUM_RECENT_SERVERS
-            server_peers = server_peers[:max_accepted_peers]
-            self.server_peers = parse_servers(server_peers)
+            self.server_peers.update(parse_servers(server_peers))
             self.notify('servers')
         async def get_relay_fee():
             relayfee = await session.send_request('blockchain.relayfee')
@@ -484,7 +481,8 @@ class Network(Logger):
         # add servers received from main interface
         server_peers = self.server_peers
         if server_peers:
-            out.update(filter_version(server_peers.copy()))
+            #out.update(filter_version(server_peers.copy()))
+            out.update(server_peers)
         # hardcoded servers
         out.update(constants.net.DEFAULT_SERVERS)
         # add recent servers
@@ -767,11 +765,18 @@ class Network(Logger):
 
         if server == self.default_server:
             await self.switch_to_interface(server)
+        else:
+            async def get_server_peers():
+                server_peers = await interface.session.send_request('server.peers.subscribe')
+                self.server_peers.update(parse_servers(server_peers))
+                #self.notify('servers')
+            await interface.group.spawn(get_server_peers())
 
         self._add_recent_server(server)
         self.trigger_callback('network_updated')
 
     def check_interface_against_healthy_spread_of_connected_servers(self, iface_to_check) -> bool:
+        return True
         # main interface is exempt. this makes switching servers easier
         if iface_to_check.is_main_server():
             return True

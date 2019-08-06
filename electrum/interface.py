@@ -310,22 +310,11 @@ class Interface(Logger):
             # using plaintext TCP
             return None
 
-        # see if we already have cert for this server; or get it for the first time
-        ca_sslc = ssl.create_default_context(purpose=ssl.Purpose.SERVER_AUTH, cafile=ca_path)
-        if not self._is_saved_ssl_cert_available():
-            try:
-                await self._try_saving_ssl_cert_for_first_time(ca_sslc)
-            except (OSError, ConnectError, aiorpcx.socks.SOCKSError) as e:
-                raise ErrorGettingSSLCertFromServer(e) from e
-        # now we have a file saved in our certificate store
-        siz = os.stat(self.cert_path).st_size
-        if siz == 0:
-            # CA signed cert
-            sslc = ca_sslc
-        else:
-            # pinned self-signed cert
-            sslc = ssl.create_default_context(ssl.Purpose.SERVER_AUTH, cafile=self.cert_path)
-            sslc.check_hostname = 0
+        # UNSAFE: accept any cert, no verifications
+        sslc = ssl.create_default_context(ssl.Purpose.SERVER_AUTH)
+        sslc.check_hostname = 0
+        from ssl import CERT_NONE
+        sslc.verify_mode = CERT_NONE
         return sslc
 
     def handle_disconnect(func):
@@ -656,6 +645,7 @@ class Interface(Logger):
 
     @classmethod
     def client_name(cls) -> str:
+        return "3.3.2"
         return f'electrum/{version.ELECTRUM_VERSION}'
 
     def is_tor(self):
