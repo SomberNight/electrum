@@ -49,7 +49,7 @@ else
     # build two apks (only one on Travis CI)
     export APP_ANDROID_ARCH=armeabi-v7a
     make apk
-    if [ ! $CI ]; then
+    if [[ "$CI" != "true" ]]; then
         export APP_ANDROID_ARCH=arm64-v8a
         make apk
     fi
