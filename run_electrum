@@ -292,9 +292,11 @@ if __name__ == '__main__':
     # config is an object passed to the various constructors (wallet, interface, gui)
     if is_android:
         config_options = {
-            'verbosity': '',
+            'verbosity': '*',
             'cmd': 'gui',
             'gui': 'kivy',
+            'lightning': True,
+            'reckless': True,
         }
     else:
         config_options = args.__dict__
