@@ -33,7 +33,7 @@ import json
 import sys
 import ipaddress
 import asyncio
-from typing import NamedTuple, Optional, Sequence, List, Dict, Tuple, TYPE_CHECKING
+from typing import NamedTuple, Optional, Sequence, List, Dict, Tuple, TYPE_CHECKING, Iterable
 import traceback
 
 import dns
@@ -732,7 +732,7 @@ class Network(Logger):
             self.trigger_callback('network_updated')
             if blockchain_updated: self.trigger_callback('blockchain_updated')
 
-    async def _close_interface(self, interface):
+    async def _close_interface(self, interface: Interface):
         if interface:
             with self.interfaces_lock:
                 if self.interfaces.get(interface.server) == interface:
@@ -1158,6 +1158,7 @@ class Network(Logger):
         self._set_oneserver(self.config.get('oneserver', False))
         self._start_interface(self.default_server)
 
+        # FIXME
         if self.lngossip:
             self.lngossip.start_network(self)
         if self.local_watchtower:
@@ -1179,7 +1180,12 @@ class Network(Logger):
 
         self.trigger_callback('network_updated')
 
-    def start(self, jobs: List=None):
+    def start(self, jobs: Iterable = None):
+        """Schedule starting the network, along with the given job co-routines.
+
+        Note: the jobs will *restart* every time the network restarts, e.g. on proxy
+        setting changes.
+        """
         self._jobs = jobs or []
         asyncio.run_coroutine_threadsafe(self._start(), self.asyncio_loop)
 
@@ -1258,7 +1264,7 @@ class Network(Logger):
             except asyncio.CancelledError:
                 # suppress spurious cancellations
                 group = self.main_taskgroup
-                if not group or group._closed:
+                if not group or group.closed():
                     raise
             await asyncio.sleep(0.1)
 

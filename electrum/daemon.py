@@ -29,7 +29,7 @@ import time
 import traceback
 import sys
 import threading
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional, Tuple, Iterable
 import aiohttp
 from aiohttp import web
 from base64 import b64decode
@@ -39,6 +39,7 @@ import jsonrpcclient
 import jsonrpcserver
 from jsonrpcserver import response
 from jsonrpcclient.clients.aiohttp_client import AiohttpClient
+from aiorpcx import TaskGroup
 
 from .network import Network
 from .util import (json_decode, to_bytes, to_string, profiler, standardize_path, constant_time_compare)
@@ -62,7 +63,7 @@ def get_lockfile(config: SimpleConfig):
 
 
 def remove_lockfile(lockfile):
-    os.unlink(lockfile)
+    os.unlink(lockfile)  #
 
 
 def get_file_descriptor(config: SimpleConfig):
@@ -281,20 +282,33 @@ class Daemon(Logger):
         self.gui_object = None
         # path -> wallet;   make sure path is standardized.
         self._wallets = {}  # type: Dict[str, Abstract_Wallet]
-        jobs = [self.fx.run]
+        daemon_jobs = []
         # Setup JSONRPC server
         if listen_jsonrpc:
-            jobs.append(self.start_jsonrpc(config, fd))
+            daemon_jobs.append(self.start_jsonrpc(config, fd))
         # request server
         if self.config.get('payserver_port'):
             self.pay_server = PayServer(self)
-            jobs.append(self.pay_server.run())
+            daemon_jobs.append(self.pay_server.run())
         # server-side watchtower
         self.watchtower = WatchTowerServer(self.network) if self.config.get('watchtower_host') else None
         if self.watchtower:
-            jobs.append(self.watchtower.run)
+            daemon_jobs.append(self.watchtower.run)
         if self.network:
-            self.network.start(jobs)
+            self.network.start(jobs=[self.fx.run])
+
+        self.taskgroup = TaskGroup()
+        asyncio.run_coroutine_threadsafe(self._run(jobs=daemon_jobs), self.asyncio_loop)
+
+    @log_exceptions
+    async def _run(self, jobs: Iterable = None):
+        if jobs is None:
+            jobs = []
+        try:
+            async with self.taskgroup as group:
+                [await group.spawn(job) for job in jobs]
+        finally:
+            self.logger.info("stopping daemon.taskgroup")
 
     async def authenticate(self, headers):
         if self.rpc_password == '':
@@ -452,7 +466,7 @@ class Daemon(Logger):
 
     def is_running(self):
         with self.running_lock:
-            return self.running
+            return self.running and not self.taskgroup.closed()
 
     def stop(self):
         with self.running_lock:
@@ -467,8 +481,15 @@ class Daemon(Logger):
         if self.network:
             self.logger.info("shutting down network")
             self.network.stop()
-        self.logger.info("stopping, removing lockfile")
+        self.logger.info("stopping taskgroup")
+        fut = asyncio.run_coroutine_threadsafe(self.taskgroup.cancel_remaining(), self.asyncio_loop)
+        try:
+            fut.result(timeout=2)
+        except (asyncio.TimeoutError, asyncio.CancelledError):
+            pass
+        self.logger.info("removing lockfile")
         remove_lockfile(get_lockfile(self.config))
+        self.logger.info("stopped")
 
     def run_gui(self, config, plugins):
         threading.current_thread().setName('GUI')

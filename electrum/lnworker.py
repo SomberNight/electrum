@@ -394,6 +394,7 @@ class LNWallet(LNWorker):
                 self.sync_with_remote_watchtower(),
         ]:
             # FIXME: exceptions in those coroutines will cancel network.main_taskgroup
+            # TODO: all this stuff will NOT restart when the network restarts
             asyncio.run_coroutine_threadsafe(self.network.main_taskgroup.spawn(coro), self.network.asyncio_loop)
 
     def peer_closed(self, peer):
