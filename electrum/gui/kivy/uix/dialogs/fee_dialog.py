@@ -5,6 +5,9 @@ from kivy.lang import Builder
 
 from electrum.gui.kivy.i18n import _
 
+from electrum.simple_config import SimpleConfig
+
+
 Builder.load_string('''
 <FeeDialog@Popup>
     id: popup
@@ -70,7 +73,7 @@ Builder.load_string('''
 
 class FeeDialog(Factory.Popup):
 
-    def __init__(self, app, config, callback):
+    def __init__(self, app, config: 'SimpleConfig', callback):
         Factory.Popup.__init__(self)
         self.app = app
         self.config = config
@@ -116,15 +119,15 @@ class FeeDialog(Factory.Popup):
     def on_ok(self):
         value = int(self.ids.slider.value)
         dynfees, mempool = self.get_method()
-        self.config.set_key('dynamic_fees', dynfees, False)
-        self.config.set_key('mempool_fees', mempool, False)
+        self.config.set_key(ConfigVar.FEE_EST_DYNAMIC, dynfees, False)
+        self.config.set_key(ConfigVar.FEE_EST_USE_MEMPOOL, mempool, False)
         if dynfees:
             if mempool:
-                self.config.set_key('depth_level', value, True)
+                self.config.set_key(ConfigVar.FEE_EST_DYNAMIC_MEMPOOL_SLIDERPOS, value, True)
             else:
-                self.config.set_key('fee_level', value, True)
+                self.config.set_key(ConfigVar.FEE_EST_DYNAMIC_ETA_SLIDERPOS, value, True)
         else:
-            self.config.set_key('fee_per_kb', self.config.static_fee(value), True)
+            self.config.set_key(ConfigVar.FEE_EST_STATIC_FEERATE_FALLBACK, self.config.static_fee(value), True)
         self.callback()
 
     def on_slider(self, value):
