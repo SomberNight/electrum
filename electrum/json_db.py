@@ -217,6 +217,7 @@ class JsonDB(Logger):
         self._convert_version_17()
         self._convert_version_18()
         self._convert_version_19()
+        #self._convert_version_20()
         self.put('seed_version', FINAL_SEED_VERSION)  # just to be sure
 
         self._after_upgrade_tasks()
@@ -448,10 +449,32 @@ class JsonDB(Logger):
         self.put('tx_fees', None)
         self.put('seed_version', 19)
 
-    # def _convert_version_20(self):
-    #     TODO for "next" upgrade:
-    #       - move "pw_hash_version" from keystore to storage
-    #     pass
+    def _convert_version_20(self):
+        # move 'pw_hash_version' from keystore to storage
+        if not self._is_upgrade_method_needed(19, 19):
+            return
+
+        ks = self.get('keystore', None)
+        if ks is not None:
+            pw_hash_version = ks.get('pw_hash_version', 1)
+            self.put('pw_hash_version', pw_hash_version)
+            ks.pop('pw_hash_version', None)
+            self.put('keystore', ks)
+        else:
+            pw_hash_version = None
+            for cosigner_idx in range(1, 16):
+                ks_name = "x{}/".format(cosigner_idx)
+                ks = self.get(ks_name, None)
+                if ks is None: continue
+                _pw_hash_version = ks.get('pw_hash_version', 1)
+                if pw_hash_version is not None and pw_hash_version != pw_hash_version:
+                    raise Exception("inconsistent pw_hash_version versions across keystores")
+                pw_hash_version = _pw_hash_version
+                self.put('pw_hash_version', pw_hash_version)
+                ks.pop('pw_hash_version', None)
+                self.put(ks_name, ks)
+
+        self.put('seed_version', 20)
 
     def _convert_imported(self):
         if not self._is_upgrade_method_needed(0, 13):
