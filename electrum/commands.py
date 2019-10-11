@@ -766,8 +766,18 @@ class Commands:
         import re
         import aiorpcx
 
-        def extract_url(text):
+        def extract_domains(text):
             return set(re.findall('https?://(?:[-\w.]|(?:%[\da-fA-F]{2}))+', text))
+
+        def extract_urls(text):
+            res = set(re.findall('http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\(\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+', text))
+            # the regex also matches e.g. 'https://example.com/releases</font></u></p><p>Links'
+            # so we cut off after the first '<' char
+            def cut_off_after_less_than_sign(s):
+                pos = s.find("<")
+                if pos == -1: return s
+                return s[:pos]
+            return {cut_off_after_less_than_sign(url) for url in res}
 
         async def broadcast_on_interface(iface):
             try:
@@ -784,13 +794,16 @@ class Commands:
                     task = await group.spawn(broadcast_on_interface(iface=iface))
                     host_to_task_map[iface.host] = task
 
-            # map from "electrum server" to "domains it mentions in response text"
-            res = {host: extract_url((str(fut.result())))
-                   for host, fut in host_to_task_map.items()
-                   if not fut.cancelled()}
-            filtered_res = {host: val for host, val in res.items()
-                            if val not in (set(), {'https://electrum.org'})}
-            return filtered_res
+            # map from "electrum server" to "response text"
+            res1 = {host: str(fut.result())
+                    for host, fut in host_to_task_map.items()
+                    if not fut.cancelled()}
+            # filter out responses that only contain "electrum.org" as domain
+            res2 = {host: text for host, text in res1.items()
+                    if extract_domains(text) not in (set(), {'https://electrum.org'})}
+            # map from "electrum server" to "set of URLs in response text"
+            res3 = {host: extract_urls(text) for host, text in res2.items()}
+            return res3
 
         filtered_res = self.network.run_from_another_thread(broadcast_on_all_interfaces())
 
