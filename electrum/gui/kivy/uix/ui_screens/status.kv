@@ -60,7 +60,7 @@ Popup:
                     TopLabel:
                         text: _('Master Public Key')
                     RefLabel:
-                        data: app.wallet.get_master_public_key() or 'None'
+                        data: app.wallet.get_master_public_key_with_origin_info() or 'None'
                         name: _('Master Public Key')
                     TopLabel:
                         text: _('This wallet is watching-only') if root.watching_only else _('Seed')

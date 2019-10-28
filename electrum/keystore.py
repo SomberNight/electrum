@@ -26,12 +26,14 @@
 
 from unicodedata import normalize
 import hashlib
-from typing import Tuple, TYPE_CHECKING, Union, Sequence, Optional, Dict, List
+import re
+from typing import Tuple, TYPE_CHECKING, Union, Sequence, Optional, Dict, List, NamedTuple
 
 from . import bitcoin, ecc, constants, bip32
 from .bitcoin import deserialize_privkey, serialize_privkey
 from .bip32 import (convert_bip32_path_to_list_of_uint32, BIP32_PRIME,
-                    is_xpub, is_xprv, BIP32Node, normalize_bip32_derivation)
+                    is_xpub, is_xprv, BIP32Node, normalize_bip32_derivation,
+                    convert_bip32_intpath_to_strpath)
 from .ecc import string_to_number, number_to_string
 from .crypto import (pw_decode, pw_encode, sha256, sha256d, PW_HASH_VERSION_LATEST,
                      SUPPORTED_PW_HASH_VERSIONS, UnsupportedPasswordHashVersion, hash_160)
@@ -216,6 +218,9 @@ class Imported_KeyStore(Software_KeyStore):
     def get_master_public_key(self):
         return None
 
+    def get_master_public_key_with_origin_info(self):
+        return None
+
     def dump(self):
         return {
             'type': self.type,
@@ -321,13 +326,18 @@ class Xpub:
         self.xpub_receive = None
         self.xpub_change = None
 
-        # if these are None now, then it is the responsibility of the caller to
-        # also call self.add_derivation_prefix_and_root_fingerprint:
+        # "key origin" info:
         self._derivation_prefix = derivation_prefix  # note: subclass should persist this
         self._root_fingerprint = root_fingerprint  # note: subclass should persist this
 
     def get_master_public_key(self):
         return self.xpub
+
+    def get_master_public_key_with_origin_info(self):
+        assert self.xpub
+        return MasterKeyWithOriginInfo(xkey=self.xpub,
+                                       root_fingerprint=self.get_root_fingerprint(),
+                                       derivation_prefix=self.get_derivation_prefix()).to_text()
 
     def get_derivation_prefix(self) -> str:
         """Returns to bip32 path from some root node to self.xpub"""
@@ -342,9 +352,8 @@ class Xpub:
         assert self._root_fingerprint is not None, 'root_fingerprint should have been set already'
         return self._root_fingerprint
 
-    def add_derivation_prefix_and_root_fingerprint(self, *, derivation_prefix: str, root_node: BIP32Node):
+    def add_key_origin_from_root_node(self, *, derivation_prefix: str, root_node: BIP32Node):
         assert self.xpub
-        derivation_prefix = normalize_bip32_derivation(derivation_prefix)
         # try to derive ourselves from what we were given
         child_node1 = root_node.subkey_at_private_derivation(derivation_prefix)
         child_pubkey_bytes1 = child_node1.eckey.get_public_key_bytes(compressed=True)
@@ -352,14 +361,17 @@ class Xpub:
         child_pubkey_bytes2 = child_node2.eckey.get_public_key_bytes(compressed=True)
         if child_pubkey_bytes1 != child_pubkey_bytes2:
             raise Exception("(xpub, derivation_prefix, root_node) inconsistency")
-        # store
-        self._root_fingerprint = root_node.calc_fingerprint_of_this_node().hex().lower()
-        self._derivation_prefix = derivation_prefix
+        self.add_key_origin(derivation_prefix=derivation_prefix,
+                            root_fingerprint=root_node.calc_fingerprint_of_this_node().hex().lower())
 
-    def reset_derivation_prefix(self):
+    def add_key_origin(self, *, derivation_prefix: str, root_fingerprint: str):
         assert self.xpub
-        self._derivation_prefix = 'm'
-        self._root_fingerprint = BIP32Node.from_xkey(self.xpub).calc_fingerprint_of_this_node().hex().lower()
+        self._root_fingerprint = root_fingerprint
+        self._derivation_prefix = normalize_bip32_derivation(derivation_prefix)
+        xkey_with_info = MasterKeyWithOriginInfo(xkey=self.xpub,
+                                                 root_fingerprint=self._root_fingerprint,
+                                                 derivation_prefix=self._derivation_prefix)
+        assert xkey_with_info.is_consistent()
 
     def derive_pubkey(self, for_change, n) -> str:
         for_change = int(for_change)
@@ -427,20 +439,20 @@ class BIP32_KeyStore(Deterministic_KeyStore, Xpub):
     def is_watching_only(self):
         return self.xprv is None
 
-    def add_xpub(self, xpub, *, default_der_prefix=True):
+    def add_xpub(self, xpub):
+        assert is_xpub(xpub)
         self.xpub = xpub
-        if default_der_prefix:
-            self.reset_derivation_prefix()
 
-    def add_xprv(self, xprv, *, default_der_prefix=True):
+    def add_xprv(self, xprv):
+        assert is_xprv(xprv)
         self.xprv = xprv
-        self.add_xpub(bip32.xpub_from_xprv(xprv), default_der_prefix=default_der_prefix)
+        self.add_xpub(bip32.xpub_from_xprv(xprv))
 
     def add_xprv_from_seed(self, bip32_seed, xtype, derivation):
         rootnode = BIP32Node.from_rootseed(bip32_seed, xtype=xtype)
         node = rootnode.subkey_at_private_derivation(derivation)
-        self.add_xprv(node.to_xprv(), default_der_prefix=False)
-        self.add_derivation_prefix_and_root_fingerprint(derivation_prefix=derivation, root_node=rootnode)
+        self.add_xprv(node.to_xprv())
+        self.add_key_origin_from_root_node(derivation_prefix=derivation, root_node=rootnode)
 
     def get_private_key(self, sequence, password):
         xprv = self.get_master_private_key(password)
@@ -552,6 +564,9 @@ class Old_KeyStore(Deterministic_KeyStore):
         self.check_seed(seed)
 
     def get_master_public_key(self):
+        return self.mpk
+
+    def get_master_public_key_with_origin_info(self):
         return self.mpk
 
     def get_derivation_prefix(self) -> str:
@@ -714,16 +729,17 @@ PURPOSE48_SCRIPT_TYPES_INV = inv_dict(PURPOSE48_SCRIPT_TYPES)
 
 def xtype_from_derivation(derivation: str) -> str:
     """Returns the script type to be used for this derivation."""
-    if derivation.startswith("m/84'"):
-        return 'p2wpkh'
-    elif derivation.startswith("m/49'"):
-        return 'p2wpkh-p2sh'
-    elif derivation.startswith("m/44'"):
-        return 'standard'
-    elif derivation.startswith("m/45'"):
-        return 'standard'
-
     bip32_indices = convert_bip32_path_to_list_of_uint32(derivation)
+    if len(bip32_indices) >= 1:
+        if bip32_indices[0] == 84 + BIP32_PRIME:
+            return 'p2wpkh'
+        elif bip32_indices[0] == 49 + BIP32_PRIME:
+            return 'p2wpkh-p2sh'
+        elif bip32_indices[0] == 44 + BIP32_PRIME:
+            return 'standard'
+        elif bip32_indices[0] == 45 + BIP32_PRIME:
+            return 'standard'
+
     if len(bip32_indices) >= 4:
         if bip32_indices[0] == 48 + BIP32_PRIME:
             # m / purpose' / coin_type' / account' / script_type' / change / address_index
@@ -766,7 +782,7 @@ def load_keystore(storage, name) -> KeyStore:
 
 def is_old_mpk(mpk: str) -> bool:
     try:
-        int(mpk, 16)
+        int(mpk, 16)  # test if hex string
     except:
         return False
     if len(mpk) != 128:
@@ -800,16 +816,30 @@ def is_private_key_list(text, *, allow_spaces_inside_key=True, raise_on_error=Fa
                                  raise_on_error=raise_on_error))
 
 
-is_mpk = lambda x: is_old_mpk(x) or is_xpub(x)
-is_private = lambda x: is_seed(x) or is_xprv(x) or is_private_key_list(x)
-is_master_key = lambda x: is_old_mpk(x) or is_xprv(x) or is_xpub(x)
-is_private_key = lambda x: is_xprv(x) or is_private_key_list(x)
-is_bip32_key = lambda x: is_xprv(x) or is_xpub(x)
+def is_master_key(x, *, allow_optional_key_origin=True):
+    if is_old_mpk(x):
+        return True
+    if is_bip32_key(x, allow_optional_key_origin=allow_optional_key_origin):
+        return True
+    return False
+
+
+def is_bip32_key(x, *, allow_optional_key_origin=True):
+    if is_xprv(x):
+        return True
+    if is_xpub(x):
+        return True
+    if allow_optional_key_origin:
+        xkey_with_info = MasterKeyWithOriginInfo.from_text(x)
+        if xkey_with_info is not None:
+            return True
+    return False
 
 
 def bip44_derivation(account_id, bip43_purpose=44):
     coin = constants.net.BIP44_COIN_TYPE
-    return "m/%d'/%d'/%d'" % (bip43_purpose, coin, int(account_id))
+    der = "m/%d'/%d'/%d'" % (bip43_purpose, coin, int(account_id))
+    return normalize_bip32_derivation(der)
 
 
 def purpose48_derivation(account_id: int, xtype: str) -> str:
@@ -820,7 +850,8 @@ def purpose48_derivation(account_id: int, xtype: str) -> str:
     script_type_int = PURPOSE48_SCRIPT_TYPES.get(xtype)
     if script_type_int is None:
         raise Exception('unknown xtype: {}'.format(xtype))
-    return "m/%d'/%d'/%d'/%d'" % (bip43_purpose, coin, account_id, script_type_int)
+    der = "m/%d'/%d'/%d'/%d'" % (bip43_purpose, coin, account_id, script_type_int)
+    return normalize_bip32_derivation(der)
 
 
 def from_seed(seed, passphrase, is_p2sh=False):
@@ -857,21 +888,118 @@ def from_old_mpk(mpk):
 
 def from_xpub(xpub):
     k = BIP32_KeyStore({})
-    k.add_xpub(xpub)
+    xkey_with_info = MasterKeyWithOriginInfo.from_text(xpub, force=True)
+    k.add_xpub(xkey_with_info.xkey)
+    k.add_key_origin(derivation_prefix=xkey_with_info.derivation_prefix,
+                     root_fingerprint=xkey_with_info.root_fingerprint)
     return k
 
 def from_xprv(xprv):
     k = BIP32_KeyStore({})
-    k.add_xprv(xprv)
+    xkey_with_info = MasterKeyWithOriginInfo.from_text(xprv, force=True)
+    k.add_xprv(xkey_with_info.xkey)
+    k.add_key_origin(derivation_prefix=xkey_with_info.derivation_prefix,
+                     root_fingerprint=xkey_with_info.root_fingerprint)
     return k
 
 def from_master_key(text):
-    if is_xprv(text):
-        k = from_xprv(text)
-    elif is_old_mpk(text):
-        k = from_old_mpk(text)
-    elif is_xpub(text):
-        k = from_xpub(text)
-    else:
-        raise BitcoinException('Invalid master key')
-    return k
+    if is_old_mpk(text):
+        return from_old_mpk(text)
+    xkey_with_info = MasterKeyWithOriginInfo.from_text(text, force=True)
+    if is_xprv(xkey_with_info.xkey):
+        return from_xprv(text)
+    if is_xpub(xkey_with_info.xkey):
+        return from_xpub(text)
+    raise BitcoinException('Invalid master key')
+
+
+class MasterKeyWithOriginInfo(NamedTuple):
+    xkey: str
+    root_fingerprint: str
+    derivation_prefix: str
+
+    @classmethod
+    def from_text(cls, text: str, *, force: bool = False) -> Optional['MasterKeyWithOriginInfo']:
+        if is_bip32_key(text, allow_optional_key_origin=False):
+            return MasterKeyWithOriginInfo.from_just_xkey(text, force=force)
+        root_fingerprint = None
+        derivation_prefix = None
+        origin_match = re.search(r"\[(.*)\]", text)
+        xkey = text
+        if origin_match:
+            origin = origin_match.group(1)
+            match = re.search(r"^([0-9a-fA-F]{8})(/.*)", origin)
+            if match:
+                root_fingerprint = match.group(1)
+                if not bytes.fromhex(root_fingerprint):
+                    return None
+                derivation_prefix = match.group(2)
+                try:
+                    derivation_prefix = normalize_bip32_derivation("m" + derivation_prefix)
+                except Exception:
+                    return None
+            xkey = text[origin_match.span()[1]:]
+        if not is_bip32_key(xkey, allow_optional_key_origin=False):
+            return None
+        assert root_fingerprint is not None
+        assert derivation_prefix is not None
+        xkey_with_info = MasterKeyWithOriginInfo(xkey=xkey,
+                                                 root_fingerprint=root_fingerprint,
+                                                 derivation_prefix=derivation_prefix)
+        if xkey_with_info is not None and not xkey_with_info.is_consistent():
+            #return None
+            raise Exception('inconsistent master key and key origin info')
+        return xkey_with_info
+
+    @classmethod
+    def from_just_xkey(cls, xkey: str, *, force: bool = False) -> Optional['MasterKeyWithOriginInfo']:
+        if not is_bip32_key(xkey, allow_optional_key_origin=False):
+            raise Exception(f"given xkey is not a valid bip32 extended key: {xkey}")
+        bip32node = BIP32Node.from_xkey(xkey)
+        if bip32node.depth == 0:
+            return MasterKeyWithOriginInfo(xkey=xkey,
+                                           root_fingerprint=bip32node.calc_fingerprint_of_this_node().hex(),
+                                           derivation_prefix='m')
+        if bip32node.depth == 1:
+            child_number_int = int.from_bytes(bip32node.child_number, 'big')
+            return MasterKeyWithOriginInfo(xkey=xkey,
+                                           root_fingerprint=bip32node.fingerprint.hex(),
+                                           derivation_prefix=f'm/{child_number_int}')
+        if not force:
+            return None
+        # "force" enabled. information is missing... convert the xkey to a root node
+        bip32node = bip32node._replace(depth=0,
+                                       fingerprint=b'\x00'*4,
+                                       child_number=b'\x00'*4)
+        return MasterKeyWithOriginInfo(xkey=bip32node.to_xkey(),
+                                       root_fingerprint=bip32node.calc_fingerprint_of_this_node().hex(),
+                                       derivation_prefix='m')
+
+    def to_text(self) -> str:
+        if self.root_fingerprint is None or self.derivation_prefix is None:
+            return self.xkey
+        bip32node = BIP32Node.from_xkey(self.xkey)
+        if bip32node.depth in (0, 1):  # TODO maybe also show key origin for depth == 1 ??
+            return self.xkey
+        assert self.derivation_prefix.startswith("m/")
+        derivation_prefix = normalize_bip32_derivation(self.derivation_prefix)
+        derivation_prefix = derivation_prefix[1:]
+        return f"[{self.root_fingerprint}{derivation_prefix}]{self.xkey}"
+
+    def is_consistent(self) -> bool:
+        bip32node = BIP32Node.from_xkey(self.xkey)
+        int_path = convert_bip32_path_to_list_of_uint32(self.derivation_prefix)
+        if len(int_path) != bip32node.depth:
+            return False
+        if bip32node.depth == 0:
+            if bfh(self.root_fingerprint) != bip32node.calc_fingerprint_of_this_node():
+                return False
+            if bip32node.child_number != bytes(4):
+                return False
+        else:
+            if int.from_bytes(bip32node.child_number, 'big') != int_path[-1]:
+                return False
+        if bip32node.depth == 1:
+            if bfh(self.root_fingerprint) != bip32node.fingerprint:
+                return False
+        return True

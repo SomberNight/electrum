@@ -3,7 +3,7 @@
 # file LICENCE or http://www.opensource.org/licenses/mit-license.php
 
 import hashlib
-from typing import List, Tuple, NamedTuple, Union, Iterable
+from typing import List, Tuple, NamedTuple, Union, Iterable, Sequence
 
 from .util import bfh, bh2u, BitcoinException
 from . import constants
@@ -335,7 +335,7 @@ def convert_bip32_path_to_list_of_uint32(n: str) -> List[int]:
     return path
 
 
-def convert_bip32_intpath_to_strpath(path: List[int]) -> str:
+def convert_bip32_intpath_to_strpath(path: Sequence[int]) -> str:
     s = "m/"
     for child_index in path:
         if not isinstance(child_index, int):

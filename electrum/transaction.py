@@ -1452,7 +1452,8 @@ class PartialTransaction(Transaction):
                         raise SerializationError(f"duplicate key: {repr(kt)}")
                     xfp, path = unpack_bip32_root_fingerprint_and_int_path(val)
                     if bip32node.depth != len(path):
-                        raise SerializationError(f"PSBT global xpub has mismatching depth and derivation prefix len")
+                        raise SerializationError(f"PSBT global xpub has mismatching depth ({bip32node.depth}) "
+                                                 f"and derivation prefix len ({len(path)})")
                     child_number_of_xpub = int.from_bytes(bip32node.child_number, 'big')
                     if not ((bip32node.depth == 0 and child_number_of_xpub == 0)
                             or (bip32node.depth != 0 and child_number_of_xpub == path[-1])):

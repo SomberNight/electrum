@@ -2414,7 +2414,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, Logger):
     def show_wallet_info(self):
         dialog = WindowModalDialog(self, _("Wallet Information"))
         dialog.setMinimumSize(500, 100)
-        mpk_list = self.wallet.get_master_public_keys()
+        mpk_list = self.wallet.get_master_public_keys_with_origin_info()
         vbox = QVBoxLayout()
         wallet_type = self.wallet.storage.get('wallet_type', '')
         if self.wallet.is_watching_only():

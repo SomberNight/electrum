@@ -718,7 +718,7 @@ class ElectrumWindow(App):
         elif name == 'status':
             popup = Builder.load_file('electrum/gui/kivy/uix/ui_screens/'+name+'.kv')
             master_public_keys_layout = popup.ids.master_public_keys
-            for xpub in self.wallet.get_master_public_keys()[1:]:
+            for xpub in self.wallet.get_master_public_keys_with_origin_info()[1:]:
                 master_public_keys_layout.add_widget(TopLabel(text=_('Master Public Key')))
                 ref = RefLabel()
                 ref.name = _('Master Public Key')

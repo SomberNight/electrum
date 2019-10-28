@@ -318,6 +318,15 @@ class Abstract_Wallet(AddressSynchronizer):
     def get_master_public_key(self):
         return None
 
+    def get_master_public_key_with_origin_info(self):
+        return None
+
+    def get_master_public_keys(self):
+        return []
+
+    def get_master_public_keys_with_origin_info(self):
+        return []
+
     def basename(self) -> str:
         return os.path.basename(self.storage.path)
 
@@ -1776,9 +1785,6 @@ class Imported_Wallet(Simple_Wallet):
     def is_change(self, address):
         return False
 
-    def get_master_public_keys(self):
-        return []
-
     def is_beyond_limit(self, address):
         return False
 
@@ -2091,6 +2097,9 @@ class Deterministic_Wallet(Abstract_Wallet):
     def get_master_public_keys(self):
         return [self.get_master_public_key()]
 
+    def get_master_public_keys_with_origin_info(self):
+        return [self.get_master_public_key_with_origin_info()]
+
     def get_fingerprint(self):
         return self.get_master_public_key()
 
@@ -2120,6 +2129,9 @@ class Simple_Deterministic_Wallet(Simple_Wallet, Deterministic_Wallet):
 
     def get_master_public_key(self):
         return self.keystore.get_master_public_key()
+
+    def get_master_public_key_with_origin_info(self):
+        return self.keystore.get_master_public_key_with_origin_info()
 
     def derive_pubkeys(self, c, i):
         return self.keystore.derive_pubkey(c, i)
@@ -2227,8 +2239,14 @@ class Multisig_Wallet(Deterministic_Wallet):
     def get_master_public_key(self):
         return self.keystore.get_master_public_key()
 
+    def get_master_public_key_with_origin_info(self):
+        return self.keystore.get_master_public_key_with_origin_info()
+
     def get_master_public_keys(self):
         return [k.get_master_public_key() for k in self.get_keystores()]
+
+    def get_master_public_keys_with_origin_info(self):
+        return [k.get_master_public_key_with_origin_info() for k in self.get_keystores()]
 
     def get_fingerprint(self):
         return ''.join(sorted(self.get_master_public_keys()))

@@ -450,24 +450,38 @@ class JsonDB(Logger):
         if not self._is_upgrade_method_needed(19, 19):
             return
 
-        from .bip32 import BIP32Node
+        from .bip32 import BIP32Node, convert_bip32_intpath_to_strpath
         for ks_name in ('keystore', *['x{}/'.format(i) for i in range(1, 16)]):
             ks = self.get(ks_name, None)
             if ks is None: continue
             xpub = ks.get('xpub', None)
             if xpub is None: continue
+            bip32node = BIP32Node.from_xkey(xpub)
             # derivation prefix
-            derivation_prefix = ks.get('derivation', 'm')
-            ks['derivation'] = derivation_prefix
+            derivation_prefix = ks.get('derivation', None)
+            if derivation_prefix is None:
+                assert bip32node.depth >= 0, bip32node.depth
+                if bip32node.depth == 0:
+                    derivation_prefix = 'm'
+                else:
+                    child_number_int = int.from_bytes(bip32node.child_number, 'big')
+                    path_ints = [0xffff_ffff] * (bip32node.depth - 1) + [child_number_int]
+                    if bip32node.depth > 1:
+                        ks['is_fake_derivation'] = True
+                    derivation_prefix = convert_bip32_intpath_to_strpath(path_ints)
+                ks['derivation'] = derivation_prefix
             # root fingerprint
             root_fingerprint = ks.get('ckcc_xfp', None)
             if root_fingerprint is not None:
                 root_fingerprint = root_fingerprint.to_bytes(4, byteorder="little", signed=False).hex().lower()
             if root_fingerprint is None:
-                # if we don't have prior data, we set it to the fp of the xpub
-                # EVEN IF there was already a derivation prefix saved different than 'm'
-                node = BIP32Node.from_xkey(xpub)
-                root_fingerprint = node.calc_fingerprint_of_this_node().hex().lower()
+                if bip32node.depth == 0:
+                    root_fingerprint = bip32node.calc_fingerprint_of_this_node().hex().lower()
+                elif bip32node.depth == 1:
+                    root_fingerprint = bip32node.fingerprint.hex()
+                else:
+                    root_fingerprint = bip32node.calc_fingerprint_of_this_node().hex().lower()
+                    ks['is_fake_root_fingerprint'] = True
             ks['root_fingerprint'] = root_fingerprint
             ks.pop('ckcc_xfp', None)
             self.put(ks_name, ks)

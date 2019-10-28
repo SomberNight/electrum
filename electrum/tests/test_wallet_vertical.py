@@ -384,7 +384,7 @@ class TestWalletKeystoreAddressIntegrityForMainnet(ElectrumTestCase):
         # bip39 seed: pulse mixture jazz invite dune enrich minor weapon mosquito flight fly vapor
         # der: m/49'/0'/0'
         # NOTE: there is currently no bip43 standard derivation path for p2wsh-p2sh
-        ks1 = keystore.from_xprv('YprvAUXFReVvDjrPerocC3FxVH748sJUTvYjkAhtKop5VnnzVzMEHr1CHrYQKZwfJn1As3X4LYMav6upxd5nDiLb6SCjRZrBH76EFvyQAG4cn79')
+        ks1 = keystore.from_xprv("[30cf1be5/49'/0'/0']YprvAUXFReVvDjrPerocC3FxVH748sJUTvYjkAhtKop5VnnzVzMEHr1CHrYQKZwfJn1As3X4LYMav6upxd5nDiLb6SCjRZrBH76EFvyQAG4cn79")
         self.assertTrue(isinstance(ks1, keystore.BIP32_KeyStore))
         self.assertEqual(ks1.xpub, 'Ypub6hWbqA2p47QgsLt5J4nxrR3ngu8xsPGb7PdV8CDh48KyNngNqPKSqertAqYhQ4umELu1UsZUCYfj9XPA6AdSMZWDZQobwF7EJ8uNrECaZg1')
 
@@ -472,7 +472,7 @@ class TestWalletKeystoreAddressIntegrityForTestnet(TestCaseForTestnet):
         # bip39 seed: finish seminar arrange erosion sunny coil insane together pretty lunch lunch rose
         # der: m/49'/1'/0'
         # NOTE: there is currently no bip43 standard derivation path for p2wsh-p2sh
-        ks1 = keystore.from_xprv('Uprv9BEixD3As2LK5h6G2SNT3cTqbZpsWYPceKTSuVAm1yuSybxSvQz2MV1o8cHTtctQmj4HAenb3eh5YJv4YRZjv35i8fofVnNbs4Dd2B4i5je')
+        ks1 = keystore.from_xprv("[920dbedd/49'/1'/0']Uprv9BEixD3As2LK5h6G2SNT3cTqbZpsWYPceKTSuVAm1yuSybxSvQz2MV1o8cHTtctQmj4HAenb3eh5YJv4YRZjv35i8fofVnNbs4Dd2B4i5je")
         self.assertTrue(isinstance(ks1, keystore.BIP32_KeyStore))
         self.assertEqual(ks1.xpub, 'Upub5QE5Mia4hPtcJBAj8TuTQkQa9bfMv17U1YP3hsaNaKSRrQHbTxJGuHLGyv3MbKZixuPyjfXGUdbTjE4KwyFcX8YD7PX5ybTDbP11UT8UpZR')
 
