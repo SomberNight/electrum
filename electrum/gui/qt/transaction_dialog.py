@@ -33,7 +33,7 @@ from typing import TYPE_CHECKING
 from PyQt5.QtCore import QSize, Qt
 from PyQt5.QtGui import QTextCharFormat, QBrush, QFont
 from PyQt5.QtWidgets import (QDialog, QLabel, QPushButton, QHBoxLayout, QVBoxLayout,
-                             QTextEdit, QFrame)
+                             QTextEdit, QFrame, QAction, QToolButton, QMenu)
 import qrcode
 from qrcode import exceptions
 
@@ -115,16 +115,21 @@ class TxDialog(QDialog, MessageBoxMixin):
 
         self.add_tx_stats(vbox)
         vbox.addSpacing(10)
-        self.add_io(vbox)
+
+        self.inputs_header = QLabel()
+        vbox.addWidget(self.inputs_header)
+        self.inputs_textedit = QTextEditWithDefaultSize()
+        vbox.addWidget(self.inputs_textedit)
+        self.outputs_header = QLabel()
+        vbox.addWidget(self.outputs_header)
+        self.outputs_textedit = QTextEditWithDefaultSize()
+        vbox.addWidget(self.outputs_textedit)
 
         self.sign_button = b = QPushButton(_("Sign"))
         b.clicked.connect(self.sign)
 
         self.broadcast_button = b = QPushButton(_("Broadcast"))
         b.clicked.connect(self.do_broadcast)
-
-        self.merge_sigs_button = b = QPushButton(_("Merge sigs from"))
-        b.clicked.connect(self.merge_sigs)
 
         self.save_button = b = QPushButton(_("Save"))
         save_button_disabled = not tx.is_complete()
@@ -148,10 +153,22 @@ class TxDialog(QDialog, MessageBoxMixin):
 
         self.copy_button = CopyButton(lambda: str(self.tx), parent.app)
 
+        partial_tx_actions_menu = QMenu()
+        ptx_merge_sigs_action = QAction(_("Merge signatures from"), self)
+        ptx_merge_sigs_action.triggered.connect(self.merge_sigs)
+        partial_tx_actions_menu.addAction(ptx_merge_sigs_action)
+        ptx_join_txs_action = QAction(_("Join inputs/outputs"), self)
+        ptx_join_txs_action.triggered.connect(self.join_tx_with_another)
+        partial_tx_actions_menu.addAction(ptx_join_txs_action)
+        self.partial_tx_actions_button = QToolButton()
+        self.partial_tx_actions_button.setText(_("Combine with other"))
+        self.partial_tx_actions_button.setMenu(partial_tx_actions_menu)
+        self.partial_tx_actions_button.setPopupMode(QToolButton.InstantPopup)
+
         # Action buttons
         self.buttons = []
         if isinstance(tx, PartialTransaction):
-            self.buttons.append(self.merge_sigs_button)
+            self.buttons.append(self.partial_tx_actions_button)
         self.buttons += [self.sign_button, self.broadcast_button, self.cancel_button]
         # Transaction sharing buttons
         self.sharing_buttons = [self.copy_button, self.qr_button, self.export_button, self.save_button]
@@ -247,7 +264,9 @@ class TxDialog(QDialog, MessageBoxMixin):
     def merge_sigs(self):
         if not isinstance(self.tx, PartialTransaction):
             return
-        text = text_dialog(self, _('Input raw transaction'), _("Transaction:"), _("Load transaction"))
+        text = text_dialog(self, _('Input raw transaction'),
+                           _("Transaction to merge signatures from") + ":",
+                           _("Load transaction"))
         if not text:
             return
         tx = self.main_window.tx_from_text(text)
@@ -260,7 +279,26 @@ class TxDialog(QDialog, MessageBoxMixin):
             return
         self.update()
 
+    def join_tx_with_another(self):
+        if not isinstance(self.tx, PartialTransaction):
+            return
+        text = text_dialog(self, _('Input raw transaction'),
+                           _("Transaction to join with") + " (" + _("add inputs and outputs") + "):",
+                           _("Load transaction"))
+        if not text:
+            return
+        tx = self.main_window.tx_from_text(text)
+        if not tx:
+            return
+        try:
+            self.tx.join_with_other_psbt(tx)
+        except Exception as e:
+            self.show_error(_("Error joining partial transactions") + ":\n" + repr(e))
+            return
+        self.update()
+
     def update(self):
+        self.update_io()
         desc = self.desc
         base_unit = self.main_window.base_unit()
         format_amount = self.main_window.format_amount
@@ -320,8 +358,8 @@ class TxDialog(QDialog, MessageBoxMixin):
         self.size_label.setText(size_str)
         run_hook('transaction_dialog_update', self)
 
-    def add_io(self, vbox):
-        vbox.addWidget(QLabel(_("Inputs") + ' (%d)'%len(self.tx.inputs())))
+    def update_io(self):
+        self.inputs_header.setText(_("Inputs") + ' (%d)'%len(self.tx.inputs()))
         ext = QTextCharFormat()
         rec = QTextCharFormat()
         rec.setBackground(QBrush(ColorScheme.GREEN.as_color(background=True)))
@@ -343,7 +381,8 @@ class TxDialog(QDialog, MessageBoxMixin):
         def format_amount(amt):
             return self.main_window.format_amount(amt, whitespaces=True)
 
-        i_text = QTextEditWithDefaultSize()
+        i_text = self.inputs_textedit
+        i_text.clear()
         i_text.setFont(QFont(MONOSPACE_FONT))
         i_text.setReadOnly(True)
         cursor = i_text.textCursor()
@@ -362,9 +401,9 @@ class TxDialog(QDialog, MessageBoxMixin):
                     cursor.insertText(format_amount(txin.value_sats()), ext)
             cursor.insertBlock()
 
-        vbox.addWidget(i_text)
-        vbox.addWidget(QLabel(_("Outputs") + ' (%d)'%len(self.tx.outputs())))
-        o_text = QTextEditWithDefaultSize()
+        self.outputs_header.setText(_("Outputs") + ' (%d)'%len(self.tx.outputs()))
+        o_text = self.outputs_textedit
+        o_text.clear()
         o_text.setFont(QFont(MONOSPACE_FONT))
         o_text.setReadOnly(True)
         cursor = o_text.textCursor()
@@ -375,7 +414,6 @@ class TxDialog(QDialog, MessageBoxMixin):
                 cursor.insertText('\t', ext)
                 cursor.insertText(format_amount(v), ext)
             cursor.insertBlock()
-        vbox.addWidget(o_text)
 
     def add_tx_stats(self, vbox):
         hbox_stats = QHBoxLayout()
