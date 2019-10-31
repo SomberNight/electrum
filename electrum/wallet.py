@@ -318,6 +318,9 @@ class Abstract_Wallet(AddressSynchronizer):
     def get_master_public_key(self):
         return None
 
+    def get_master_public_keys(self):
+        return []
+
     def basename(self) -> str:
         return os.path.basename(self.storage.path)
 
@@ -1316,7 +1319,7 @@ class Abstract_Wallet(AddressSynchronizer):
             if not txout.pubkeys or len(txout.pubkeys) != len(txout.bip32_paths):
                 pubkey_deriv_info = self.get_public_keys_with_deriv_info(address)
                 txout.pubkeys = sorted([bfh(pk) for pk in list(pubkey_deriv_info)])
-                for pubkey_hex in pubkey_deriv_info:
+                for pubkey_hex in pubkey_deriv_info:  # TODO (also; this is copy-paste between inputs and outputs...)
                     ks, der_suffix = pubkey_deriv_info[pubkey_hex]
                     xfp_bytes = bfh(ks.get_root_fingerprint())
                     der_prefix = bip32.convert_bip32_path_to_list_of_uint32(ks.get_derivation_prefix())
@@ -1776,9 +1779,6 @@ class Imported_Wallet(Simple_Wallet):
     def is_change(self, address):
         return False
 
-    def get_master_public_keys(self):
-        return []
-
     def is_beyond_limit(self, address):
         return False
 
@@ -2020,7 +2020,7 @@ class Deterministic_Wallet(Abstract_Wallet):
         assert self.is_mine(address)
         pubkey_deriv_info = self.get_public_keys_with_deriv_info(address)
         txin.pubkeys = sorted([bfh(pk) for pk in list(pubkey_deriv_info)])
-        for pubkey_hex in pubkey_deriv_info:
+        for pubkey_hex in pubkey_deriv_info:  # TODO
             ks, der_suffix = pubkey_deriv_info[pubkey_hex]
             xfp_bytes = bfh(ks.get_root_fingerprint())
             der_prefix = bip32.convert_bip32_path_to_list_of_uint32(ks.get_derivation_prefix())

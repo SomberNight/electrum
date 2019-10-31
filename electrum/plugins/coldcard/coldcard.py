@@ -570,7 +570,7 @@ class ColdcardPlugin(HW_PluginBase):
         xpubs = []
         derivs = set()
         for xpub, ks in zip(wallet.get_master_public_keys(), wallet.get_keystores()):
-            der_prefix = ks.get_derivation_prefix()
+            der_prefix = ks.get_derivation_prefix()  # TODO
             xpubs.append( (ks.get_root_fingerprint(), xpub, der_prefix) )
             derivs.add(der_prefix)
 
@@ -613,7 +613,7 @@ class ColdcardPlugin(HW_PluginBase):
             xfp_paths = []
             for pubkey_hex in pubkey_deriv_info:
                 ks, der_suffix = pubkey_deriv_info[pubkey_hex]
-                xfp_int = xfp_int_for_keystore(ks)
+                xfp_int = xfp_int_for_keystore(ks)  # TODO
                 der_prefix = bip32.convert_bip32_path_to_list_of_uint32(ks.get_derivation_prefix())
                 der_full = der_prefix + list(der_suffix)
                 xfp_paths.append([xfp_int] + der_full)
