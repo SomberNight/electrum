@@ -174,6 +174,8 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, Logger):
 
         self.completions = QStringListModel()
 
+        coincontrol_sb = self.create_coincontrol_statusbar()
+
         self.tabs = tabs = QTabWidget(self)
         self.send_tab = self.create_send_tab()
         self.receive_tab = self.create_receive_tab()
@@ -202,7 +204,14 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, Logger):
         add_optional_tab(tabs, self.console_tab, read_QIcon("tab_console.png"), _("Con&sole"), "console")
 
         tabs.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        self.setCentralWidget(tabs)
+
+        central_widget = QWidget()
+        vbox = QVBoxLayout(central_widget)
+        vbox.setContentsMargins(0, 0, 0, 0)
+        vbox.addWidget(tabs)
+        vbox.addWidget(coincontrol_sb)
+
+        self.setCentralWidget(central_widget)
 
         if self.config.get("is_maximized"):
             self.showMaximized()
@@ -1947,6 +1956,28 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, Logger):
         sb.addPermanentWidget(self.status_button)
         run_hook('create_status_bar', sb)
         self.setStatusBar(sb)
+
+    def create_coincontrol_statusbar(self):
+        self.coincontrol_sb = sb = QStatusBar()
+        sb.setSizeGripEnabled(False)
+        sb.setFixedHeight(3 * char_width_in_lineedit())
+        sb.setStyleSheet('QStatusBar::item {border: None;} '
+                         + ColorScheme.GREEN.as_stylesheet(True))
+        self.coincontrol_label = label = QLabel()
+        label.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
+        label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        sb.addWidget(label)
+
+        sb.setVisible(False)
+        return sb
+
+    def set_coincontrol_msg(self, msg: Optional[str]) -> None:
+        if not msg:
+            self.coincontrol_label.setText("")
+            self.coincontrol_sb.setVisible(False)
+            return
+        self.coincontrol_label.setText(msg)
+        self.coincontrol_sb.setVisible(True)
 
     def update_lock_icon(self):
         icon = read_QIcon("lock.png") if self.wallet.has_password() else read_QIcon("unlock.png")

@@ -84,6 +84,10 @@ class UTXOList(MyTreeView):
         amount_str = self.parent.format_amount_and_units(amount)
         num_outputs_str = _("{} outputs available ({} total)").format(len(coins), len(utxos))
         self.cc_label.setText(f'{num_outputs_str}, {amount_str}')
+        if self.spend_list:
+            self.parent.set_coincontrol_msg(_("Coin control active") + f': {num_outputs_str}, {amount_str}')
+        else:
+            self.parent.set_coincontrol_msg(None)
 
     def insert_utxo(self, idx, utxo: PartialTxInput):
         address = utxo.address
