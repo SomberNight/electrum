@@ -55,7 +55,7 @@ from .bitcoin import (COIN, is_address, address_to_script,
                       is_minikey, relayfee, dust_threshold)
 from .crypto import sha256d
 from . import keystore
-from .keystore import load_keystore, Hardware_KeyStore, KeyStore
+from .keystore import load_keystore, Hardware_KeyStore, KeyStore, KeyStoreWithMPK
 from .util import multisig_type
 from .storage import StorageEncryptionVersion, WalletStorage
 from . import transaction, bitcoin, coinchooser, paymentrequest, ecc, bip32
@@ -454,7 +454,7 @@ class Abstract_Wallet(AddressSynchronizer):
     def get_public_keys(self, address):
         return [self.get_public_key(address)]
 
-    def get_public_keys_with_deriv_info(self, address: str) -> Dict[str, Tuple[KeyStore, Sequence[int]]]:
+    def get_public_keys_with_deriv_info(self, address: str) -> Dict[str, Tuple[KeyStoreWithMPK, Sequence[int]]]:
         """Returns a map: pubkey_hex -> (keystore, derivation_suffix)"""
         return {}
 
@@ -973,6 +973,7 @@ class Abstract_Wallet(AddressSynchronizer):
         max_change = self.max_change_outputs if self.multiple_change else 1
         return change_addrs[:max_change]
 
+    @profiler
     def make_unsigned_transaction(self, *, coins: Sequence[PartialTxInput],
                                   outputs: List[PartialTxOutput], fee=None,
                                   change_addr: str = None, is_sweep=False) -> PartialTransaction:
