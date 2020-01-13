@@ -1,6 +1,8 @@
 trezor[hidapi]>=0.11.5
-safet[hidapi]>=0.1.0
 keepkey>=6.3.1
 btchip-python>=0.1.26
 ckcc-protocol>=0.7.7
 hidapi
+
+# safet:
+git+git://github.com/SomberNight/python-trezor.git@1080a26f538ca6a3a22a3d1cc3ea0af907d72b91#egg=safet
