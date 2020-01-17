@@ -303,7 +303,7 @@ if __name__ == '__main__':
     # config is an object passed to the various constructors (wallet, interface, gui)
     if is_android:
         config_options = {
-            'verbosity': '',
+            'verbosity': '*',
             'cmd': 'gui',
             'gui': 'kivy',
         }
