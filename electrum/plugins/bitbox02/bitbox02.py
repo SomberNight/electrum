@@ -351,6 +351,11 @@ class BitBox02Client(HardwareClientBase):
         for txin in tx.inputs():
             _, full_path = keystore.find_my_pubkey_in_txinout(txin)
 
+            if full_path is None:
+                raise Exception(
+                    "A wallet owned pubkey was not found in the transaction input to be signed"
+                )
+
             inputs.append(
                 {
                     "prev_out_hash": txin.prevout.txid[::-1],
@@ -365,10 +370,6 @@ class BitBox02Client(HardwareClientBase):
                 tx_script_type = txin.script_type
             elif tx_script_type != txin.script_type:
                 raise Exception("Cannot mix different input script types")
-        if full_path is None:
-            raise Exception(
-                "A wallet owned pubkey was not found in the transaction input to be signed"
-            )
 
         if tx_script_type == "p2wpkh":
             tx_script_type = bitbox02.btc.BTCScriptConfig(
