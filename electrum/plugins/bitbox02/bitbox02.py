@@ -81,13 +81,9 @@ class BitBox02Client(HardwareClientBase):
             pass
 
     def has_usable_connection_with_device(self) -> bool:
-        bitboxes = devices.get_any_bitbox02s()
-        if not bitboxes:
-            return False
-        for bitbox in bitboxes:
-            if bitbox["path"] == self.device_descriptor.path:
-                return True
-        return False
+        if self.bitbox_hid_info is None:
+                return False
+        return True
 
     def pairing_dialog(self, wizard: bool = True):
         def pairing_step(code):

@@ -650,9 +650,8 @@ class DeviceMgr(ThreadJob):
                 if len(id_) == 0:
                     id_ = str(d['path'])
                 id_ += str(interface_number) + str(usage_page)
-                # BitBox02 provides two hid interfaces, the second interface is used for u2f and not relevant here
-                if d["product_id"] == 0x2403 and d["interface_number"] == 1:
-                    continue
+                # The BitBox02's product_id is not unique per device, thus use the path instead to
+                # distinguish devices.
                 if d["product_id"] == 0x2403:
                     id_ = d['path']
                 devices.append(Device(path=d['path'],
