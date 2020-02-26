@@ -35,9 +35,6 @@ from ..hw_wallet.qt import QtHandlerBase, QtPluginBase
 from ..hw_wallet.plugin import only_hook_if_libraries_available, LibraryFoundButUnusable
 
 
-CC_DEBUG = False
-
-
 class Plugin(BitBox02Plugin, QtPluginBase):
     icon_unpaired = "bitbox02_unpaired.png"
     icon_paired = "bitbox02.png"
@@ -61,14 +58,6 @@ class Plugin(BitBox02Plugin, QtPluginBase):
 
                 device_name = "{} ({})".format(self.device, keystore.label)
                 menu.addAction(_("Show on {}").format(device_name), show_address)
-
-    @hook
-    def transaction_dialog(self, dia: TxDialog):
-        # if not a BitBox02 wallet, hide feature
-        if not any(
-            type(ks) == self.keystore_class for ks in dia.wallet.get_keystores()
-        ):
-            return
 
     @only_hook_if_libraries_available
     @hook

@@ -432,7 +432,7 @@ def address_to_script(addr: str, *, net=None) -> str:
         raise BitcoinException(f'unknown address type: {addrtype}')
     return script
 
-def address_to_hash(addr: str, *, net=None) -> [int, bytes]:
+def address_to_hash(addr: str, *, net=None) -> Tuple[int, bytes]:
     """Return the pubkey hash / witness program of an address"""
     if net is None: net = constants.net
     if not is_address(addr, net=net):
