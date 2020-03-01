@@ -15,7 +15,7 @@ from PyQt5.QtGui import (QFont, QColor, QCursor, QPixmap, QStandardItem,
                          QPalette, QIcon, QFontMetrics, QShowEvent)
 from PyQt5.QtCore import (Qt, QPersistentModelIndex, QModelIndex, pyqtSignal,
                           QCoreApplication, QItemSelectionModel, QThread,
-                          QSortFilterProxyModel, QSize, QLocale)
+                          QSortFilterProxyModel, QSize, QLocale, QAbstractItemModel)
 from PyQt5.QtWidgets import (QPushButton, QLabel, QMessageBox, QHBoxLayout,
                              QAbstractItemView, QVBoxLayout, QLineEdit,
                              QStyle, QDialog, QGroupBox, QButtonGroup, QRadioButton,
@@ -532,9 +532,24 @@ class MyTreeView(QTreeView):
     def current_item_user_role(self, col) -> Any:
         idx = self.selectionModel().currentIndex()
         idx = idx.sibling(idx.row(), col)
-        item = self.model().itemFromIndex(idx)
+        item = self.item_from_index(idx)
         if item:
             return item.data(Qt.UserRole)
+
+    def item_from_index(self, idx: QModelIndex) -> Optional[QStandardItem]:
+        model = self.model()
+        if isinstance(model, QSortFilterProxyModel):
+            idx = model.mapToSource(idx)
+            return model.sourceModel().itemFromIndex(idx)
+        else:
+            return model.itemFromIndex(idx)
+
+    def original_model(self) -> QAbstractItemModel:
+        model = self.model()
+        if isinstance(model, QSortFilterProxyModel):
+            return model.sourceModel()
+        else:
+            return model
 
     def set_current_idx(self, set_current: QPersistentModelIndex):
         if set_current:
@@ -547,8 +562,7 @@ class MyTreeView(QTreeView):
         if not isinstance(headers, dict):  # convert to dict
             headers = dict(enumerate(headers))
         col_names = [headers[col_idx] for col_idx in sorted(headers.keys())]
-        model = self.model()
-        model.setHorizontalHeaderLabels(col_names)
+        self.original_model().setHorizontalHeaderLabels(col_names)
         self.header().setStretchLastSection(False)
         for col_idx in headers:
             sm = QHeaderView.Stretch if col_idx == self.stretch_column else QHeaderView.ResizeToContents
@@ -660,8 +674,8 @@ class MyTreeView(QTreeView):
     def add_copy_menu(self, menu, idx):
         cc = menu.addMenu(_("Copy"))
         for column in self.Columns:
-            column_title = self.model().horizontalHeaderItem(column).text()
-            item_col = self.model().itemFromIndex(idx.sibling(idx.row(), column))
+            column_title = self.original_model().horizontalHeaderItem(column).text()
+            item_col = self.item_from_index(idx.sibling(idx.row(), column))
             clipboard_data = item_col.data(self.ROLE_CLIPBOARD_DATA)
             if clipboard_data is None:
                 clipboard_data = item_col.text().strip()
