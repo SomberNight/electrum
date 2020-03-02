@@ -27,7 +27,6 @@ import os
 import sys
 import copy
 import traceback
-import hashlib
 from functools import partial
 from typing import List, TYPE_CHECKING, Tuple, NamedTuple, Any, Dict, Optional, Union
 
@@ -46,8 +45,6 @@ from .simple_config import SimpleConfig
 from .plugin import Plugins, HardwarePluginLibraryUnavailable
 from .logging import Logger
 from .plugins.hw_wallet.plugin import OutdatedHwFirmwareException, HW_PluginBase
-from .crypto import hmac_oneshot
-
 
 if TYPE_CHECKING:
     from .plugin import DeviceInfo, BasePlugin

@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Dict, Tuple, Optional, List, Any
 
 from electrum import bip32, constants
 from electrum.i18n import _
-from electrum.keystore import Hardware_KeyStore
+from electrum.keystore import Hardware_KeyStore, Xpub
 from electrum.transaction import PartialTransaction
 from electrum.wallet import Standard_Wallet, Multisig_Wallet, Deterministic_Wallet
 from electrum.util import bh2u, UserFacingException
@@ -18,6 +18,7 @@ from electrum.crypto import hmac_oneshot
 from electrum.plugin import Device, DeviceInfo
 from electrum.simple_config import SimpleConfig
 from electrum.json_db import StoredDict
+from electrum.storage import get_derivation_used_for_hw_device_encryption
 
 import electrum.bitcoin as bitcoin
 import electrum.ecc as ecc
@@ -50,6 +51,7 @@ class BitBox02Client(HardwareClientBase):
         self.handler = handler
         self.device_descriptor = device
         self.config = config
+        self.bitbox_hid_info = None
         if self.config.get("bitbox02") is None:
             bitbox02_config: dict = {
                 "remote_static_noise_keys": [],
@@ -178,11 +180,17 @@ class BitBox02Client(HardwareClientBase):
             )
         return self.bitbox02_device.check_firmware_version()
 
-    def coin_network_from_bip32_list(self, keypath: List[int]) -> int:
-        if len(keypath) > 2:
-            if keypath[1] == 1 + HARDENED:
-                return bitbox02.btc.TBTC
+    def coin_network_from_electrum_network(self) -> int:
+        if constants.net.TESTNET:
+            return bitbox02.btc.TBTC
         return bitbox02.btc.BTC
+
+    def get_password_for_storage_encryption(self) -> str:
+        derivation = get_derivation_used_for_hw_device_encryption()
+        derivation_list = bip32.convert_bip32_path_to_list_of_uint32(derivation)
+        xpub = self.bitbox02_device.electrum_encryption_key(derivation_list)
+        node = bip32.BIP32Node.from_xkey(xpub, net = constants.BitcoinMainnet()).subkey_at_public_derivation(())
+        return node.eckey.get_public_key_bytes(compressed=True).hex()
 
     def get_xpub(self, bip32_path: str, xtype: str, display: bool = False) -> str:
         if self.bitbox02_device is None:
@@ -199,7 +207,7 @@ class BitBox02Client(HardwareClientBase):
             )
 
         xpub_keypath = bip32.convert_bip32_path_to_list_of_uint32(bip32_path)
-        coin_network = self.coin_network_from_bip32_list(xpub_keypath)
+        coin_network = self.coin_network_from_electrum_network()
 
         if xtype == "p2wpkh":
             if coin_network == bitbox02.btc.BTC:
@@ -295,7 +303,7 @@ class BitBox02Client(HardwareClientBase):
             )
 
         address_keypath = bip32.convert_bip32_path_to_list_of_uint32(bip32_path)
-        coin_network = self.coin_network_from_bip32_list(address_keypath)
+        coin_network = self.coin_network_from_electrum_network()
 
         if address_type == "p2wpkh":
             script_config = bitbox02.btc.BTCScriptConfig(
@@ -524,14 +532,6 @@ class BitBox02_KeyStore(Hardware_KeyStore):
         except Exception as e:
             self.logger.exception("")
             self.handler.show_error(e)
-
-    def get_password_for_storage_encryption(self) -> str:
-        """Overload the usual "password" generation"""
-        client = self.get_client()
-        xpub = client.get_xpub("m/84'/1'/0'", "p2wpkh")
-        password = hmac_oneshot(b"electrum_password_lulz", bitcoin.DecodeBase58Check(xpub), hashlib.sha512).hex()
-        return password
-
 
 class BitBox02Plugin(HW_PluginBase):
     keystore_class = BitBox02_KeyStore
