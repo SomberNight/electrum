@@ -446,9 +446,6 @@ class Channel(Logger):
             raise PaymentFailure(f"HTLC value over protocol maximum: {amount_msat} > {LN_MAX_HTLC_VALUE_MSAT} msat")
 
         # check proposer can afford htlc
-        # TODO both sides need to afford (due to fees...)
-        #      see https://github.com/ElementsProject/lightning/blob/af7e87930878117a0633bb7a8cd4488b8e9c5b6d/channeld/full_channel.c#L588
-        #      see https://github.com/ACINQ/eclair/blob/eae113f0988069044dc268d8a7f16728563baa5f/eclair-core/src/main/scala/fr/acinq/eclair/channel/Commitments.scala#L192
         if self.available_to_spend(htlc_proposer) < amount_msat:
             raise PaymentFailure(
                 f'Not enough local balance. Have: {self.available_to_spend(htlc_proposer)}, Need: {amount_msat}')
@@ -722,6 +719,7 @@ class Channel(Logger):
         """
         This balance in mSAT, which includes the value of
         pending outgoing HTLCs, is used in the UI.
+        This value
         """
         assert type(whose) is HTLCOwner
         if ctn is None:
@@ -739,20 +737,20 @@ class Channel(Logger):
         return htlcsum(self.hm.htlcs_by_direction(ctx_owner, direction, ctn).values())
 
     def available_to_spend(self, subject: HTLCOwner) -> int:
-        """
-        This balance in mSAT, while technically correct, can
-        not be used in the UI cause it fluctuates (commit fee)
+        """The usable balance of 'subject' in msat, after taking reserve and fees into
+        consideration. Note that fees (and hence the result) fluctuate even without user interaction.
         """
         assert type(subject) is HTLCOwner
-        ctx_owner = subject.inverted()
-        chan_config = self.config[subject.inverted()]
+        sender = subject
+        receiver = subject.inverted()
+        ctx_owner = receiver
         ctn = self.get_next_ctn(ctx_owner)
-        balance_msat = self.balance_minus_outgoing_htlcs(whose=subject, ctx_owner=ctx_owner, ctn=ctn)
-        reserve_msat = chan_config.reserve_sat * 1000
+        sender_balance_msat = self.balance_minus_outgoing_htlcs(whose=sender, ctx_owner=ctx_owner, ctn=ctn)
+        receiver_balance_msat = self.balance_minus_outgoing_htlcs(whose=receiver, ctx_owner=ctx_owner, ctn=ctn)
+        sender_reserve_msat = self.config[receiver].reserve_sat * 1000
+        receiver_reserve_msat = self.config[sender].reserve_sat * 1000
         initiator = LOCAL if self.constraints.is_initiator else REMOTE
-        if subject != initiator:
-            return balance_msat - reserve_msat
-        # we are the initiator/funder, so we also need to pay on-chain fees
+        # the initiator/funder pays on-chain fees
         num_htlcs_in_ctx = len(self.included_htlcs(ctx_owner, SENT, ctn=ctn) + self.included_htlcs(ctx_owner, RECEIVED, ctn=ctn))
         feerate = self.get_feerate(ctx_owner, ctn=ctn)
         ctx_fees_msat = calc_fees_for_commitment_tx(
@@ -760,19 +758,30 @@ class Channel(Logger):
             feerate=feerate,
             is_local_initiator=self.constraints.is_initiator,
             round_to_sat=False,
-        )[subject]
-        # TODO stuck channels. extra funder reserve?
+        )
+        # Note: if this supposed new HTLC is large enough to create an output, the initiator needs to pay for that too.
+        # Crucially, if sender != initiator, both the sender and the receiver need to "afford" the payment.
+        htlc_fee_msat = fee_for_htlc_output(feerate=feerate)
+        # TODO stuck channels. extra funder reserve? "fee spike buffer"
         #      see https://github.com/lightningnetwork/lightning-rfc/issues/728
         #      and https://github.com/ACINQ/eclair/pull/1319
         # note: in terms of on-chain outputs, as we are considering the htlc_receiver's ctx, this is a "received" HTLC
-        htlc_trim_threshold = received_htlc_trim_threshold_sat(dust_limit_sat=chan_config.dust_limit_sat, feerate=feerate)
-        if balance_msat - reserve_msat - ctx_fees_msat < htlc_trim_threshold:
-            # htlc will be trimmed
-            return balance_msat - reserve_msat - ctx_fees_msat
+        # TODO but what about the other ctx? the trim threshold is different there,
+        #      so it could happen that the HTLC is only present in one of them!
+        htlc_trim_threshold_msat = received_htlc_trim_threshold_sat(dust_limit_sat=self.config[receiver].dust_limit_sat, feerate=feerate) * 1000
+        max_send_msat = sender_balance_msat - sender_reserve_msat - ctx_fees_msat[sender]
+        if max_send_msat < htlc_trim_threshold_msat:
+            # there will be no corresponding HTLC output
+            return max_send_msat
+        if sender == initiator:
+            max_send_after_htlc_fee_msat = max_send_msat - htlc_fee_msat
+            max_send_msat = max(htlc_trim_threshold_msat - 1, max_send_after_htlc_fee_msat)
+            return max_send_msat
         else:
-            # htlc will have an output in ctx, so need to pay for that too
-            htlc_fee_msat = fee_for_htlc_output(feerate=feerate)
-            return balance_msat - reserve_msat - ctx_fees_msat - htlc_fee_msat
+            # the receiver is the initiator, so they need to be able to pay tx fees
+            if receiver_balance_msat - receiver_reserve_msat - ctx_fees_msat[receiver] - htlc_fee_msat < 0:
+                return 0
+            return max_send_msat
 
     def included_htlcs(self, subject: HTLCOwner, direction: Direction, ctn: int = None) -> Sequence[UpdateAddHtlc]:
         """
@@ -925,7 +934,7 @@ class Channel(Logger):
         assert type(subject) is HTLCOwner
         feerate = self.get_feerate(subject, ctn)
         other = subject.inverted()
-        local_msat = self.balance(subject, ctx_owner=subject, ctn=ctn)
+        local_msat = self.balance(subject, ctx_owner=subject, ctn=ctn)  #
         remote_msat = self.balance(other, ctx_owner=subject, ctn=ctn)
         received_htlcs = self.hm.htlcs_by_direction(subject, RECEIVED, ctn).values()
         sent_htlcs = self.hm.htlcs_by_direction(subject, SENT, ctn).values()
