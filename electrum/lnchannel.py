@@ -958,13 +958,6 @@ class Channel(Logger):
             is_local_initiator=self.constraints.is_initiator == (subject == LOCAL),
         )
 
-        # TODO: we need to also include the respective channel reserves here, but not at the
-        #       beginning of the channel lifecycle when the reserve might not be met yet
-        if remote_msat - onchain_fees[REMOTE] < 0:
-            raise Exception(f"negative remote_msat in make_commitment: {remote_msat}")
-        if local_msat - onchain_fees[LOCAL] < 0:
-            raise Exception(f"negative local_msat in make_commitment: {local_msat}")
-
         if self.is_static_remotekey_enabled():
             payment_pubkey = other_config.payment_basepoint.pubkey
         else:
