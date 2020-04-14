@@ -243,7 +243,6 @@ class Network(Logger):
     interface: Optional[Interface]
     interfaces: Dict[ServerAddr, Interface]
     connecting: Set[ServerAddr]
-    server_queue: 'Optional[queue.Queue[ServerAddr]]'
     default_server: ServerAddr
     _recent_servers: List[ServerAddr]
 
@@ -311,7 +310,6 @@ class Network(Logger):
         self.interfaces = {}
         self.auto_connect = self.config.get('auto_connect', True)
         self.connecting = set()
-        self.server_queue = None
         self.proxy = None
 
         # Dump network messages (all interfaces).  Set at runtime from the console.
@@ -559,18 +557,6 @@ class Network(Logger):
             out = filter_noonion(out)
         return out
 
-    def _start_interface(self, server: ServerAddr):
-        if server in self.interfaces or server in self.connecting:
-            return
-        if server == self.default_server:
-            self.logger.info(f"connecting to {server} as new interface")
-            self._set_status('connecting')
-        self.connecting.add(server)
-        self.server_queue.put(server)
-        # update _last_tried_server
-        last_time, num_attempts = self._last_tried_server.get(server, (0, 0))
-        self._last_tried_server[server] = time.time(), num_attempts + 1
-
     def _can_retry_server(self, server: ServerAddr, *, now: float = None) -> bool:
         if now is None:
             now = time.time()
@@ -720,11 +706,11 @@ class Network(Logger):
         if old_server and old_server != server:
             await self._close_interface(old_interface)
             if len(self.interfaces) <= self.num_server:
-                self._start_interface(old_server)
+                await self.taskgroup.spawn(self._run_new_interface(old_server))
 
         if server not in self.interfaces:
             self.interface = None
-            self._start_interface(server)
+            await self.taskgroup.spawn(self._run_new_interface(server))
             return
 
         i = self.interfaces[server]
@@ -777,9 +763,19 @@ class Network(Logger):
             return request_type.RELAXED
         return request_type.NORMAL
 
-    @ignore_exceptions  # do not kill main_taskgroup
+    @ignore_exceptions  # do not kill outer taskgroup
     @log_exceptions
     async def _run_new_interface(self, server: ServerAddr):
+        if server in self.interfaces or server in self.connecting:
+            return
+        self.connecting.add(server)
+        if server == self.default_server:
+            self.logger.info(f"connecting to {server} as new interface")
+            self._set_status('connecting')
+        # update _last_tried_server
+        last_time, num_attempts = self._last_tried_server.get(server, (0, 0))
+        self._last_tried_server[server] = time.time(), num_attempts + 1
+
         interface = Interface(network=self, server=server, proxy=self.proxy)
         # note: using longer timeouts here as DNS can sometimes be slow!
         timeout = self.get_network_timeout_seconds(NetworkTimeout.Generic)
@@ -1164,14 +1160,13 @@ class Network(Logger):
         assert not self.taskgroup
         self.taskgroup = taskgroup = SilentTaskGroup()
         assert not self.interface and not self.interfaces
-        assert not self.connecting and not self.server_queue
+        assert not self.connecting
         self.logger.info('starting network')
         self._last_tried_server.clear()
         self.protocol = self.default_server.protocol
-        self.server_queue = queue.Queue()
         self._set_proxy(deserialize_proxy(self.config.get('proxy')))
         self._set_oneserver(self.config.get('oneserver', False))
-        self._start_interface(self.default_server)
+        await self.taskgroup.spawn(self._run_new_interface(self.default_server))
 
         async def main():
             self.logger.info("starting taskgroup.")
@@ -1211,7 +1206,6 @@ class Network(Logger):
         self.interface = None
         self.interfaces = {}
         self.connecting.clear()
-        self.server_queue = None
         if not full_shutdown:
             self.trigger_callback('network_updated')
 
@@ -1234,16 +1228,12 @@ class Network(Logger):
                 await self.switch_to_interface(self.default_server)
 
     async def _maintain_sessions(self):
-        async def launch_already_queued_up_new_interfaces():
-            while self.server_queue.qsize() > 0:
-                server = self.server_queue.get()
-                await self.taskgroup.spawn(self._run_new_interface(server))
-        async def maybe_queue_new_interfaces_to_be_launched_later():
+        async def maybe_start_new_interfaces():
             for i in range(self.num_server - len(self.interfaces) - len(self.connecting)):
                 # FIXME this should try to honour "healthy spread of connected servers"
                 server = self._get_next_server_to_try()
                 if server:
-                    self._start_interface(server)
+                    await self.taskgroup.spawn(self._run_new_interface(server))
         async def maintain_healthy_spread_of_connected_servers():
             with self.interfaces_lock: interfaces = list(self.interfaces.values())
             random.shuffle(interfaces)
@@ -1260,8 +1250,7 @@ class Network(Logger):
 
         while True:
             try:
-                await launch_already_queued_up_new_interfaces()
-                await maybe_queue_new_interfaces_to_be_launched_later()
+                await maybe_start_new_interfaces()
                 await maintain_healthy_spread_of_connected_servers()
                 await maintain_main_interface()
             except asyncio.CancelledError:
