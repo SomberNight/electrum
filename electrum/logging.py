@@ -73,7 +73,7 @@ electrum_logger = logging.getLogger("electrum")
 electrum_logger.setLevel(logging.DEBUG)
 
 
-def _delete_old_logs(path, keep=10):
+def _delete_old_logs(path, keep=50):
     files = sorted(list(pathlib.Path(path).glob("electrum_log_*.log")), reverse=True)
     for f in files[keep:]:
         os.remove(str(f))
@@ -233,7 +233,7 @@ def configure_logging(config):
     _configure_verbosity(verbosity=verbosity, verbosity_shortcuts=verbosity_shortcuts)
 
     is_android = 'ANDROID_DATA' in os.environ
-    if is_android or not config.get('log_to_file', False):
+    if False:
         pass  # disable file logging
     else:
         log_directory = pathlib.Path(config.path) / "logs"
