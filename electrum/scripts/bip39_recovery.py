@@ -26,13 +26,16 @@ async def account_discovery(mnemonic):
     gap_limit = 20
 
     node = keystore.from_bip39_seed(mnemonic, "", derivation_path)
-    pubkey = node.derive_pubkey(0, 0).hex()
-    scripthash = pubkey_to_scripthash(pubkey, "p2wpkh")
-    history = await network.get_history_for_scripthash(scripthash)
-    has_history = len(history) > 0
 
-    print("pubkey       ", pubkey)
-    print("has_history  ", has_history)
+    for index in range(gap_limit):
+        pubkey = node.derive_pubkey(0, index).hex()
+        scripthash = pubkey_to_scripthash(pubkey, "p2wpkh")
+        history = await network.get_history_for_scripthash(scripthash)
+        has_history = len(history) > 0
+
+        print("index        ", index)
+        print("pubkey       ", pubkey)
+        print("has_history  ", has_history)
 
 def pubkey_to_scripthash(pubkey, script_type):
     address = bitcoin.pubkey_to_address(script_type, pubkey)
