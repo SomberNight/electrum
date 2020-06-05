@@ -27,17 +27,18 @@ async def account_discovery(mnemonic):
 
     node = keystore.from_bip39_seed(mnemonic, "", derivation_path)
     pubkey = node.derive_pubkey(0, 0).hex()
-    address = bitcoin.pubkey_to_address('p2wpkh', pubkey)
-    script = bitcoin.address_to_script(address)
-    scripthash = bitcoin.script_to_scripthash(script)
+    scripthash = pubkey_to_scripthash(pubkey, "p2wpkh")
     history = await network.get_history_for_scripthash(scripthash)
     has_history = len(history) > 0
 
     print("pubkey       ", pubkey)
-    print("address      ", address)
-    print("script       ", script)
-    print("scripthash   ", scripthash)
     print("has_history  ", has_history)
+
+def pubkey_to_scripthash(pubkey, script_type):
+    address = bitcoin.pubkey_to_address(script_type, pubkey)
+    script = bitcoin.address_to_script(address)
+    scripthash = bitcoin.script_to_scripthash(script)
+    return scripthash
 
 @log_exceptions
 async def f():
