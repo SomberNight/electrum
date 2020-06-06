@@ -9,9 +9,21 @@ from electrum.simple_config import SimpleConfig
 from electrum.network import Network
 
 WALLET_FORMATS = [
-    {"derivation_path": "m/44'/0'/0'", "script_type": "p2pkh"},
-    {"derivation_path": "m/49'/0'/0'", "script_type": "p2wpkh-p2sh"},
-    {"derivation_path": "m/84'/0'/0'", "script_type": "p2wpkh"},
+    {
+        "description": "Standard legacy (BIP44) path",
+        "derivation_path": "m/44'/0'/0'",
+        "script_type": "p2pkh",
+    },
+    {
+        "description": "Standard p2sh segwit (BIP49) path",
+        "derivation_path": "m/49'/0'/0'",
+        "script_type": "p2wpkh-p2sh",
+    },
+    {
+        "description": "Standard native segwit (BIP84) path",
+        "derivation_path": "m/84'/0'/0'",
+        "script_type": "p2wpkh",
+    },
 ]
 
 try:
@@ -57,7 +69,11 @@ async def f():
         active_accounts = await account_discovery(mnemonic)
         print(f'Found {len(active_accounts)} active accounts')
         for account in active_accounts:
-            print(account["derivation_path"], account["script_type"])
+            print(
+                account["description"],
+                account["derivation_path"],
+                account["script_type"],
+            )
     finally:
         stopping_fut.set_result(1)
 
