@@ -39,7 +39,7 @@ config = SimpleConfig()
 network = Network(config)
 network.start()
 
-async def account_discovery(mnemonic, passphrase):
+async def account_discovery(mnemonic, passphrase=""):
     active_accounts = []
     for account in WALLET_FORMATS:
         node = keystore.from_bip39_seed(mnemonic, passphrase, account["derivation_path"])
