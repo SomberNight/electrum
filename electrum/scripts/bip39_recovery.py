@@ -76,10 +76,7 @@ async def account_discovery(mnemonic, passphrase=""):
             })
             if not wallet_format["iterate_accounts"]:
                 break
-            try:
-                account_path = increment_bip32_path(account_path)
-            except:
-                break # Stop looping if we go out of range
+            account_path = increment_bip32_path(account_path)
     return active_accounts
 
 async def account_has_history(account_node, script_type):
