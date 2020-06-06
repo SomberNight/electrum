@@ -4,6 +4,7 @@ import sys
 import asyncio
 
 from electrum import keystore, bitcoin
+from electrum.bip32 import BIP32Node
 from electrum.util import json_encode, print_msg, create_and_start_event_loop, log_exceptions
 from electrum.simple_config import SimpleConfig
 from electrum.network import Network
@@ -28,7 +29,7 @@ async def f():
         print_msg(json_encode(active_accounts))
     finally:
         stopping_fut.set_result(1)
-        
+
 asyncio.run_coroutine_threadsafe(f(), loop)
 
 WALLET_FORMATS = [
@@ -50,18 +51,21 @@ WALLET_FORMATS = [
 ]
 
 async def account_discovery(mnemonic, passphrase=""):
+    k = keystore.from_bip39_seed(mnemonic, passphrase, "m")
+    root_node = BIP32Node.from_xkey(k.xprv)
     active_accounts = []
     for account in WALLET_FORMATS:
-        node = keystore.from_bip39_seed(mnemonic, passphrase, account["derivation_path"])
-        has_history = await account_has_history(node, account["script_type"]);
+        has_history = await account_has_history(root_node, account["derivation_path"], account["script_type"]);
         if has_history:
             active_accounts.append(account)
     return active_accounts
 
-async def account_has_history(node, script_type):
+async def account_has_history(root_node, derivation_path, script_type):
+    account_node = root_node.subkey_at_private_derivation(derivation_path)
+    account_keystore = keystore.from_xprv(account_node.to_xprv())
     gap_limit = 20
     for index in range(gap_limit):
-        pubkey = node.derive_pubkey(0, index).hex()
+        pubkey = account_keystore.derive_pubkey(0, index).hex()
         scripthash = pubkey_to_scripthash(pubkey, script_type)
         history = await network.get_history_for_scripthash(scripthash)
         if len(history) > 0:
