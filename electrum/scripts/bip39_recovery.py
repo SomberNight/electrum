@@ -8,6 +8,36 @@ from electrum.util import create_and_start_event_loop, log_exceptions
 from electrum.simple_config import SimpleConfig
 from electrum.network import Network
 
+try:
+    mnemonic = sys.argv[1]
+    passphrase = sys.argv[2] if len(sys.argv) > 2 else ""
+except Exception:
+    print("usage: bip39_recovery <mnemonic> [<passphrase>]")
+    sys.exit(1)
+
+loop, stopping_fut, loop_thread = create_and_start_event_loop()
+
+config = SimpleConfig()
+network = Network(config)
+network.start()
+
+@log_exceptions
+async def f():
+    try:
+        print("Scanning...")
+        active_accounts = await account_discovery(mnemonic, passphrase)
+        print(f"Found {len(active_accounts)} active accounts")
+        for account in active_accounts:
+            print(
+                account["description"],
+                account["derivation_path"],
+                account["script_type"],
+            )
+    finally:
+        stopping_fut.set_result(1)
+        
+asyncio.run_coroutine_threadsafe(f(), loop)
+
 WALLET_FORMATS = [
     {
         "description": "Standard legacy (BIP44) path",
@@ -25,19 +55,6 @@ WALLET_FORMATS = [
         "script_type": "p2wpkh",
     },
 ]
-
-try:
-    mnemonic = sys.argv[1]
-    passphrase = sys.argv[2] if len(sys.argv) > 2 else ""
-except Exception:
-    print("usage: bip39_recovery <mnemonic> [<passphrase>]")
-    sys.exit(1)
-
-loop, stopping_fut, loop_thread = create_and_start_event_loop()
-
-config = SimpleConfig()
-network = Network(config)
-network.start()
 
 async def account_discovery(mnemonic, passphrase=""):
     active_accounts = []
@@ -63,20 +80,3 @@ def pubkey_to_scripthash(pubkey, script_type):
     script = bitcoin.address_to_script(address)
     scripthash = bitcoin.script_to_scripthash(script)
     return scripthash
-
-@log_exceptions
-async def f():
-    try:
-        print("Scanning...")
-        active_accounts = await account_discovery(mnemonic, passphrase)
-        print(f"Found {len(active_accounts)} active accounts")
-        for account in active_accounts:
-            print(
-                account["description"],
-                account["derivation_path"],
-                account["script_type"],
-            )
-    finally:
-        stopping_fut.set_result(1)
-
-asyncio.run_coroutine_threadsafe(f(), loop)
