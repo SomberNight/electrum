@@ -64,8 +64,8 @@ async def account_has_history(root_node, derivation_path, script_type):
     account_node = root_node.subkey_at_private_derivation(derivation_path)
     account_keystore = keystore.from_xprv(account_node.to_xprv())
     gap_limit = 20
-    for index in range(gap_limit):
-        scripthash = derive_scripthash(account_keystore, index, script_type)
+    for address_index in range(gap_limit):
+        scripthash = derive_scripthash(account_keystore, address_index, script_type)
         history = await network.get_history_for_scripthash(scripthash)
         if len(history) > 0:
             return True
