@@ -65,14 +65,14 @@ async def account_has_history(root_node, derivation_path, script_type):
     account_keystore = keystore.from_xprv(account_node.to_xprv())
     gap_limit = 20
     for index in range(gap_limit):
-        pubkey = account_keystore.derive_pubkey(0, index).hex()
-        scripthash = pubkey_to_scripthash(pubkey, script_type)
+        scripthash = derive_scripthash(account_keystore, index, script_type)
         history = await network.get_history_for_scripthash(scripthash)
         if len(history) > 0:
             return True
     return False
 
-def pubkey_to_scripthash(pubkey, script_type):
+def derive_scripthash(k, index, script_type):
+    pubkey = k.derive_pubkey(0, index).hex()
     address = bitcoin.pubkey_to_address(script_type, pubkey)
     script = bitcoin.address_to_script(address)
     scripthash = bitcoin.script_to_scripthash(script)
