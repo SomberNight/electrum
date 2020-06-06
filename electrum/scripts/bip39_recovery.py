@@ -28,8 +28,9 @@ WALLET_FORMATS = [
 
 try:
     mnemonic = sys.argv[1]
+    passphrase = sys.argv[2] if len(sys.argv) > 2 else ""
 except Exception:
-    print("usage: bip39_recovery <mnemonic>")
+    print("usage: bip39_recovery <mnemonic> [<passphrase>]")
     sys.exit(1)
 
 loop, stopping_fut, loop_thread = create_and_start_event_loop()
@@ -38,10 +39,10 @@ config = SimpleConfig()
 network = Network(config)
 network.start()
 
-async def account_discovery(mnemonic):
+async def account_discovery(mnemonic, passphrase):
     active_accounts = []
     for account in WALLET_FORMATS:
-        node = keystore.from_bip39_seed(mnemonic, "", account["derivation_path"])
+        node = keystore.from_bip39_seed(mnemonic, passphrase, account["derivation_path"])
         has_history = await account_has_history(node, account["script_type"]);
         if has_history:
             active_accounts.append(account)
@@ -67,7 +68,7 @@ def pubkey_to_scripthash(pubkey, script_type):
 async def f():
     try:
         print("Scanning...")
-        active_accounts = await account_discovery(mnemonic)
+        active_accounts = await account_discovery(mnemonic, passphrase)
         print(f"Found {len(active_accounts)} active accounts")
         for account in active_accounts:
             print(
