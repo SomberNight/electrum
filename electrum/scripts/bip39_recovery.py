@@ -8,6 +8,11 @@ from electrum.util import create_and_start_event_loop, log_exceptions
 from electrum.simple_config import SimpleConfig
 from electrum.network import Network
 
+WALLET_FORMATS = [
+    {"derivation_path": "m/44'/0'/0'", "script_type": "p2pkh"},
+    {"derivation_path": "m/49'/0'/0'", "script_type": "p2wpkh-p2sh"},
+    {"derivation_path": "m/84'/0'/0'", "script_type": "p2wpkh"},
+]
 
 try:
     mnemonic = sys.argv[1]
@@ -22,15 +27,11 @@ network = Network(config)
 network.start()
 
 async def account_discovery(mnemonic):
-    derivation_path = "m/84'/0'/0'"
-    script_type = "p2wpkh"
-
-    node = keystore.from_bip39_seed(mnemonic, "", derivation_path)
-
-    has_history = await account_has_history(node, script_type);
-
-    print("account:     ", derivation_path, script_type)
-    print("has_history: ", has_history)
+    for wallet in WALLET_FORMATS:
+        print("account:     ", wallet["derivation_path"], wallet["script_type"])
+        node = keystore.from_bip39_seed(mnemonic, "", wallet["derivation_path"])
+        has_history = await account_has_history(node, wallet["script_type"]);
+        print("has_history: ", has_history)
 
 async def account_has_history(node, script_type):
     gap_limit = 20
