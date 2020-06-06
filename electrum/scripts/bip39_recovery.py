@@ -57,7 +57,6 @@ async def f():
         active_accounts = await account_discovery(mnemonic)
         print(f'Found {len(active_accounts)} active accounts')
         for account in active_accounts:
-            print(account)
             print(account["derivation_path"], account["script_type"])
     finally:
         stopping_fut.set_result(1)
