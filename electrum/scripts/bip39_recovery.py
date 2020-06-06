@@ -37,16 +37,19 @@ WALLET_FORMATS = [
         "description": "Standard legacy",
         "derivation_path": "m/44'/0'/0'",
         "script_type": "p2pkh",
+        "iterate_accounts": True,
     },
     {
         "description": "Standard compatibility segwit",
         "derivation_path": "m/49'/0'/0'",
         "script_type": "p2wpkh-p2sh",
+        "iterate_accounts": True,
     },
     {
         "description": "Standard native segwit",
         "derivation_path": "m/84'/0'/0'",
         "script_type": "p2wpkh",
+        "iterate_accounts": True,
     },
 ]
 
@@ -58,20 +61,23 @@ async def account_discovery(mnemonic, passphrase=""):
         account_path = wallet_format["derivation_path"]
         while True:
             has_history = await account_has_history(root_node, account_path, wallet_format["script_type"]);
-            if has_history:
+            if not has_history:
+                break
+            description = wallet_format["description"]
+            if wallet_format["iterate_accounts"]:
                 account_index = account_path.split("/")[-1].replace("'", "")
-                description = f'{wallet_format["description"]} (Account {account_index})'
-                active_accounts.append({
-                    "description": description,
-                    "derivation_path": account_path,
-                    "script_type": wallet_format["script_type"],
-                })
-                try:
-                    account_path = increment_bip32_path(account_path)
-                except:
-                    # Stop looping if we go out of range
-                    break
-            else:
+                description = f'{description} (Account {account_index})'
+            active_accounts.append({
+                "description": description,
+                "derivation_path": account_path,
+                "script_type": wallet_format["script_type"],
+            })
+            if not wallet_format["iterate_accounts"]:
+                break
+            try:
+                account_path = increment_bip32_path(account_path)
+            except:
+                # Stop looping if we go out of range
                 break
     return active_accounts
 
