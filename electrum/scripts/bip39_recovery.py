@@ -67,7 +67,7 @@ def pubkey_to_scripthash(pubkey, script_type):
 async def f():
     try:
         active_accounts = await account_discovery(mnemonic)
-        print(f'Found {len(active_accounts)} active accounts')
+        print(f"Found {len(active_accounts)} active accounts")
         for account in active_accounts:
             print(
                 account["description"],
