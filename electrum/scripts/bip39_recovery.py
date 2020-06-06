@@ -27,11 +27,13 @@ network = Network(config)
 network.start()
 
 async def account_discovery(mnemonic):
-    for wallet in WALLET_FORMATS:
-        print("account:     ", wallet["derivation_path"], wallet["script_type"])
-        node = keystore.from_bip39_seed(mnemonic, "", wallet["derivation_path"])
-        has_history = await account_has_history(node, wallet["script_type"]);
-        print("has_history: ", has_history)
+    active_accounts = []
+    for account in WALLET_FORMATS:
+        node = keystore.from_bip39_seed(mnemonic, "", account["derivation_path"])
+        has_history = await account_has_history(node, account["script_type"]);
+        if has_history:
+            active_accounts.append(account)
+    return active_accounts
 
 async def account_has_history(node, script_type):
     gap_limit = 20
@@ -52,7 +54,11 @@ def pubkey_to_scripthash(pubkey, script_type):
 @log_exceptions
 async def f():
     try:
-        await account_discovery(mnemonic)
+        active_accounts = await account_discovery(mnemonic)
+        print(f'Found {len(active_accounts)} active accounts')
+        for account in active_accounts:
+            print(account)
+            print(account["derivation_path"], account["script_type"])
     finally:
         stopping_fut.set_result(1)
 
