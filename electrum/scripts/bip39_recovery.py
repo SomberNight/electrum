@@ -4,7 +4,7 @@ import sys
 import asyncio
 
 from electrum import keystore, bitcoin
-from electrum.bip32 import BIP32Node
+from electrum.bip32 import BIP32Node, convert_bip32_path_to_list_of_uint32, convert_bip32_intpath_to_strpath
 from electrum.util import json_encode, print_msg, create_and_start_event_loop, log_exceptions
 from electrum.simple_config import SimpleConfig
 from electrum.network import Network
@@ -34,17 +34,17 @@ asyncio.run_coroutine_threadsafe(f(), loop)
 
 WALLET_FORMATS = [
     {
-        "description": "Standard legacy (BIP44) path",
+        "description": "Standard legacy",
         "derivation_path": "m/44'/0'/0'",
         "script_type": "p2pkh",
     },
     {
-        "description": "Standard p2sh segwit (BIP49) path",
+        "description": "Standard compatibility segwit",
         "derivation_path": "m/49'/0'/0'",
         "script_type": "p2wpkh-p2sh",
     },
     {
-        "description": "Standard native segwit (BIP84) path",
+        "description": "Standard native segwit",
         "derivation_path": "m/84'/0'/0'",
         "script_type": "p2wpkh",
     },
@@ -54,10 +54,21 @@ async def account_discovery(mnemonic, passphrase=""):
     k = keystore.from_bip39_seed(mnemonic, passphrase, "m")
     root_node = BIP32Node.from_xkey(k.xprv)
     active_accounts = []
-    for account in WALLET_FORMATS:
-        has_history = await account_has_history(root_node, account["derivation_path"], account["script_type"]);
-        if has_history:
-            active_accounts.append(account)
+    for wallet_format in WALLET_FORMATS:
+        account_path = wallet_format["derivation_path"]
+        while True:
+            has_history = await account_has_history(root_node, account_path, wallet_format["script_type"]);
+            if has_history:
+                account_index = account_path.split("/")[-1].replace("'", "")
+                description = f'{wallet_format["description"]} (Account {account_index})'
+                active_accounts.append({
+                    "description": description,
+                    "derivation_path": account_path,
+                    "script_type": wallet_format["script_type"],
+                })
+                account_path = increment_bip32_path(account_path)
+            else:
+                break
     return active_accounts
 
 async def account_has_history(root_node, derivation_path, script_type):
@@ -77,3 +88,8 @@ def derive_scripthash(k, index, script_type):
     script = bitcoin.address_to_script(address)
     scripthash = bitcoin.script_to_scripthash(script)
     return scripthash
+
+def increment_bip32_path(path):
+    ints = convert_bip32_path_to_list_of_uint32(path)
+    ints[-1] = ints[-1] + 1
+    return convert_bip32_intpath_to_strpath(ints)
