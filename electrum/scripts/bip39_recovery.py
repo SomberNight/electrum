@@ -66,7 +66,11 @@ async def account_discovery(mnemonic, passphrase=""):
                     "derivation_path": account_path,
                     "script_type": wallet_format["script_type"],
                 })
-                account_path = increment_bip32_path(account_path)
+                try:
+                    account_path = increment_bip32_path(account_path)
+                except:
+                    # Stop looping if we go out of range
+                    break
             else:
                 break
     return active_accounts
