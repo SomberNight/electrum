@@ -66,6 +66,7 @@ def pubkey_to_scripthash(pubkey, script_type):
 @log_exceptions
 async def f():
     try:
+        print("Scanning...")
         active_accounts = await account_discovery(mnemonic)
         print(f"Found {len(active_accounts)} active accounts")
         for account in active_accounts:
