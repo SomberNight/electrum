@@ -52,6 +52,24 @@ WALLET_FORMATS = [
         "script_type": "p2wpkh",
         "iterate_accounts": True,
     },
+    {
+        "description": "Non-standard legacy",
+        "derivation_path": "m/0'",
+        "script_type": "p2pkh",
+        "iterate_accounts": True,
+    },
+    {
+        "description": "Non-standard compatibility segwit",
+        "derivation_path": "m/0'",
+        "script_type": "p2wpkh-p2sh",
+        "iterate_accounts": True,
+    },
+    {
+        "description": "Non-standard native segwit",
+        "derivation_path": "m/0'",
+        "script_type": "p2wpkh",
+        "iterate_accounts": True,
+    },
 ]
 
 async def account_discovery(mnemonic, passphrase=""):
