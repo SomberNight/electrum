@@ -34,19 +34,19 @@ asyncio.run_coroutine_threadsafe(f(), loop)
 
 WALLET_FORMATS = [
     {
-        "description": "Standard legacy",
+        "description": "Standard BIP44 legacy",
         "derivation_path": "m/44'/0'/0'",
         "script_type": "p2pkh",
         "iterate_accounts": True,
     },
     {
-        "description": "Standard compatibility segwit",
+        "description": "Standard BIP49 compatibility segwit",
         "derivation_path": "m/49'/0'/0'",
         "script_type": "p2wpkh-p2sh",
         "iterate_accounts": True,
     },
     {
-        "description": "Standard native segwit",
+        "description": "Standard BIP84 native segwit",
         "derivation_path": "m/84'/0'/0'",
         "script_type": "p2wpkh",
         "iterate_accounts": True,
