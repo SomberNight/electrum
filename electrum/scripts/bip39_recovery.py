@@ -77,8 +77,7 @@ async def account_discovery(mnemonic, passphrase=""):
             try:
                 account_path = increment_bip32_path(account_path)
             except:
-                # Stop looping if we go out of range
-                break
+                break # Stop looping if we go out of range
     return active_accounts
 
 async def account_has_history(root_node, derivation_path, script_type):
