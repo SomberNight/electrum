@@ -24,16 +24,16 @@ network.start()
 async def account_discovery(mnemonic):
     derivation_path = "m/84'/0'/0'"
     script_type = "p2wpkh"
-    gap_limit = 20
 
     node = keystore.from_bip39_seed(mnemonic, "", derivation_path)
 
-    has_history = await account_has_history(node, script_type, gap_limit);
+    has_history = await account_has_history(node, script_type);
 
-    print("account:     ", derivation_path, script_type, gap_limit)
+    print("account:     ", derivation_path, script_type)
     print("has_history: ", has_history)
 
-async def account_has_history(node, script_type, gap_limit):
+async def account_has_history(node, script_type):
+    gap_limit = 20
     for index in range(gap_limit):
         pubkey = node.derive_pubkey(0, index).hex()
         scripthash = pubkey_to_scripthash(pubkey, script_type)
