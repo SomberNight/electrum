@@ -3,7 +3,8 @@
 import sys
 import asyncio
 
-from electrum import keystore, bitcoin
+from electrum import bitcoin
+from electrum.keystore import bip39_to_seed
 from electrum.bip32 import BIP32Node, convert_bip32_path_to_list_of_uint32, convert_bip32_intpath_to_strpath
 from electrum.util import json_encode, print_msg, create_and_start_event_loop, log_exceptions
 from electrum.simple_config import SimpleConfig
@@ -54,13 +55,14 @@ WALLET_FORMATS = [
 ]
 
 async def account_discovery(mnemonic, passphrase=""):
-    k = keystore.from_bip39_seed(mnemonic, passphrase, "m")
-    root_node = BIP32Node.from_xkey(k.xprv)
+    seed = bip39_to_seed(mnemonic, passphrase)
+    root_node = BIP32Node.from_rootseed(seed, xtype="standard")
     active_accounts = []
     for wallet_format in WALLET_FORMATS:
         account_path = wallet_format["derivation_path"]
         while True:
-            has_history = await account_has_history(root_node, account_path, wallet_format["script_type"]);
+            account_node = root_node.subkey_at_private_derivation(account_path)
+            has_history = await account_has_history(account_node, wallet_format["script_type"]);
             if not has_history:
                 break
             description = wallet_format["description"]
@@ -80,23 +82,18 @@ async def account_discovery(mnemonic, passphrase=""):
                 break # Stop looping if we go out of range
     return active_accounts
 
-async def account_has_history(root_node, derivation_path, script_type):
-    account_node = root_node.subkey_at_private_derivation(derivation_path)
-    account_keystore = keystore.from_xprv(account_node.to_xprv())
+async def account_has_history(account_node, script_type):
     gap_limit = 20
     for address_index in range(gap_limit):
-        scripthash = derive_scripthash(account_keystore, address_index, script_type)
+        address_node = account_node.subkey_at_public_derivation("0/" + str(address_index))
+        pubkey = address_node.eckey.get_public_key_hex()
+        address = bitcoin.pubkey_to_address(script_type, pubkey)
+        script = bitcoin.address_to_script(address)
+        scripthash = bitcoin.script_to_scripthash(script)
         history = await network.get_history_for_scripthash(scripthash)
         if len(history) > 0:
             return True
     return False
-
-def derive_scripthash(k, index, script_type):
-    pubkey = k.derive_pubkey(0, index).hex()
-    address = bitcoin.pubkey_to_address(script_type, pubkey)
-    script = bitcoin.address_to_script(address)
-    scripthash = bitcoin.script_to_scripthash(script)
-    return scripthash
 
 def increment_bip32_path(path):
     ints = convert_bip32_path_to_list_of_uint32(path)
