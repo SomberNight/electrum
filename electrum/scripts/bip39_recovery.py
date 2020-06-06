@@ -4,7 +4,7 @@ import sys
 import asyncio
 
 from electrum import keystore, bitcoin
-from electrum.util import create_and_start_event_loop, log_exceptions
+from electrum.util import json_encode, print_msg, create_and_start_event_loop, log_exceptions
 from electrum.simple_config import SimpleConfig
 from electrum.network import Network
 
@@ -24,15 +24,8 @@ network.start()
 @log_exceptions
 async def f():
     try:
-        print("Scanning...")
         active_accounts = await account_discovery(mnemonic, passphrase)
-        print(f"Found {len(active_accounts)} active accounts")
-        for account in active_accounts:
-            print(
-                account["description"],
-                account["derivation_path"],
-                account["script_type"],
-            )
+        print_msg(json_encode(active_accounts))
     finally:
         stopping_fut.set_result(1)
         
