@@ -70,6 +70,12 @@ WALLET_FORMATS = [
         "script_type": "p2wpkh",
         "iterate_accounts": True,
     },
+    {
+        "description": "Samourai Whirlpool post-mix ",
+        "derivation_path": "m/84'/0'/2147483646'",
+        "script_type": "p2wpkh",
+        "iterate_accounts": False,
+    },
 ]
 
 async def account_discovery(mnemonic, passphrase=""):
