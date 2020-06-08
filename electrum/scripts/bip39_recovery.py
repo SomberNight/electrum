@@ -30,6 +30,7 @@ async def f():
 
 asyncio.run_coroutine_threadsafe(f(), loop)
 
+# Expose the following as electrum.bip39_recovery
 from electrum import bitcoin
 from electrum.keystore import bip39_to_seed
 from electrum.bip32 import BIP32Node, convert_bip32_path_to_list_of_uint32, convert_bip32_intpath_to_strpath
