@@ -3,9 +3,6 @@
 import sys
 import asyncio
 
-from electrum import bitcoin
-from electrum.keystore import bip39_to_seed
-from electrum.bip32 import BIP32Node, convert_bip32_path_to_list_of_uint32, convert_bip32_intpath_to_strpath
 from electrum.util import json_encode, print_msg, create_and_start_event_loop, log_exceptions
 from electrum.simple_config import SimpleConfig
 from electrum.network import Network
@@ -32,6 +29,10 @@ async def f():
         stopping_fut.set_result(1)
 
 asyncio.run_coroutine_threadsafe(f(), loop)
+
+from electrum import bitcoin
+from electrum.keystore import bip39_to_seed
+from electrum.bip32 import BIP32Node, convert_bip32_path_to_list_of_uint32, convert_bip32_intpath_to_strpath
 
 WALLET_FORMATS = [
     {
