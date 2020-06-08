@@ -89,15 +89,8 @@ async def account_discovery(mnemonic, passphrase=""):
             account_node = root_node.subkey_at_private_derivation(account_path)
             has_history = await account_has_history(account_node, wallet_format["script_type"]);
             if has_history:
-                description = wallet_format["description"]
-                if wallet_format["iterate_accounts"]:
-                    account_index = account_path.split("/")[-1].replace("'", "")
-                    description = f'{description} (Account {account_index})'
-                active_accounts.append({
-                    "description": description,
-                    "derivation_path": account_path,
-                    "script_type": wallet_format["script_type"],
-                })
+                account = format_account(wallet_format, account_path)
+                active_accounts.append(account)
             if not has_history or not wallet_format["iterate_accounts"]:
                 break
             account_path = increment_bip32_path(account_path)
@@ -115,6 +108,17 @@ async def account_has_history(account_node, script_type):
         if len(history) > 0:
             return True
     return False
+
+def format_account(wallet_format, account_path):
+    description = wallet_format["description"]
+    if wallet_format["iterate_accounts"]:
+        account_index = account_path.split("/")[-1].replace("'", "")
+        description = f'{description} (Account {account_index})'
+    return {
+        "description": description,
+        "derivation_path": account_path,
+        "script_type": wallet_format["script_type"],
+    }
 
 def increment_bip32_path(path):
     ints = convert_bip32_path_to_list_of_uint32(path)
