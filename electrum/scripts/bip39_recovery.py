@@ -33,7 +33,7 @@ asyncio.run_coroutine_threadsafe(f(), loop)
 # Expose the following as electrum.bip39_recovery
 from electrum import bitcoin
 from electrum.keystore import bip39_to_seed
-from electrum.bip32 import BIP32Node, convert_bip32_path_to_list_of_uint32, convert_bip32_intpath_to_strpath
+from electrum.bip32 import BIP32_PRIME, BIP32Node, convert_bip32_path_to_list_of_uint32, convert_bip32_intpath_to_strpath
 
 WALLET_FORMATS = [
     {
@@ -85,7 +85,7 @@ async def account_discovery(mnemonic, passphrase=""):
     root_node = BIP32Node.from_rootseed(seed, xtype="standard")
     active_accounts = []
     for wallet_format in WALLET_FORMATS:
-        account_path = wallet_format["derivation_path"]
+        account_path = convert_bip32_path_to_list_of_uint32(wallet_format["derivation_path"])
         while True:
             account_node = root_node.subkey_at_private_derivation(account_path)
             has_history = await account_has_history(account_node, wallet_format["script_type"]);
@@ -94,7 +94,7 @@ async def account_discovery(mnemonic, passphrase=""):
                 active_accounts.append(account)
             if not has_history or not wallet_format["iterate_accounts"]:
                 break
-            account_path = increment_bip32_path(account_path)
+            account_path[-1] = account_path[-1] + 1
     return active_accounts
 
 async def account_has_history(account_node, script_type):
@@ -113,15 +113,12 @@ async def account_has_history(account_node, script_type):
 def format_account(wallet_format, account_path):
     description = wallet_format["description"]
     if wallet_format["iterate_accounts"]:
-        account_index = account_path.split("/")[-1].replace("'", "")
+        account_index = account_path[-1]
+        if account_index >= BIP32_PRIME:
+            account_index = account_index - BIP32_PRIME
         description = f'{description} (Account {account_index})'
     return {
         "description": description,
-        "derivation_path": account_path,
+        "derivation_path": convert_bip32_intpath_to_strpath(account_path),
         "script_type": wallet_format["script_type"],
     }
-
-def increment_bip32_path(path):
-    ints = convert_bip32_path_to_list_of_uint32(path)
-    ints[-1] = ints[-1] + 1
-    return convert_bip32_intpath_to_strpath(ints)
