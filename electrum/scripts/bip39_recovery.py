@@ -33,7 +33,9 @@ asyncio.run_coroutine_threadsafe(f(), loop)
 # Expose the following as electrum.bip39_recovery
 from electrum import bitcoin
 from electrum.keystore import bip39_to_seed
-from electrum.bip32 import BIP32_PRIME, BIP32Node, convert_bip32_path_to_list_of_uint32, convert_bip32_intpath_to_strpath
+from electrum.bip32 import BIP32_PRIME, BIP32Node
+from electrum.bip32 import convert_bip32_path_to_list_of_uint32 as bip32_str_to_ints
+from electrum.bip32 import convert_bip32_intpath_to_strpath as bip32_ints_to_str
 
 WALLET_FORMATS = [
     {
@@ -85,7 +87,7 @@ async def account_discovery(mnemonic, passphrase=""):
     root_node = BIP32Node.from_rootseed(seed, xtype="standard")
     active_accounts = []
     for wallet_format in WALLET_FORMATS:
-        account_path = convert_bip32_path_to_list_of_uint32(wallet_format["derivation_path"])
+        account_path = bip32_str_to_ints(wallet_format["derivation_path"])
         while True:
             account_node = root_node.subkey_at_private_derivation(account_path)
             has_history = await account_has_history(account_node, wallet_format["script_type"]);
@@ -119,6 +121,6 @@ def format_account(wallet_format, account_path):
         description = f'{description} (Account {account_index})'
     return {
         "description": description,
-        "derivation_path": convert_bip32_intpath_to_strpath(account_path),
+        "derivation_path": bip32_ints_to_str(account_path),
         "script_type": wallet_format["script_type"],
     }
