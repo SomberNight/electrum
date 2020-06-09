@@ -23,7 +23,7 @@ network.start()
 @log_exceptions
 async def f():
     try:
-        active_accounts = await account_discovery(mnemonic, passphrase)
+        active_accounts = await account_discovery(network, mnemonic, passphrase)
         print_msg(json_encode(active_accounts))
     finally:
         stopping_fut.set_result(1)
@@ -82,7 +82,7 @@ WALLET_FORMATS = [
     },
 ]
 
-async def account_discovery(mnemonic, passphrase=""):
+async def account_discovery(network, mnemonic, passphrase=""):
     seed = bip39_to_seed(mnemonic, passphrase)
     root_node = BIP32Node.from_rootseed(seed, xtype="standard")
     active_accounts = []
@@ -90,7 +90,7 @@ async def account_discovery(mnemonic, passphrase=""):
         account_path = bip32_str_to_ints(wallet_format["derivation_path"])
         while True:
             account_node = root_node.subkey_at_private_derivation(account_path)
-            has_history = await account_has_history(account_node, wallet_format["script_type"]);
+            has_history = await account_has_history(network, account_node, wallet_format["script_type"]);
             if has_history:
                 account = format_account(wallet_format, account_path)
                 active_accounts.append(account)
@@ -99,7 +99,7 @@ async def account_discovery(mnemonic, passphrase=""):
             account_path[-1] = account_path[-1] + 1
     return active_accounts
 
-async def account_has_history(account_node, script_type):
+async def account_has_history(network, account_node, script_type):
     gap_limit = 20
     for address_index in range(gap_limit):
         address_node = account_node.subkey_at_public_derivation("0/" + str(address_index))
