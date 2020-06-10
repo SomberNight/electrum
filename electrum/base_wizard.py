@@ -429,7 +429,7 @@ class BaseWizard(Logger):
             ]
         while True:
             try:
-                self.choice_and_line_dialog(
+                self.derivation_and_script_type_gui_specific_dialog(
                     run_next=f, title=_('Script type and Derivation path'), message1=message1,
                     message2=message2, choices=choices, test_text=is_bip32_derivation,
                     default_choice_idx=default_choice_idx)
