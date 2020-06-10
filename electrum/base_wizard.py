@@ -492,7 +492,11 @@ class BaseWizard(Logger):
     def on_restore_seed(self, seed, is_bip39, is_ext):
         self.seed_type = 'bip39' if is_bip39 else mnemonic.seed_type(seed)
         if self.seed_type == 'bip39':
-            f = lambda passphrase: self.on_restore_bip39(seed, passphrase)
+            def f(passphrase):
+                # TODO: Check with @SomberNight if this is ok
+                self.seed = seed
+                self.passphrase = passphrase
+                self.on_restore_bip39(seed, passphrase)
             self.passphrase_dialog(run_next=f, is_restoring=True) if is_ext else f('')
         elif self.seed_type in ['standard', 'segwit']:
             f = lambda passphrase: self.run('create_keystore', seed, passphrase)
