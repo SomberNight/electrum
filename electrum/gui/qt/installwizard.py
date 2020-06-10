@@ -608,6 +608,10 @@ class InstallWizard(QDialog, MessageBoxMixin, BaseWizard):
                                run_next, default_choice_idx: int=0) -> Tuple[str, str]:
         vbox = QVBoxLayout()
 
+        if self.seed_type == 'bip39' and self.wallet_type == 'standard':
+            button = QPushButton("Detect Existing Accounts")
+            vbox.addWidget(button, alignment=Qt.AlignLeft)
+
         c_values = [x[0] for x in choices]
         c_titles = [x[1] for x in choices]
         c_default_text = [x[2] for x in choices]
