@@ -82,7 +82,7 @@ async def account_has_history(network, account_node, script_type):
 def format_account(wallet_format, account_path):
     description = wallet_format["description"]
     if wallet_format["iterate_accounts"]:
-        account_index = (account_path[-1] | BIP32_PRIME) - BIP32_PRIME
+        account_index = account_path[-1] % BIP32_PRIME
         description = f'{description} (Account {account_index})'
     return {
         "description": description,
