@@ -99,8 +99,7 @@ jobs:
       script:
         - sudo docker run --name electrum-appimage-builder-cont -v $PWD:/opt/electrum --rm --workdir /opt/electrum/contrib/build-linux/appimage electrum-appimage-builder-img ./build.sh
       after_success: true
-    - if: branch = master
-      name: "tarball build"
+    - name: "tarball build"
       language: c
       python: false
       services:
