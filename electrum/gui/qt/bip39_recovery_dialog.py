@@ -12,9 +12,6 @@ from .util import WindowModalDialog, MessageBoxMixin, TaskThread, Buttons, Cance
 
 class Bip39RecoveryDialog(WindowModalDialog):
     def __init__(self, parent: QWidget, seed, passphrase):
-        assert parent
-        if isinstance(parent, MessageBoxMixin):
-            parent = parent.top_level_window()
         self.seed = seed
         self.passphrase = passphrase
         WindowModalDialog.__init__(self, parent, _('BIP39 Recovery'))
