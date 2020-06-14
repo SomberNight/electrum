@@ -31,8 +31,8 @@ class Bip39RecoveryDialog(WindowModalDialog):
 
     def recovery(self):
         network = Network.get_instance()
-        coro = account_discovery(network, self.seed, self.passphrase)
-        return network.run_from_another_thread(coro)
+        coroutine = account_discovery(network, self.seed, self.passphrase)
+        return network.run_from_another_thread(coroutine)
 
     def on_recovery_success(self, result):
         print("success", result)
