@@ -611,7 +611,7 @@ class InstallWizard(QDialog, MessageBoxMixin, BaseWizard):
 
         if self.seed_type == 'bip39':
             button = QPushButton("Detect Existing Accounts")
-            button.clicked.connect(lambda: Bip39RecoveryDialog(self))
+            button.clicked.connect(lambda: Bip39RecoveryDialog(self, self.seed, self.passphrase))
             vbox.addWidget(button, alignment=Qt.AlignLeft)
 
         c_values = [x[0] for x in choices]
