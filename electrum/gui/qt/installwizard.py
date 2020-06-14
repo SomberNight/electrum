@@ -26,8 +26,9 @@ from electrum.i18n import _
 from .seed_dialog import SeedLayout, KeysLayout
 from .network_dialog import NetworkChoiceLayout
 from .util import (MessageBoxMixin, Buttons, OkButton, CancelButton, icon_path, ChoicesLayout, WWLabel,
-                   InfoButton, char_width_in_lineedit, PasswordLineEdit, WindowModalDialog)
+                   InfoButton, char_width_in_lineedit, PasswordLineEdit)
 from .password_dialog import PasswordLayout, PasswordLayoutForHW, PW_NEW
+from .bip39_recovery_dialog import Bip39RecoveryDialog
 from electrum.plugin import run_hook, Plugins
 
 if TYPE_CHECKING:
@@ -610,14 +611,7 @@ class InstallWizard(QDialog, MessageBoxMixin, BaseWizard):
 
         if self.seed_type == 'bip39' and self.wallet_type == 'standard':
             def on_recovery_check():
-                d = WindowModalDialog(self, _('BIP39 Recovery'))
-                d.setMinimumWidth(400)
-                vbox = QVBoxLayout(d)
-                h = QGridLayout()
-                h.addWidget(QLabel(_('Loading...')))
-                vbox.addLayout(h)
-                vbox.addLayout(Buttons(CancelButton(d), OkButton(d)))
-                d.exec()
+                Bip39RecoveryDialog(self)
 
             button = QPushButton("Detect Existing Accounts")
             button.clicked.connect(on_recovery_check)
