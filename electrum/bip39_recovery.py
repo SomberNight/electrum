@@ -1,3 +1,7 @@
+# Copyright (C) 2020 The Electrum developers
+# Distributed under the MIT software license, see the accompanying
+# file LICENCE or http://www.opensource.org/licenses/mit-license.php
+
 from . import bitcoin
 from .keystore import bip39_to_seed
 from .bip32 import BIP32_PRIME, BIP32Node
