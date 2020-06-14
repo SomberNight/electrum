@@ -609,7 +609,7 @@ class InstallWizard(QDialog, MessageBoxMixin, BaseWizard):
                                run_next, default_choice_idx: int=0) -> Tuple[str, str]:
         vbox = QVBoxLayout()
 
-        if self.seed_type == 'bip39' and self.wallet_type == 'standard':
+        if self.seed_type == 'bip39':
             button = QPushButton("Detect Existing Accounts")
             button.clicked.connect(lambda: Bip39RecoveryDialog(self))
             vbox.addWidget(button, alignment=Qt.AlignLeft)
