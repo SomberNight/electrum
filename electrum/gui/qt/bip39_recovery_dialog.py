@@ -36,10 +36,9 @@ class Bip39RecoveryDialog(WindowModalDialog):
         self.content.addWidget(QLabel(_('Success!')))
         print("success", result)
 
-    def on_recovery_error(self, result):
+    def on_recovery_error(self, error):
         self.clear_content()
-        self.content.addWidget(QLabel(_('Error!')))
-        print("error", result)
+        self.content.addWidget(QLabel(_('Error: Account discovery failed.')))
 
     def clear_content(self):
         for i in reversed(range(self.content.count())):
