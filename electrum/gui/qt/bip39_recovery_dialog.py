@@ -17,7 +17,9 @@ class Bip39RecoveryDialog(WindowModalDialog):
         WindowModalDialog.__init__(self, parent, _('BIP39 Recovery'))
         self.setMinimumWidth(400)
         vbox = QVBoxLayout(self)
-        vbox.addWidget(QLabel(_('Loading...')))
+        self.content = QVBoxLayout()
+        self.content.addWidget(QLabel(_('Loading...')))
+        vbox.addLayout(self.content)
         vbox.addLayout(Buttons(CancelButton(self), OkButton(self)))
         self.show()
         self.thread = TaskThread(self)
@@ -30,7 +32,9 @@ class Bip39RecoveryDialog(WindowModalDialog):
         return network.run_from_another_thread(coroutine)
 
     def on_recovery_success(self, result):
+        self.content.addWidget(QLabel(_('Success!')))
         print("success", result)
 
     def on_recovery_error(self, result):
+        self.content.addWidget(QLabel(_('Error!')))
         print("error", result)
