@@ -2,7 +2,7 @@
 # Distributed under the MIT software license, see the accompanying
 # file LICENCE or http://www.opensource.org/licenses/mit-license.php
 
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QGridLayout, QLabel
+from PyQt5.QtWidgets import QWidget, QVBoxLayout, QGridLayout, QLabel, QListWidget
 
 from electrum.i18n import _
 from electrum.network import Network
@@ -37,6 +37,10 @@ class Bip39RecoveryDialog(WindowModalDialog):
             self.content.addWidget(QLabel(_('No existing accounts found.')))
             return
         self.content.addWidget(QLabel(_(f'{len(accounts)} existing accounts found.')))
+        list = QListWidget()
+        for i in range(len(accounts)):
+            list.insertItem(i, accounts[i]['description'])
+        self.content.addWidget(list)
 
     def on_recovery_error(self, error):
         self.clear_content()
