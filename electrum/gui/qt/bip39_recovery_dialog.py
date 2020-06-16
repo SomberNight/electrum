@@ -18,7 +18,7 @@ class Bip39RecoveryDialog(WindowModalDialog):
         self.setMinimumWidth(400)
         vbox = QVBoxLayout(self)
         self.content = QVBoxLayout()
-        self.content.addWidget(QLabel(_('Loading...')))
+        self.content.addWidget(QLabel(_('Scanning common paths for existing accounts...')))
         vbox.addLayout(self.content)
         vbox.addLayout(Buttons(CancelButton(self), OkButton(self)))
         self.show()
