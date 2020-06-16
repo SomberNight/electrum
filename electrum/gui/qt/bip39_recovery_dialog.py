@@ -31,10 +31,12 @@ class Bip39RecoveryDialog(WindowModalDialog):
         coroutine = account_discovery(network, self.seed, self.passphrase)
         return network.run_from_another_thread(coroutine)
 
-    def on_recovery_success(self, result):
+    def on_recovery_success(self, accounts):
         self.clear_content()
-        self.content.addWidget(QLabel(_('Success!')))
-        print("success", result)
+        if len(accounts) == 0:
+            self.content.addWidget(QLabel(_('No existing accounts found.')))
+            return
+        self.content.addWidget(QLabel(_(f'{len(accounts)} existing accounts found.')))
 
     def on_recovery_error(self, error):
         self.clear_content()
