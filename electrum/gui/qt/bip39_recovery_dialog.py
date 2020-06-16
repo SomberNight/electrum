@@ -32,9 +32,15 @@ class Bip39RecoveryDialog(WindowModalDialog):
         return network.run_from_another_thread(coroutine)
 
     def on_recovery_success(self, result):
+        self.clear_content()
         self.content.addWidget(QLabel(_('Success!')))
         print("success", result)
 
     def on_recovery_error(self, result):
+        self.clear_content()
         self.content.addWidget(QLabel(_('Error!')))
         print("error", result)
+
+    def clear_content(self):
+        for i in reversed(range(self.content.count())):
+            self.content.itemAt(i).widget().setParent(None)
