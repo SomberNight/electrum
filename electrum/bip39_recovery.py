@@ -3,61 +3,17 @@
 # file LICENCE or http://www.opensource.org/licenses/mit-license.php
 
 from . import bitcoin
+from .constants import BIP39_WALLET_FORMATS
 from .keystore import bip39_to_seed
 from .bip32 import BIP32_PRIME, BIP32Node
 from .bip32 import convert_bip32_path_to_list_of_uint32 as bip32_str_to_ints
 from .bip32 import convert_bip32_intpath_to_strpath as bip32_ints_to_str
 
-WALLET_FORMATS = [
-    {
-        "description": "Standard BIP44 legacy",
-        "derivation_path": "m/44'/0'/0'",
-        "script_type": "p2pkh",
-        "iterate_accounts": True,
-    },
-    {
-        "description": "Standard BIP49 compatibility segwit",
-        "derivation_path": "m/49'/0'/0'",
-        "script_type": "p2wpkh-p2sh",
-        "iterate_accounts": True,
-    },
-    {
-        "description": "Standard BIP84 native segwit",
-        "derivation_path": "m/84'/0'/0'",
-        "script_type": "p2wpkh",
-        "iterate_accounts": True,
-    },
-    {
-        "description": "Non-standard legacy",
-        "derivation_path": "m/0'",
-        "script_type": "p2pkh",
-        "iterate_accounts": True,
-    },
-    {
-        "description": "Non-standard compatibility segwit",
-        "derivation_path": "m/0'",
-        "script_type": "p2wpkh-p2sh",
-        "iterate_accounts": True,
-    },
-    {
-        "description": "Non-standard native segwit",
-        "derivation_path": "m/0'",
-        "script_type": "p2wpkh",
-        "iterate_accounts": True,
-    },
-    {
-        "description": "Samourai Whirlpool post-mix",
-        "derivation_path": "m/84'/0'/2147483646'",
-        "script_type": "p2wpkh",
-        "iterate_accounts": False,
-    },
-]
-
 async def account_discovery(network, mnemonic, passphrase=""):
     seed = bip39_to_seed(mnemonic, passphrase)
     root_node = BIP32Node.from_rootseed(seed, xtype="standard")
     active_accounts = []
-    for wallet_format in WALLET_FORMATS:
+    for wallet_format in BIP39_WALLET_FORMATS:
         account_path = bip32_str_to_ints(wallet_format["derivation_path"])
         while True:
             account_node = root_node.subkey_at_private_derivation(account_path)
