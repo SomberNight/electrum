@@ -46,7 +46,7 @@ class Bip39RecoveryDialog(WindowModalDialog):
         if len(accounts) == 0:
             self.content.addWidget(QLabel(_('No existing accounts found.')))
             return
-        self.content.addWidget(QLabel(_(f'{len(accounts)} existing accounts found.')))
+        self.content.addWidget(QLabel(_('Choose an account to restore.')))
         self.list = QListWidget()
         for account in accounts:
             item = QListWidgetItem(account['description'])
