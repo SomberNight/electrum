@@ -609,6 +609,9 @@ class InstallWizard(QDialog, MessageBoxMixin, BaseWizard):
                                run_next, default_choice_idx: int=0) -> Tuple[str, str]:
         vbox = QVBoxLayout()
 
+        # TODO: Test with HWW import
+        # It'll probably break since we don't have access to the seed
+        # but we can probably fix by instead using the xpub.
         button = QPushButton(_("Detect Existing Accounts"))
         def on_account_select(account):
             script_type = account["script_type"]
