@@ -620,6 +620,7 @@ class InstallWizard(QDialog, MessageBoxMixin, BaseWizard):
             line.setText(account["derivation_path"])
         button.clicked.connect(lambda: Bip39RecoveryDialog(self, self.seed, self.passphrase, on_account_select))
         vbox.addWidget(button, alignment=Qt.AlignLeft)
+        vbox.addWidget(QLabel(_("Or")))
 
         c_values = [x[0] for x in choices]
         c_titles = [x[1] for x in choices]
@@ -631,7 +632,6 @@ class InstallWizard(QDialog, MessageBoxMixin, BaseWizard):
                                 checked_index=default_choice_idx)
         vbox.addLayout(clayout.layout())
 
-        vbox.addSpacing(50)
         vbox.addWidget(WWLabel(message2))
 
         line = QLineEdit()
