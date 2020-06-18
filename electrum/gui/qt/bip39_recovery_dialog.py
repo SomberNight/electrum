@@ -22,12 +22,18 @@ class Bip39RecoveryDialog(WindowModalDialog):
         self.content.addWidget(QLabel(_('Scanning common paths for existing accounts...')))
         vbox.addLayout(self.content)
         self.ok_button = OkButton(self)
+        self.ok_button.clicked.connect(self.on_ok_button_click)
         self.ok_button.setEnabled(False)
         vbox.addLayout(Buttons(CancelButton(self), self.ok_button))
         self.show()
         self.thread = TaskThread(self)
         self.thread.finished.connect(self.deleteLater) # see #3956
         self.thread.add(self.recovery, self.on_recovery_success, None, self.on_recovery_error)
+
+    def on_ok_button_click(self):
+        item = self.list.currentItem()
+        account = item.data(Qt.UserRole)
+        print(account)
 
     def recovery(self):
         network = Network.get_instance()
@@ -45,14 +51,8 @@ class Bip39RecoveryDialog(WindowModalDialog):
             item = QListWidgetItem(account['description'])
             item.setData(Qt.UserRole, account)
             self.list.addItem(item)
-        self.list.clicked.connect(self.on_list_clicked)
+        self.list.clicked.connect(lambda: self.ok_button.setEnabled(True))
         self.content.addWidget(self.list)
-
-    def on_list_clicked(self, qmodelindex):
-        item = self.list.currentItem()
-        account = item.data(Qt.UserRole)
-        self.ok_button.setEnabled(True)
-        print(account)
 
     def on_recovery_error(self, error):
         self.clear_content()
