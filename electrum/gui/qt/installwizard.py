@@ -632,7 +632,7 @@ class InstallWizard(QDialog, MessageBoxMixin, BaseWizard):
                                 checked_index=default_choice_idx)
         vbox.addLayout(clayout.layout())
 
-        vbox.addSpacing(50)
+        vbox.addSpacing(20)
         vbox.addWidget(WWLabel(message2))
 
         line = QLineEdit()
