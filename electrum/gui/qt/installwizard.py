@@ -609,7 +609,7 @@ class InstallWizard(QDialog, MessageBoxMixin, BaseWizard):
                                run_next, default_choice_idx: int=0) -> Tuple[str, str]:
         vbox = QVBoxLayout()
 
-        button = QPushButton("Detect Existing Accounts")
+        button = QPushButton(_("Detect Existing Accounts"))
         def on_account_select(account):
             script_type = account["script_type"]
             if script_type == "p2pkh":
