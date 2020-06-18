@@ -611,7 +611,15 @@ class InstallWizard(QDialog, MessageBoxMixin, BaseWizard):
 
         if self.seed_type == 'bip39':
             button = QPushButton("Detect Existing Accounts")
-            button.clicked.connect(lambda: Bip39RecoveryDialog(self, self.seed, self.passphrase))
+            def on_account_select(account):
+                script_type = account["script_type"]
+                if script_type == "p2pkh":
+                    script_type = "standard"
+                button_index = c_values.index(script_type)
+                button = clayout.group.buttons()[button_index]
+                button.setChecked(True)
+                line.setText(account["derivation_path"])
+            button.clicked.connect(lambda: Bip39RecoveryDialog(self, self.seed, self.passphrase, on_account_select))
             vbox.addWidget(button, alignment=Qt.AlignLeft)
 
         c_values = [x[0] for x in choices]

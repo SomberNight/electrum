@@ -12,9 +12,10 @@ from electrum.bip39_recovery import account_discovery
 from .util import WindowModalDialog, MessageBoxMixin, TaskThread, Buttons, CancelButton, OkButton
 
 class Bip39RecoveryDialog(WindowModalDialog):
-    def __init__(self, parent: QWidget, seed, passphrase):
+    def __init__(self, parent: QWidget, seed, passphrase, on_account_select):
         self.seed = seed
         self.passphrase = passphrase
+        self.on_account_select = on_account_select
         WindowModalDialog.__init__(self, parent, _('BIP39 Recovery'))
         self.setMinimumWidth(400)
         vbox = QVBoxLayout(self)
@@ -33,7 +34,7 @@ class Bip39RecoveryDialog(WindowModalDialog):
     def on_ok_button_click(self):
         item = self.list.currentItem()
         account = item.data(Qt.UserRole)
-        print(account)
+        self.on_account_select(account)
 
     def recovery(self):
         network = Network.get_instance()
