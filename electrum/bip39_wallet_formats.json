@@ -42,8 +42,38 @@
         "iterate_accounts": true
     },
     {
-        "description": "Samourai Whirlpool post-mix",
+        "description": "Samourai Bad Bank (toxic change)",
+        "derivation_path": "m/84'/0'/2147483644'",
+        "script_type": "p2wpkh",
+        "iterate_accounts": false
+    },
+    {
+        "description": "Samourai Whirlpool Pre Mix",
+        "derivation_path": "m/84'/0'/2147483645'",
+        "script_type": "p2wpkh",
+        "iterate_accounts": false
+    },
+    {
+        "description": "Samourai Whirlpool Post Mix",
         "derivation_path": "m/84'/0'/2147483646'",
+        "script_type": "p2wpkh",
+        "iterate_accounts": false
+    },
+    {
+        "description": "Samourai Ricochet legacy",
+        "derivation_path": "m/44'/0'/2147483647'",
+        "script_type": "p2pkh",
+        "iterate_accounts": false
+    },
+    {
+        "description": "Samourai Ricochet compatibility segwit",
+        "derivation_path": "m/49'/0'/2147483647'",
+        "script_type": "p2wpkh-p2sh",
+        "iterate_accounts": false
+    },
+    {
+        "description": "Samourai Ricochet native segwit",
+        "derivation_path": "m/84'/0'/2147483647'",
         "script_type": "p2wpkh",
         "iterate_accounts": false
     }
