@@ -36,6 +36,12 @@
         "iterate_accounts": true
     },
     {
+        "description": "Copay native segwit",
+        "derivation_path": "m/44'/0'/0'",
+        "script_type": "p2wpkh",
+        "iterate_accounts": true
+    },
+    {
         "description": "Samourai Whirlpool post-mix",
         "derivation_path": "m/84'/0'/2147483646'",
         "script_type": "p2wpkh",
