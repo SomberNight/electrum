@@ -2,6 +2,8 @@
 # Distributed under the MIT software license, see the accompanying
 # file LICENCE or http://www.opensource.org/licenses/mit-license.php
 
+from aiorpcx import TaskGroup
+
 from . import bitcoin
 from .constants import BIP39_WALLET_FORMATS
 from .keystore import bip39_to_seed
@@ -28,13 +30,18 @@ async def account_discovery(network, mnemonic, passphrase=""):
 
 async def account_has_history(network, account_node, script_type):
     gap_limit = 20
-    for address_index in range(gap_limit):
-        address_node = account_node.subkey_at_public_derivation("0/" + str(address_index))
-        pubkey = address_node.eckey.get_public_key_hex()
-        address = bitcoin.pubkey_to_address(script_type, pubkey)
-        script = bitcoin.address_to_script(address)
-        scripthash = bitcoin.script_to_scripthash(script)
-        history = await network.get_history_for_scripthash(scripthash)
+    async with TaskGroup() as group:
+        get_history_tasks = []
+        for address_index in range(gap_limit):
+            address_node = account_node.subkey_at_public_derivation("0/" + str(address_index))
+            pubkey = address_node.eckey.get_public_key_hex()
+            address = bitcoin.pubkey_to_address(script_type, pubkey)
+            script = bitcoin.address_to_script(address)
+            scripthash = bitcoin.script_to_scripthash(script)
+            get_history = network.get_history_for_scripthash(scripthash)
+            get_history_tasks.append(await group.spawn(get_history))
+    for task in get_history_tasks:
+        history = task.result()
         if len(history) > 0:
             return True
     return False
