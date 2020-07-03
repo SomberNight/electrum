@@ -404,7 +404,7 @@ class BaseWizard(Logger):
         else:
             raise Exception('unknown purpose: %s' % purpose)
 
-    def derivation_and_script_type_dialog(self, f):
+    def derivation_and_script_type_dialog(self, f, get_account_xpub=None):
         message1 = _('Choose the type of addresses in your wallet.')
         message2 = ' '.join([
             _('You can override the suggested derivation path.'),
@@ -432,7 +432,7 @@ class BaseWizard(Logger):
                 self.derivation_and_script_type_gui_specific_dialog(
                     run_next=f, title=_('Script type and Derivation path'), message1=message1,
                     message2=message2, choices=choices, test_text=is_bip32_derivation,
-                    default_choice_idx=default_choice_idx)
+                    default_choice_idx=default_choice_idx, get_account_xpub=get_account_xpub)
                 return
             except ScriptTypeNotSupported as e:
                 self.show_error(e)
@@ -493,13 +493,6 @@ class BaseWizard(Logger):
         self.seed_type = 'bip39' if is_bip39 else mnemonic.seed_type(seed)
         if self.seed_type == 'bip39':
             def f(passphrase):
-                def get_account_xpub(account_path):
-                    root_seed = bip39_to_seed(seed, passphrase)
-                    root_node = BIP32Node.from_rootseed(root_seed, xtype="standard")
-                    account_node = root_node.subkey_at_private_derivation(account_path)
-                    account_xpub = account_node.to_xpub()
-                    return account_xpub
-                self.get_account_xpub = get_account_xpub
                 self.on_restore_bip39(seed, passphrase)
             self.passphrase_dialog(run_next=f, is_restoring=True) if is_ext else f('')
         elif self.seed_type in ['standard', 'segwit']:
@@ -517,7 +510,13 @@ class BaseWizard(Logger):
         def f(derivation, script_type):
             derivation = normalize_bip32_derivation(derivation)
             self.run('on_bip43', seed, passphrase, derivation, script_type)
-        self.derivation_and_script_type_dialog(f)
+        def get_account_xpub(account_path):
+            root_seed = bip39_to_seed(seed, passphrase)
+            root_node = BIP32Node.from_rootseed(root_seed, xtype="standard")
+            account_node = root_node.subkey_at_private_derivation(account_path)
+            account_xpub = account_node.to_xpub()
+            return account_xpub
+        self.derivation_and_script_type_dialog(f, get_account_xpub)
 
     def create_keystore(self, seed, passphrase):
         k = keystore.from_seed(seed, passphrase, self.wallet_type == 'multisig')
