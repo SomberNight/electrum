@@ -12,9 +12,8 @@ from electrum.bip39_recovery import account_discovery
 from .util import WindowModalDialog, MessageBoxMixin, TaskThread, Buttons, CancelButton, OkButton
 
 class Bip39RecoveryDialog(WindowModalDialog):
-    def __init__(self, parent: QWidget, seed, passphrase, on_account_select):
-        self.seed = seed
-        self.passphrase = passphrase
+    def __init__(self, parent: QWidget, get_account_xpub, on_account_select):
+        self.get_account_xpub = get_account_xpub
         self.on_account_select = on_account_select
         WindowModalDialog.__init__(self, parent, _('BIP39 Recovery'))
         self.setMinimumWidth(400)
@@ -38,7 +37,7 @@ class Bip39RecoveryDialog(WindowModalDialog):
 
     def recovery(self):
         network = Network.get_instance()
-        coroutine = account_discovery(network, self.seed, self.passphrase)
+        coroutine = account_discovery(network, self.get_account_xpub)
         return network.run_from_another_thread(coroutine)
 
     def on_recovery_success(self, accounts):

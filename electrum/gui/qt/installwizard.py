@@ -609,7 +609,7 @@ class InstallWizard(QDialog, MessageBoxMixin, BaseWizard):
                                run_next, default_choice_idx: int=0) -> Tuple[str, str]:
         vbox = QVBoxLayout()
 
-        if self.seed_type == "bip39":
+        if hasattr(self, "get_account_xpub"):
             button = QPushButton(_("Detect Existing Accounts"))
             def on_account_select(account):
                 script_type = account["script_type"]
@@ -619,7 +619,7 @@ class InstallWizard(QDialog, MessageBoxMixin, BaseWizard):
                 button = clayout.group.buttons()[button_index]
                 button.setChecked(True)
                 line.setText(account["derivation_path"])
-            button.clicked.connect(lambda: Bip39RecoveryDialog(self, self.seed, self.passphrase, on_account_select))
+            button.clicked.connect(lambda: Bip39RecoveryDialog(self, self.get_account_xpub, on_account_select))
             vbox.addWidget(button, alignment=Qt.AlignLeft)
             vbox.addWidget(QLabel(_("Or")))
 

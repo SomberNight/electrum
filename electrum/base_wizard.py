@@ -34,7 +34,7 @@ from . import bitcoin
 from . import keystore
 from . import mnemonic
 from .bip32 import is_bip32_derivation, xpub_type, normalize_bip32_derivation, BIP32Node
-from .keystore import bip44_derivation, purpose48_derivation, Hardware_KeyStore, KeyStore
+from .keystore import bip44_derivation, purpose48_derivation, Hardware_KeyStore, KeyStore, bip39_to_seed
 from .wallet import (Imported_Wallet, Standard_Wallet, Multisig_Wallet,
                      wallet_types, Wallet, Abstract_Wallet)
 from .storage import WalletStorage, StorageEncryptionVersion
@@ -493,9 +493,13 @@ class BaseWizard(Logger):
         self.seed_type = 'bip39' if is_bip39 else mnemonic.seed_type(seed)
         if self.seed_type == 'bip39':
             def f(passphrase):
-                # TODO: Check with @SomberNight if this is ok
-                self.seed = seed
-                self.passphrase = passphrase
+                def get_account_xpub(account_path):
+                    root_seed = bip39_to_seed(seed, passphrase)
+                    root_node = BIP32Node.from_rootseed(root_seed, xtype="standard")
+                    account_node = root_node.subkey_at_private_derivation(account_path)
+                    account_xpub = account_node.to_xpub()
+                    return account_xpub
+                self.get_account_xpub = get_account_xpub
                 self.on_restore_bip39(seed, passphrase)
             self.passphrase_dialog(run_next=f, is_restoring=True) if is_ext else f('')
         elif self.seed_type in ['standard', 'segwit']:
