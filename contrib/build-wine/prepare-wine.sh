@@ -5,6 +5,11 @@ NSIS_FILENAME=nsis-3.05-setup.exe
 NSIS_URL=https://downloads.sourceforge.net/project/nsis/NSIS%203/3.05/$NSIS_FILENAME
 NSIS_SHA256=1a3cc9401667547b9b9327a177b13485f7c59c2303d4b6183e7bc9e6c8d6bfdb
 
+# pyscard prebuilt binaries for Satochip
+PYSCARD_FILENAME=pyscard-1.9.9-cp37-cp37m-win32.whl  # python 3.7, 32-bit
+PYSCARD_URL=https://ci.appveyor.com/api/buildjobs/f9cmce4j8hkau9n4/artifacts/dist/pyscard-1.9.9-cp37-cp37m-win32.whl
+PYSCARD_SHA256=3f7d52dd6694dd369b02e797fe1a3e39b63cf1d1c4b5fc0e1341aafa24f87e7a
+
 LIBUSB_REPO="https://github.com/libusb/libusb.git"
 LIBUSB_COMMIT="e782eeb2514266f6738e242cdcb18e3ae1ed06fa"
 # ^ tag v1.0.23
@@ -58,6 +63,11 @@ $PYTHON -m pip install --no-dependencies --no-warn-script-location -r "$CONTRIB"
 
 info "Installing dependencies specific to binaries."
 $PYTHON -m pip install --no-dependencies --no-warn-script-location -r "$CONTRIB"/deterministic-build/requirements-binaries.txt
+
+info "Installing pyscard..."  # for Satochip
+download_if_not_exist $PYSCARD_FILENAME "$PYSCARD_URL"
+verify_hash $PYSCARD_FILENAME "$PYSCARD_SHA256"
+$PYTHON -m pip install "$CACHEDIR/$PYSCARD_FILENAME"
 
 info "Installing NSIS."
 download_if_not_exist "$CACHEDIR/$NSIS_FILENAME" "$NSIS_URL"
