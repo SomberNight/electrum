@@ -633,18 +633,18 @@ def deserialize_privkey(key: str) -> Tuple[str, bytes, bool]:
             raise BitcoinException('unknown script type: {}'.format(txin_type))
     try:
         vch = DecodeBase58Check(key)
-    except BaseException:
+    except BaseException as e:
         neutered_privkey = str(key)[:3] + '..' + str(key)[-2:]
         raise BitcoinException("cannot deserialize privkey {}"
-                               .format(neutered_privkey))
+                               .format(neutered_privkey)) from e
 
     if txin_type is None:
         # keys exported in version 3.0.x encoded script type in first byte
         prefix_value = vch[0] - constants.net.WIF_PREFIX
         try:
             txin_type = WIF_SCRIPT_TYPES_INV[prefix_value]
-        except KeyError:
-            raise BitcoinException('invalid prefix ({}) for WIF key (1)'.format(vch[0]))
+        except KeyError as e:
+            raise BitcoinException('invalid prefix ({}) for WIF key (1)'.format(vch[0])) from None
     else:
         # all other keys must have a fixed first byte
         if vch[0] != constants.net.WIF_PREFIX:

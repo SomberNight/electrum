@@ -231,7 +231,7 @@ class Imported_KeyStore(Software_KeyStore):
 
     def check_password(self, password):
         pubkey = list(self.keypairs.keys())[0]
-        self.get_private_key(pubkey, password)
+        self.get_private_key(pubkey, password)  #
 
     def import_privkey(self, sec, password):
         txin_type, privkey, compressed = deserialize_privkey(sec)
@@ -251,7 +251,10 @@ class Imported_KeyStore(Software_KeyStore):
 
     def get_private_key(self, pubkey: str, password):
         sec = pw_decode(self.keypairs[pubkey], password, version=self.pw_hash_version)
-        txin_type, privkey, compressed = deserialize_privkey(sec)
+        try:
+            txin_type, privkey, compressed = deserialize_privkey(sec)
+        except Exception as e:    # TODO eh...
+            raise InvalidPassword() from e
         # this checks the password
         if pubkey != ecc.ECPrivkey(privkey).get_public_key_hex(compressed=compressed):
             raise InvalidPassword()
@@ -525,7 +528,12 @@ class BIP32_KeyStore(Xpub, Deterministic_KeyStore):
 
     def check_password(self, password):
         xprv = pw_decode(self.xprv, password, version=self.pw_hash_version)
-        if BIP32Node.from_xkey(xprv).chaincode != self.get_bip32_node_for_xpub().chaincode:
+        try:
+            bip32node = BIP32Node.from_xkey(xprv)
+        except Exception:  # TODO eh...
+            # note: maybe related: https://github.com/spesmilo/electrum/issues/4128  # TODO rm
+            raise InvalidPassword()
+        if bip32node.chaincode != self.get_bip32_node_for_xpub().chaincode:
             raise InvalidPassword()
 
     def update_password(self, old_password, new_password):
