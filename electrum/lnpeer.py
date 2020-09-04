@@ -43,7 +43,7 @@ from .lnutil import (Outpoint, LocalConfig, RECEIVED, UpdateAddHtlc,
                      RemoteMisbehaving,
                      NBLOCK_OUR_CLTV_EXPIRY_DELTA, format_short_channel_id, ShortChannelID,
                      IncompatibleLightningFeatures, derive_payment_secret_from_payment_preimage,
-                     LN_MAX_FUNDING_SAT, calc_fees_for_commitment_tx)
+                     LN_MAX_FUNDING_SAT, calc_fees_for_commitment_tx, HtlcForwardingInfo)
 from .lnutil import FeeUpdate, channel_id_from_funding_tx
 from .lntransport import LNTransport, LNTransportBase
 from .lnmsg import encode_msg, decode_msg
@@ -1534,11 +1534,10 @@ class Peer(Logger):
                     continue
                 self.maybe_send_commitment(chan)
                 done = set()
-                unfulfilled = chan.hm.log.get('unfulfilled_htlcs', {})
-                for htlc_id, (local_ctn, remote_ctn, onion_packet_hex, forwarding_info) in unfulfilled.items():
-                    if chan.get_oldest_unrevoked_ctn(LOCAL) <= local_ctn:
+                for htlc_id, uhtlc_info in chan.hm.get_unfulfilled_htlc_infos().items():
+                    if chan.get_oldest_unrevoked_ctn(LOCAL) <= uhtlc_info.local_ctn:
                         continue
-                    if chan.get_oldest_unrevoked_ctn(REMOTE) <= remote_ctn:
+                    if chan.get_oldest_unrevoked_ctn(REMOTE) <= uhtlc_info.remote_ctn:
                         continue
                     chan.logger.info(f'found unfulfilled htlc: {htlc_id}')
                     htlc = chan.hm.get_htlc_by_id(REMOTE, htlc_id)
@@ -1546,7 +1545,7 @@ class Peer(Logger):
                     error_reason = None  # type: Optional[OnionRoutingFailureMessage]
                     error_bytes = None  # type: Optional[bytes]
                     preimage = None
-                    onion_packet_bytes = bytes.fromhex(onion_packet_hex)
+                    onion_packet_bytes = bytes.fromhex(uhtlc_info.onion_packet_hex)
                     onion_packet = None
                     try:
                         onion_packet = OnionPacket.from_bytes(onion_packet_bytes)
@@ -1573,18 +1572,23 @@ class Peer(Logger):
                                 htlc=htlc,
                                 onion_packet=onion_packet,
                                 processed_onion=processed_onion)
-                        elif not forwarding_info:
+                        elif not uhtlc_info.forwarding_info:
                             next_chan_id, next_htlc_id, error_reason = self.maybe_forward_htlc(
                                 chan=chan,
                                 htlc=htlc,
                                 onion_packet=onion_packet,
                                 processed_onion=processed_onion)
                             if next_chan_id:
-                                fw_info = (next_chan_id.hex(), next_htlc_id)
-                                unfulfilled[htlc_id] = local_ctn, remote_ctn, onion_packet_hex, fw_info
+                                fw_info = HtlcForwardingInfo(
+                                    next_chan_id_hex=next_chan_id.hex(),
+                                    htlc_id=next_htlc_id,
+                                )
+                                uhtlc_info_new = uhtlc_info._replace(forwarding_info=fw_info)
+                                chan.hm.set_unfulfilled_htlc_info(htlc_id, uhtlc_info_new)
                         else:
                             preimage = self.lnworker.get_preimage(payment_hash)
-                            next_chan_id_hex, htlc_id = forwarding_info
+                            next_chan_id_hex = uhtlc_info.forwarding_info.next_chan_id_hex
+                            htlc_id = uhtlc_info.forwarding_info.htlc_id
                             next_chan = self.lnworker.get_channel_by_short_id(bytes.fromhex(next_chan_id_hex))
                             if next_chan:
                                 error_bytes, error_reason = next_chan.pop_fail_htlc_reason(htlc_id)
@@ -1608,4 +1612,4 @@ class Peer(Logger):
                         done.add(htlc_id)
                 # cleanup
                 for htlc_id in done:
-                    unfulfilled.pop(htlc_id)
+                    chan.hm.pop_unfulfilled_htlc_info(htlc_id)

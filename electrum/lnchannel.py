@@ -52,7 +52,8 @@ from .lnutil import (Outpoint, LocalConfig, RemoteConfig, Keypair, OnlyPubkeyKey
                      ScriptHtlc, PaymentFailure, calc_fees_for_commitment_tx, RemoteMisbehaving, make_htlc_output_witness_script,
                      ShortChannelID, map_htlcs_to_ctx_output_idxs, LNPeerAddr,
                      LN_MAX_HTLC_VALUE_MSAT, fee_for_htlc_output, offered_htlc_trim_threshold_sat,
-                     received_htlc_trim_threshold_sat, make_commitment_output_to_remote_address)
+                     received_htlc_trim_threshold_sat, make_commitment_output_to_remote_address,
+                     UnfulfilledHtlcInfo)
 from .lnsweep import create_sweeptxs_for_our_ctx, create_sweeptxs_for_their_ctx
 from .lnsweep import create_sweeptx_for_their_revoked_htlc, SweepInfo
 from .lnhtlc import HTLCManager
@@ -833,7 +834,13 @@ class Channel(AbstractChannel):
             local_ctn = self.get_latest_ctn(LOCAL)
             remote_ctn = self.get_latest_ctn(REMOTE)
             if onion_packet:
-                self.hm.log['unfulfilled_htlcs'][htlc.htlc_id] = local_ctn, remote_ctn, onion_packet.hex(), False
+                info = UnfulfilledHtlcInfo(
+                    local_ctn=local_ctn,
+                    remote_ctn=remote_ctn,
+                    onion_packet_hex=onion_packet.hex(),
+                    forwarding_info=False,
+                )
+                self.hm.set_unfulfilled_htlc_info(htlc.htlc_id, info)
 
         self.logger.info("receive_htlc")
         return htlc

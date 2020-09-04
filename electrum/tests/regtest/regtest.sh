@@ -103,7 +103,7 @@ if [[ $1 == "stop" ]]; then
     $agent stop || true
 fi
 
-if [[ $1 == "forwarding" ]]; then
+if [[ $1 == "forwarding" ]]; then  # TODO xxx write test that restarts node in middle with pending htlc
     $bob setconfig lightning_forward_payments true
     bob_node=$($bob nodeid)
     channel_id1=$($alice open_channel $bob_node 0.002 --push_amount 0.001)

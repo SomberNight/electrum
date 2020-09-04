@@ -1,8 +1,10 @@
+import copy
 from copy import deepcopy
-from typing import Optional, Sequence, Tuple, List, Dict, TYPE_CHECKING, Set
+from typing import Optional, Sequence, Tuple, List, Dict, TYPE_CHECKING, Set, Mapping
 import threading
 
-from .lnutil import SENT, RECEIVED, LOCAL, REMOTE, HTLCOwner, UpdateAddHtlc, Direction, FeeUpdate
+from .lnutil import (SENT, RECEIVED, LOCAL, REMOTE, HTLCOwner, UpdateAddHtlc, Direction,
+                     FeeUpdate, UnfulfilledHtlcInfo, HtlcForwardingInfo)
 from .util import bh2u, bfh
 
 if TYPE_CHECKING:
@@ -495,6 +497,19 @@ class HTLCManager:
                                                                ctx_owner=REMOTE,
                                                                htlc_proposer=LOCAL,
                                                                log_action='fails')
+
+    @with_lock
+    def get_unfulfilled_htlc_infos(self) -> Mapping[int, UnfulfilledHtlcInfo]:
+        return copy.copy(self.log.get('unfulfilled_htlcs', {}))  # FIXME convert tuple
+
+    @with_lock
+    def set_unfulfilled_htlc_info(self, htlc_id: int, info: UnfulfilledHtlcInfo) -> None:
+        assert isinstance(info, UnfulfilledHtlcInfo)
+        self.log['unfulfilled_htlcs'][htlc_id] = info
+
+    @with_lock
+    def pop_unfulfilled_htlc_info(self, htlc_id: int) -> UnfulfilledHtlcInfo:
+        return self.log['unfulfilled_htlcs'].pop(htlc_id)
 
     ##### Queries re Fees:
 

@@ -293,6 +293,18 @@ class BarePaymentAttemptLog(NamedTuple):
     failure_message: Optional['OnionRoutingFailureMessage'] = None
 
 
+class UnfulfilledHtlcInfo(NamedTuple):
+    local_ctn: int
+    remote_ctn: int
+    onion_packet_hex: str
+    forwarding_info: Union[bool, 'HtlcForwardingInfo']  # can be False
+
+
+class HtlcForwardingInfo(NamedTuple):
+    next_chan_id_hex: str
+    htlc_id: int
+
+
 class LightningError(Exception): pass
 class LightningPeerConnectionClosed(LightningError): pass
 class UnableToDeriveSecret(LightningError): pass
