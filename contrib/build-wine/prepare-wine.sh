@@ -65,9 +65,9 @@ info "Installing dependencies specific to binaries."
 $PYTHON -m pip install --no-dependencies --no-warn-script-location -r "$CONTRIB"/deterministic-build/requirements-binaries.txt
 
 info "Installing pyscard..."  # for Satochip
-download_if_not_exist $PYSCARD_FILENAME "$PYSCARD_URL"
-verify_hash $PYSCARD_FILENAME "$PYSCARD_SHA256"
-$PYTHON -m pip install "$CACHEDIR/$PYSCARD_FILENAME"
+download_if_not_exist "$CACHEDIR/$PYSCARD_FILENAME" "$PYSCARD_URL"
+verify_hash "$CACHEDIR/$PYSCARD_FILENAME" "$PYSCARD_SHA256"
+$PYTHON -m pip install --no-dependencies "$CACHEDIR/$PYSCARD_FILENAME"
 
 info "Installing NSIS."
 download_if_not_exist "$CACHEDIR/$NSIS_FILENAME" "$NSIS_URL"
