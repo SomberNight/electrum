@@ -164,9 +164,13 @@ class LNResponderTransport(LNTransportBase):
         self.reader = reader
         self.writer = writer
         self.privkey = privkey
+        self.node_id = None  # type: Optional[bytes]
 
     def name(self):
-        return "responder"
+        if self.node_id is None:
+            return "pre-handshake@responder"
+        else:
+            return f"{self.node_id.hex()}@responder"
 
     async def handshake(self, **kwargs):
         hs = HandshakeState(privkey_to_pubkey(self.privkey))
@@ -219,6 +223,7 @@ class LNResponderTransport(LNTransportBase):
         _p = aead_decrypt(temp_k3, 0, hs.update(c), t)
         self.rk, self.sk = get_bolt8_hkdf(ck, b'')
         self.init_counters(ck)
+        self.node_id = rs
         return rs
 
 
@@ -234,7 +239,7 @@ class LNTransport(LNTransportBase):
         self.proxy = MySocksProxy.from_proxy_dict(proxy)
 
     def name(self):
-        return self.peer_addr.net_addr_str()
+        return str(self.peer_addr)
 
     async def handshake(self):
         if not self.proxy:
