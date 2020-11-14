@@ -11,10 +11,6 @@ RUN apt-get update -q && \
         autoconf=2.69-9 \
         libtool=2.4.6-0.1 \
         xz-utils=5.1.1alpha+20120614-2ubuntu2 \
-        libssl-dev=1.0.2g-1ubuntu4.17 \
-        libssl1.0.0=1.0.2g-1ubuntu4.17 \
-        openssl=1.0.2g-1ubuntu4.17 \
-        zlib1g-dev=1:1.2.8.dfsg-2ubuntu4.3 \
         libffi-dev=3.2.1-4 \
         libncurses5-dev=6.0+20160213-1ubuntu1 \
         libsqlite3-dev=3.11.0-1ubuntu1.5 \
@@ -25,6 +21,26 @@ RUN apt-get update -q && \
         libdbus-1-3=1.10.6-1ubuntu3.6 \
         libxkbcommon-x11-0=0.5.0-1ubuntu2.1 \
         libc6-dev=2.23-0ubuntu11.2 \
+        && \
+    rm -rf /var/lib/apt/lists/* && \
+    apt-get autoremove -y && \
+    apt-get clean
+
+
+# Hack to switch from xenial to bionic. Normally you shouldn't mix these but
+# if you do, you need to make sure that what you install doesn't cause
+# conflicts. Best to install only packages with very few dependencies from
+# the newer version.
+RUN sed -i -e 's/xenial/bionic/' /etc/apt/sources.list
+
+# Ubuntu 16.04 only has OpenSSL 1.0.2 but we want 1.1.0+, which we
+# install from the Ubuntu 18.04 repos.
+RUN apt-get update -q && \
+    apt-get install -qy \
+        zlib1g-dev=1:1.2.11.dfsg-0ubuntu2 \
+        libssl-dev=1.1.1-1ubuntu2.1 \
+        libssl1.1=1.1.1-1ubuntu2.1 \
+        openssl=1.1.1-1ubuntu2.1 \
         && \
     rm -rf /var/lib/apt/lists/* && \
     apt-get autoremove -y && \
