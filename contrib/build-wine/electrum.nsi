@@ -10,6 +10,9 @@
   !define PRODUCT_WEB_SITE "https://github.com/spesmilo/electrum"
   !define PRODUCT_PUBLISHER "Electrum Technologies GmbH"
   !define PRODUCT_UNINST_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_NAME}"
+  ;!define INNER_EXE_NAME "electrum-${PRODUCT_VERSION}.exe"
+  !define INNER_EXE_NAME "electrum.exe"
+  !define INNER_EXE_NAME2 "electrum-debug.exe"
 
 ;--------------------------------
 ;General
@@ -53,7 +56,10 @@
 
   ;Adds the Product Version on top of the Version Tab in the Properties of the file.
   VIProductVersion 1.0.0.0
-  
+
+  ;No Skip file option shown if installer fails to open a file for writing when trying to extract a file
+  ;AllowSkipFiles off
+
   ;VIAddVersionKey - Adds a field in the Version Tab of the File Properties. This can either be a field provided by the system or a user defined field.
   VIAddVersionKey ProductName "${PRODUCT_NAME} Installer"
   VIAddVersionKey Comments "The installer for ${PRODUCT_NAME}"
@@ -78,7 +84,11 @@
 ;Pages
 
   !insertmacro MUI_PAGE_DIRECTORY
+  !define MUI_PAGE_CUSTOMFUNCTION_LEAVE check_if_running
   !insertmacro MUI_PAGE_INSTFILES
+
+  !insertmacro MUI_UNPAGE_CONFIRM
+  !define MUI_PAGE_CUSTOMFUNCTION_LEAVE check_if_running
   !insertmacro MUI_UNPAGE_CONFIRM
   !insertmacro MUI_UNPAGE_INSTFILES
 
@@ -122,21 +132,21 @@ Section
 
   ;Create desktop shortcut
   DetailPrint "Creating desktop shortcut..."
-  CreateShortCut "$DESKTOP\${PRODUCT_NAME}.lnk" "$INSTDIR\electrum-${PRODUCT_VERSION}.exe" ""
+  CreateShortCut "$DESKTOP\${PRODUCT_NAME}.lnk" "$INSTDIR\$INNER_EXE_NAME" ""
 
   ;Create start-menu items
   DetailPrint "Creating start-menu items..."
   CreateDirectory "$SMPROGRAMS\${PRODUCT_NAME}"
   CreateShortCut "$SMPROGRAMS\${PRODUCT_NAME}\Uninstall.lnk" "$INSTDIR\Uninstall.exe" "" "$INSTDIR\Uninstall.exe" 0
-  CreateShortCut "$SMPROGRAMS\${PRODUCT_NAME}\${PRODUCT_NAME}.lnk" "$INSTDIR\electrum-${PRODUCT_VERSION}.exe" "" "$INSTDIR\electrum-${PRODUCT_VERSION}.exe" 0
-  CreateShortCut "$SMPROGRAMS\${PRODUCT_NAME}\${PRODUCT_NAME} Testnet.lnk" "$INSTDIR\electrum-${PRODUCT_VERSION}.exe" "--testnet" "$INSTDIR\electrum-${PRODUCT_VERSION}.exe" 0
+  CreateShortCut "$SMPROGRAMS\${PRODUCT_NAME}\${PRODUCT_NAME}.lnk" "$INSTDIR\$INNER_EXE_NAME" "" "$INSTDIR\$INNER_EXE_NAME" 0
+  CreateShortCut "$SMPROGRAMS\${PRODUCT_NAME}\${PRODUCT_NAME} Testnet.lnk" "$INSTDIR\$INNER_EXE_NAME" "--testnet" "$INSTDIR\$INNER_EXE_NAME" 0
 
 
   ;Links bitcoin: URI's to Electrum
   WriteRegStr HKCU "Software\Classes\bitcoin" "" "URL:bitcoin Protocol"
   WriteRegStr HKCU "Software\Classes\bitcoin" "URL Protocol" ""
   WriteRegStr HKCU "Software\Classes\bitcoin" "DefaultIcon" "$\"$INSTDIR\electrum.ico, 0$\""
-  WriteRegStr HKCU "Software\Classes\bitcoin\shell\open\command" "" "$\"$INSTDIR\electrum-${PRODUCT_VERSION}.exe$\" $\"%1$\""
+  WriteRegStr HKCU "Software\Classes\bitcoin\shell\open\command" "" "$\"$INSTDIR\$INNER_EXE_NAME$\" $\"%1$\""
 
   ;Adds an uninstaller possibility to Windows Uninstall or change a program section
   WriteRegStr HKCU "${PRODUCT_UNINST_KEY}" "DisplayName" "$(^Name)"
@@ -151,6 +161,25 @@ Section
   IntFmt $0 "0x%08X" $0
   WriteRegDWORD HKCU "${PRODUCT_UNINST_KEY}" "EstimatedSize" "$0"
 SectionEnd
+
+Function check_if_running
+
+  check1:
+  FindProcDLL::FindProc "$INNER_EXE_NAME"
+  StrCmp $R0 "1" 0 check2
+  MessageBox MB_RETRYCANCEL|MB_ICONEXCLAMATION "Electrum is running. Please close the application before proceeding." IDRETRY check1 IDCANCEL do_cancel
+
+  check2:
+  FindProcDLL::FindProc "$INNER_EXE_NAME2"
+  StrCmp $R0 "1" 0 notrunning
+  MessageBox MB_RETRYCANCEL|MB_ICONEXCLAMATION "Electrum is running. Please close the application before proceeding." IDRETRY check1 IDCANCEL do_cancel
+
+  do_cancel:
+  Abort
+
+  notrunning:
+
+FunctionEnd
 
 ;--------------------------------
 ;Descriptions
