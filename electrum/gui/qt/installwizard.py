@@ -9,6 +9,7 @@ import threading
 import traceback
 from typing import Tuple, List, Callable, NamedTuple, Optional, TYPE_CHECKING
 from functools import partial
+from enum import IntEnum
 
 from PyQt5.QtCore import QRect, QEventLoop, Qt, pyqtSignal
 from PyQt5.QtGui import QPalette, QPen, QPainter, QPixmap
@@ -149,6 +150,11 @@ class InstallWizard(QDialog, MessageBoxMixin, BaseWizard):
 
     accept_signal = pyqtSignal()
 
+    class LayoutLoopRetVal(IntEnum):
+        REJECTED = 0
+        BACK_BTN = 1
+        NEXT_BTN = 2
+
     def __init__(self, config: 'SimpleConfig', app: QApplication, plugins: 'Plugins', *, gui_object: 'ElectrumGui'):
         QDialog.__init__(self, None)
         BaseWizard.__init__(self, config, plugins)
@@ -169,9 +175,9 @@ class InstallWizard(QDialog, MessageBoxMixin, BaseWizard):
         self.please_wait.setAlignment(Qt.AlignCenter)
         self.icon_filename = None
         self.loop = QEventLoop()
-        self.rejected.connect(lambda: self.loop.exit(0))
-        self.back_button.clicked.connect(lambda: self.loop.exit(1))
-        self.next_button.clicked.connect(lambda: self.loop.exit(2))
+        self.rejected.connect(lambda: self.loop.exit(self.LayoutLoopRetVal.REJECTED))
+        self.back_button.clicked.connect(lambda: self.loop.exit(self.LayoutLoopRetVal.BACK_BTN))
+        self.next_button.clicked.connect(lambda: self.loop.exit(self.LayoutLoopRetVal.NEXT_BTN))
         outer_vbox = QVBoxLayout(self)
         inner_vbox = QVBoxLayout()
         inner_vbox.addWidget(self.title)
@@ -301,7 +307,7 @@ class InstallWizard(QDialog, MessageBoxMixin, BaseWizard):
 
         def run_user_interaction_loop():
             while True:
-                if self.loop.exec_() != 2:  # 2 = next
+                if self.loop.exec_() != self.LayoutLoopRetVal.NEXT_BTN:
                     raise UserCancelled()
                 assert temp_storage
                 if temp_storage.file_exists() and not temp_storage.is_encrypted():
@@ -425,9 +431,9 @@ class InstallWizard(QDialog, MessageBoxMixin, BaseWizard):
                         next_enabled=True):
         self.set_layout(layout, title, next_enabled)
         result = self.loop.exec_()
-        if not result and raise_on_cancel:
+        if result == self.LayoutLoopRetVal.REJECTED and raise_on_cancel:
             raise UserCancelled()
-        if result == 1:
+        if result == self.LayoutLoopRetVal.BACK_BTN:
             raise GoBack from None
         self.title.setVisible(False)
         self.back_button.setEnabled(False)
