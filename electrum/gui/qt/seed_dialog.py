@@ -23,10 +23,13 @@
 # CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+from typing import Dict
+
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QPixmap
 from PyQt5.QtWidgets import (QVBoxLayout, QCheckBox, QHBoxLayout, QLineEdit,
-                             QLabel, QCompleter, QDialog, QStyledItemDelegate)
+                             QLabel, QCompleter, QDialog, QStyledItemDelegate,
+                             QComboBox)
 
 from electrum.i18n import _
 from electrum.mnemonic import Mnemonic, seed_type
@@ -83,14 +86,55 @@ class SeedLayout(QVBoxLayout):
             cb_bip39.toggled.connect(f)
             cb_bip39.setChecked(self.is_bip39)
             vbox.addWidget(cb_bip39)
+        if 'seed_type' in self.options and self.opt_allowed_seedtypes:
+            seedtype_hbox = QHBoxLayout()
+            seedtype_label = QLabel(_("Seed type") + ":")
+            seedtype_combo = QComboBox()
+            for stype, friendly_name in self.opt_allowed_seedtypes.items():
+                seedtype_combo.addItem(friendly_name, stype)
+            orig_seedtype = seed_type(self.get_seed())
+            index = seedtype_combo.findData(orig_seedtype)
+            seedtype_combo.setCurrentIndex(index)
+            seedtype_hbox.addWidget(seedtype_label)
+            seedtype_hbox.addWidget(seedtype_combo)
+            vbox.addLayout(seedtype_hbox)
         vbox.addLayout(Buttons(OkButton(dialog)))
         if not dialog.exec_():
             return None
         self.is_ext = cb_ext.isChecked() if 'ext' in self.options else False
         self.is_bip39 = cb_bip39.isChecked() if 'bip39' in self.options else False
+        if 'seed_type' in self.options and self.opt_allowed_seedtypes:
+            from .installwizard import InstallWizard
+            assert isinstance(self.parent, InstallWizard)
+            wizard = self.parent
+            new_seedtype = str(seedtype_combo.currentData())
+            if new_seedtype != orig_seedtype:
+                def run_next():
+                    # note: need to call wizard.run instead of direct call, due to trustedcoin
+                    wizard.go_back(rerun_previous=False)  # so that we replace the top stack item
+                    wizard.run(
+                        "create_seed",
+                        seed_type=new_seedtype,
+                        opt_passphrase_default=self.is_ext,
+                    )
+                wizard.override_run_next(run_next)
+                wizard.loop.exit(wizard.LayoutLoopRetVal.NEXT_OVERRIDE)
 
-    def __init__(self, seed=None, title=None, icon=True, msg=None, options=None,
-                 is_seed=None, passphrase=None, parent=None, for_seed_words=True):
+    def __init__(
+            self,
+            seed=None,
+            title=None,
+            icon=True,
+            msg=None,
+            options=None,
+            is_seed=None,
+            passphrase=None,
+            parent=None,
+            for_seed_words=True,
+            *,
+            opt_allowed_seedtypes: Dict[str, str] = None,
+            opt_passphrase_default: bool = None,
+    ):
         QVBoxLayout.__init__(self)
         self.parent = parent
         self.options = options
@@ -129,7 +173,8 @@ class SeedLayout(QVBoxLayout):
 
         # options
         self.is_bip39 = False
-        self.is_ext = False
+        self.is_ext = bool(opt_passphrase_default)
+        self.opt_allowed_seedtypes = opt_allowed_seedtypes
         if options:
             opt_button = EnterButton(_('Options'), self.seed_options)
             hbox.addWidget(opt_button)

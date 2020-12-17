@@ -7,7 +7,7 @@ import json
 import sys
 import threading
 import traceback
-from typing import Tuple, List, Callable, NamedTuple, Optional, TYPE_CHECKING
+from typing import Tuple, List, Callable, NamedTuple, Optional, TYPE_CHECKING, Dict
 from functools import partial
 from enum import IntEnum
 
@@ -20,7 +20,7 @@ from PyQt5.QtWidgets import (QWidget, QDialog, QLabel, QHBoxLayout, QMessageBox,
 from electrum.wallet import Wallet, Abstract_Wallet
 from electrum.storage import WalletStorage, StorageReadWriteError
 from electrum.util import UserCancelled, InvalidPassword, WalletFileException, get_new_wallet_name
-from electrum.base_wizard import BaseWizard, HWD_SETUP_DECRYPT_WALLET, GoBack, ReRunDialog
+from electrum.base_wizard import BaseWizard, HWD_SETUP_DECRYPT_WALLET, GoBack, ReRunDialog, RunNextOverride
 from electrum.network import Network
 from electrum.i18n import _
 
@@ -114,6 +114,12 @@ def wizard_dialog(func):
                 else:
                     # to go back from the current dialog, we just let the caller unroll the stack:
                     raise
+            except RunNextOverride as e:
+                override = wizard._run_next_override
+                assert override
+                wizard._run_next_override = None
+                override()
+                return
             # next dialog
             try:
                 while True:
@@ -154,6 +160,7 @@ class InstallWizard(QDialog, MessageBoxMixin, BaseWizard):
         REJECTED = 0
         BACK_BTN = 1
         NEXT_BTN = 2
+        NEXT_OVERRIDE = 3
 
     def __init__(self, config: 'SimpleConfig', app: QApplication, plugins: 'Plugins', *, gui_object: 'ElectrumGui'):
         QDialog.__init__(self, None)
@@ -178,6 +185,7 @@ class InstallWizard(QDialog, MessageBoxMixin, BaseWizard):
         self.rejected.connect(lambda: self.loop.exit(self.LayoutLoopRetVal.REJECTED))
         self.back_button.clicked.connect(lambda: self.loop.exit(self.LayoutLoopRetVal.BACK_BTN))
         self.next_button.clicked.connect(lambda: self.loop.exit(self.LayoutLoopRetVal.NEXT_BTN))
+        self._run_next_override = None
         outer_vbox = QVBoxLayout(self)
         inner_vbox = QVBoxLayout()
         inner_vbox.addWidget(self.title)
@@ -441,7 +449,12 @@ class InstallWizard(QDialog, MessageBoxMixin, BaseWizard):
         self.main_widget.setVisible(False)
         self.please_wait.setVisible(True)
         self.refresh_gui()
+        if result == self.LayoutLoopRetVal.NEXT_OVERRIDE:
+            raise RunNextOverride()
         return result
+
+    def override_run_next(self, func):
+        self._run_next_override = func
 
     def refresh_gui(self):
         # For some reason, to refresh the GUI this needs to be called twice
@@ -505,9 +518,24 @@ class InstallWizard(QDialog, MessageBoxMixin, BaseWizard):
         return seed
 
     @wizard_dialog
-    def show_seed_dialog(self, run_next, seed_text):
+    def show_seed_dialog(
+            self,
+            run_next,
+            seed_text,
+            *,
+            opt_passphrase_default: bool = None,
+            opt_allowed_seedtypes: Dict[str, str] = None,
+    ):
         title =  _("Your wallet generation seed is:")
-        slayout = SeedLayout(seed=seed_text, title=title, msg=True, options=['ext'])
+        slayout = SeedLayout(
+            seed=seed_text,
+            title=title,
+            msg=True,
+            options=['ext', 'seed_type'],
+            parent=self,
+            opt_passphrase_default=opt_passphrase_default,
+            opt_allowed_seedtypes=opt_allowed_seedtypes,
+        )
         self.exec_layout(slayout)
         return slayout.is_ext
 

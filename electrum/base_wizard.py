@@ -63,6 +63,9 @@ class GoBack(Exception): pass
 class ReRunDialog(Exception): pass
 
 
+class RunNextOverride(Exception): pass
+
+
 class ChooseHwDeviceAgain(Exception): pass
 
 
@@ -687,15 +690,32 @@ class BaseWizard(Logger):
 
     def choose_seed_type(self):
         seed_type = 'standard' if self.config.get('nosegwit') else 'segwit'
-        self.create_seed(seed_type)
+        self.create_seed(seed_type=seed_type)
 
-    def create_seed(self, seed_type):
+    def create_seed(
+            self,
+            *,
+            seed_type,
+            opt_passphrase_default: bool = None,  # the default value in the UI
+    ):
+        if opt_passphrase_default is None:
+            opt_passphrase_default = False
         from . import mnemonic
         self.seed_type = seed_type
         seed = mnemonic.Mnemonic('en').make_seed(seed_type=self.seed_type)
         self.opt_bip39 = False
-        f = lambda x: self.request_passphrase(seed, x)
-        self.show_seed_dialog(run_next=f, seed_text=seed)
+        def run_next(opt_passphrase):
+            self.request_passphrase(seed, opt_passphrase)
+        opt_allowed_seedtypes = {
+            'segwit': _('Segwit'),
+            'standard': _('Legacy'),
+        }
+        self.show_seed_dialog(
+            run_next=run_next,
+            seed_text=seed,
+            opt_passphrase_default=opt_passphrase_default,
+            opt_allowed_seedtypes=opt_allowed_seedtypes,
+        )
 
     def request_passphrase(self, seed, opt_passphrase):
         if opt_passphrase:

@@ -546,12 +546,29 @@ class TrustedCoinPlugin(BasePlugin):
 
     def choose_seed_type(self, wizard):
         seed_type = '2fa' if self.config.get('nosegwit') else '2fa_segwit'
-        self.create_seed(wizard, seed_type)
+        self.create_seed(wizard, seed_type=seed_type)
 
-    def create_seed(self, wizard, seed_type):
+    def create_seed(
+            self,
+            wizard: 'BaseWizard',
+            *,
+            seed_type,
+            opt_passphrase_default: bool = None,
+    ):
+        if opt_passphrase_default is None:
+            opt_passphrase_default = False
         seed = self.make_seed(seed_type)
         f = lambda x: wizard.request_passphrase(seed, x)
-        wizard.show_seed_dialog(run_next=f, seed_text=seed)
+        opt_allowed_seedtypes = {
+            '2fa_segwit': _('Segwit 2FA'),
+            '2fa': _('Legacy 2FA'),
+        }
+        wizard.show_seed_dialog(
+            run_next=f,
+            seed_text=seed,
+            opt_allowed_seedtypes=opt_allowed_seedtypes,
+            opt_passphrase_default=opt_passphrase_default,
+        )
 
     @classmethod
     def get_xkeys(self, seed, t, passphrase, derivation):
