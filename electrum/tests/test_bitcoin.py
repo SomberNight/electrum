@@ -425,6 +425,7 @@ class Test_bitcoin(ElectrumTestCase):
         self.assertEqual(add_number_to_script(2147483647), bfh('04ffffff7f'))
 
     def test_address_to_script(self):
+        # TODO https://github.com/bitcoin/bips/blob/master/bip-0350.mediawiki
         # bech32 native segwit
         # test vectors from BIP-0173
         self.assertEqual(address_to_script('BC1QW508D6QEJXTDG4Y5R3ZARVARY0C5XW7KV8F3T4'), '0014751e76e8199196d454941c45d1b3a323f1433bd6')
