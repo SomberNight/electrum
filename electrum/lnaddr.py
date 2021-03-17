@@ -112,9 +112,10 @@ def parse_fallback(fallback, currency):
         elif wver == 18:
             addr=hash160_to_b58_address(fallback[5:].tobytes(), base58_prefix_map[currency][1])
         elif wver <= 16:
-            data_5bits = segwit_addr.convertbits(fallback[5:].tobytes(), 8, 5, False)
-            data_8bits = bytes(segwit_addr.convertbits(data_5bits, 5, 8, False))
-            addr = segwit_addr.encode_segwit_address(currency, wver, data_8bits)
+            witprog = fallback[5:]  # cut witver
+            witprog = witprog[:len(witprog) // 8 * 8]  # can only be full bytes
+            witprog = witprog.tobytes()
+            addr = segwit_addr.encode_segwit_address(currency, wver, witprog)
         else:
             return None
     else:
