@@ -3,6 +3,7 @@
 # file LICENCE or http://www.opensource.org/licenses/mit-license.php
 
 import logging
+import logging.handlers
 import datetime
 import sys
 import pathlib
@@ -59,6 +60,39 @@ def _shorten_name_of_logrecord(record: logging.LogRecord) -> logging.LogRecord:
     return record
 
 
+class TruncatingMemoryHandler(logging.handlers.MemoryHandler):
+    """An in-memory log handler that only keeps the first N log messages
+    and discards the rest.
+    """
+    target: Optional['logging.Handler']
+
+    def __init__(self):
+        logging.handlers.MemoryHandler.__init__(
+            self,
+            capacity=1,  # note: this is the flushing frequency, ~unused by us
+            flushLevel=logging.DEBUG,
+        )
+        self.max_size = 100  # max num of messages we keep
+        self.num_messages_seen = 0
+
+    # note: this flush implementation *keeps* the buffer as-is, instead of clearing it
+    def flush(self, *, below_loglevel: int = None):
+        self.acquire()
+        try:
+            if self.target:
+                for record in self.buffer:
+                    if (record.levelno >= self.target.level
+                            and (below_loglevel is None or below_loglevel > record.levelno)):
+                        self.target.handle(record)
+        finally:
+            self.release()
+
+    def emit(self, record):
+        self.num_messages_seen += 1
+        if len(self.buffer) < self.max_size:
+            super().emit(record)
+
+
 def _delete_old_logs(path, keep=10):
     files = sorted(list(pathlib.Path(path).glob("electrum_log_*.log")), reverse=True)
     for f in files[keep:]:
@@ -84,14 +118,26 @@ def _configure_file_logging(log_directory: pathlib.Path):
     file_handler.setFormatter(file_formatter)
     file_handler.setLevel(logging.DEBUG)
     root_logger.addHandler(file_handler)
+    _dump_logs_collected_so_far(file_handler)
 
 
-def _configure_verbosity(*, verbosity, verbosity_shortcuts):
+def _configure_stderr_verbosity(*, verbosity, verbosity_shortcuts):
     if not verbosity and not verbosity_shortcuts:
         return
+    orig_loglevel = console_stderr_handler.level
     console_stderr_handler.setLevel(logging.DEBUG)
     _process_verbosity_log_levels(verbosity)
-    _process_verbosity_filter_shortcuts(verbosity_shortcuts)
+    _process_verbosity_filter_shortcuts(verbosity_shortcuts, handler=console_stderr_handler)
+    # FIXME order of messages scrambled... (WARNING and above already logged)
+    _dump_logs_collected_so_far(console_stderr_handler, below_loglevel=orig_loglevel)
+
+
+def _dump_logs_collected_so_far(target: 'logging.Handler', *, below_loglevel: int = None):
+    # dump logs collected by in-memory buffer
+    if _inmemory_startup_logs:
+        _inmemory_startup_logs.setTarget(target)
+        _inmemory_startup_logs.flush(below_loglevel=below_loglevel)
+        _inmemory_startup_logs.setTarget(None)
 
 
 def _process_verbosity_log_levels(verbosity):
@@ -115,7 +161,7 @@ def _process_verbosity_log_levels(verbosity):
             raise Exception(f"invalid log filter: {filt}")
 
 
-def _process_verbosity_filter_shortcuts(verbosity_shortcuts):
+def _process_verbosity_filter_shortcuts(verbosity_shortcuts, *, handler: 'logging.Handler'):
     if not isinstance(verbosity_shortcuts, str):
         return
     if len(verbosity_shortcuts) < 1:
@@ -130,7 +176,7 @@ def _process_verbosity_filter_shortcuts(verbosity_shortcuts):
     # apply filter directly (and only!) on stderr handler
     # note that applying on one of the root loggers directly would not work,
     # see https://docs.python.org/3/howto/logging.html#logging-flow
-    console_stderr_handler.addFilter(filt)
+    handler.addFilter(filt)
 
 
 class ShortcutInjectingFilter(logging.Filter):
@@ -184,6 +230,18 @@ console_stderr_handler.setFormatter(console_formatter)
 console_stderr_handler.setLevel(logging.WARNING)
 root_logger.addHandler(console_stderr_handler)
 
+# Start collecting log messages now, into an in-memory buffer. This buffer is only
+# used until the proper log handlers are fully configured, including their verbosity,
+# at which point we will dump its contents into those, and remove this log handler.
+# Note: this is set up at import-time instead of e.g. as part of a function that is
+#       called from run_electrum (the main script). This is to have this run as early
+#       as possible.
+# Note: some users might use Electrum as a python library and not use run_electrum,
+#       in which case these logs might never get redirected or cleaned up. We only
+#       keep a limited number of messages so this should be fine.
+_inmemory_startup_logs = TruncatingMemoryHandler()
+root_logger.addHandler(_inmemory_startup_logs)
+
 # creates a logger specifically for electrum library
 electrum_logger = logging.getLogger("electrum")
 electrum_logger.setLevel(logging.DEBUG)
@@ -234,7 +292,7 @@ class Logger:
 def configure_logging(config):
     verbosity = config.get('verbosity')
     verbosity_shortcuts = config.get('verbosity_shortcuts')
-    _configure_verbosity(verbosity=verbosity, verbosity_shortcuts=verbosity_shortcuts)
+    _configure_stderr_verbosity(verbosity=verbosity, verbosity_shortcuts=verbosity_shortcuts)
 
     log_to_file = config.get('log_to_file', False)
     is_android = 'ANDROID_DATA' in os.environ
@@ -245,6 +303,17 @@ def configure_logging(config):
     if log_to_file:
         log_directory = pathlib.Path(config.path) / "logs"
         _configure_file_logging(log_directory)
+
+    # clean up and delete in-memory logs
+    global _inmemory_startup_logs
+    if _inmemory_startup_logs:
+        num_discarded = _inmemory_startup_logs.num_messages_seen - _inmemory_startup_logs.max_size
+        if num_discarded > 0:
+            _logger.warning(f"Too many log messages! Some have been discarded. "
+                            f"(discarded {num_discarded} messages)")
+        _inmemory_startup_logs.close()
+        root_logger.removeHandler(_inmemory_startup_logs)
+        _inmemory_startup_logs = None
 
     # if using kivy, avoid kivy's own logs to get printed twice
     logging.getLogger('kivy').propagate = False
