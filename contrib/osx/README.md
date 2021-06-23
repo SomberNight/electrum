@@ -31,7 +31,7 @@ We currently build the release binaries on macOS 10.14.6, and these seem to run 
 
 Before starting, make sure that the Xcode command line tools are installed (e.g. you have `git`).
 
-#### 1.a Get Xcode
+#### 1.a Get Xcode  # TODO XXXXX
 
 Building the QR scanner (CalinsQRReader) requires full Xcode (not just command line tools).
 

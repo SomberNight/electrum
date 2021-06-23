@@ -45,47 +45,23 @@ info "Building $pkgname..."
         autoreconf -vfi || fail "Could not run autoreconf for $pkgname. Please make sure you have automake and libtool installed, and try again."
     fi
     if ! [ -r config.status ] ; then
-        if [ "$BUILD_TYPE" = "wine" ] ; then
-            # windows target
-            ./configure \
-                $AUTOCONF_FLAGS \
-                --prefix="$here/$pkgname/dist" \
-                --with-x=no \
-                --enable-pthread=no \
-                --enable-doc=no \
-                --enable-video=yes \
-                --with-directshow=yes \
-                --with-jpeg=no \
-                --with-python=no \
-                --with-gtk=no \
-                --with-qt=no \
-                --with-java=no \
-                --with-imagemagick=no \
-                --with-dbus=no \
-                --enable-codes=qrcode \
-                --disable-dependency-tracking \
-                --disable-static \
-                --enable-shared || fail "Could not configure $pkgname. Please make sure you have a C compiler installed and try again."
-        else
-            # linux target
-            ./configure \
-                $AUTOCONF_FLAGS \
-                --prefix="$here/$pkgname/dist" \
-                --with-x=yes \
-                --enable-pthread=no \
-                --enable-doc=no \
-                --enable-video=yes \
-                --with-jpeg=yes \
-                --with-python=no \
-                --with-gtk=no \
-                --with-qt=no \
-                --with-java=no \
-                --with-imagemagick=no \
-                --with-dbus=no \
-                --enable-codes=qrcode \
-                --disable-static \
-                --enable-shared || fail "Could not configure $pkgname. Please make sure you have a C compiler installed and try again."
-        fi
+        ./configure \
+            $AUTOCONF_FLAGS \
+            --prefix="$here/$pkgname/dist" \
+            --with-x=no \
+            --enable-pthread=no \
+            --enable-doc=no \
+            --enable-video=no \
+            --with-jpeg=no \
+            --with-python=no \
+            --with-gtk=no \
+            --with-qt=no \
+            --with-java=no \
+            --with-imagemagick=no \
+            --with-dbus=no \
+            --enable-codes=qrcode \
+            --disable-static \
+            --enable-shared || fail "Could not configure $pkgname. Please make sure you have a C compiler installed and try again."
     fi
     make -j4 || fail "Could not build $pkgname"
     make install || fail "Could not install $pkgname"
