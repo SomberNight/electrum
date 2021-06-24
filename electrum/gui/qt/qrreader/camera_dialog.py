@@ -306,7 +306,7 @@ class QrReaderCameraDialog(Logger, MessageBoxMixin, QDialog):
             # camera/scan is quitting, abort.
             return
 
-        self.logger.info('camera status changed to {}'.format(self._get_camera_status_name(status)))
+        self.logger.info('camera status changed to {}'.format(self._get_camera_status_name(status)))  #
 
         if status == QCamera.LoadedStatus:
             # Determine the optimal resolution and compute the crop rect
