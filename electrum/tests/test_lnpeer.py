@@ -12,6 +12,8 @@ from typing import Iterable, NamedTuple, Tuple, List, Dict
 
 from aiorpcx import TaskGroup, timeout_after, TaskTimeout
 
+import electrum
+import electrum.trampoline
 from electrum import bitcoin
 from electrum import constants
 from electrum.network import Network
@@ -142,7 +144,7 @@ class MockLNWallet(Logger, NetworkRetryManager[LNPeerAddr]):
         self._peers = {}  # bytes -> Peer
         # used in tests
         self.enable_htlc_settle = True
-        self.enable_htlc_forwarding = True
+        self.enable_htlc_forwarding = True  # disable fw for Dave
         self.received_mpp_htlcs = dict()
         self.sent_htlcs = defaultdict(asyncio.Queue)
         self.sent_htlcs_routes = dict()
@@ -151,6 +153,8 @@ class MockLNWallet(Logger, NetworkRetryManager[LNPeerAddr]):
         self.inflight_payments = set()
         self.preimages = {}
         self.stopping_soon = False
+
+        self.logger.info(f"created LNWallet[{name}] with nodeID={local_keypair.pubkey.hex()}")
 
     def get_invoice_status(self, key):
         pass
@@ -448,7 +452,7 @@ class TestPeer(TestCaseForTestnet):
         peer_cd.mark_open(chan_cd)
         peer_db.mark_open(chan_db)
         peer_dc.mark_open(chan_dc)
-        return SquareGraph(
+        graph = SquareGraph(
             w_a=w_a,
             w_b=w_b,
             w_c=w_c,
@@ -470,6 +474,7 @@ class TestPeer(TestCaseForTestnet):
             chan_db=chan_db,
             chan_dc=chan_dc,
         )
+        return graph
 
     @staticmethod
     async def prepare_invoice(
@@ -935,7 +940,15 @@ class TestPeer(TestCaseForTestnet):
     def test_multipart_payment_with_trampoline(self):
         # single attempt will fail with insufficient trampoline fee
         graph = self.prepare_chans_and_peers_in_square()
-        self._run_mpp(graph, {'alice_uses_trampoline':True, 'attempts':1}, {'alice_uses_trampoline':True, 'attempts':3})
+        graph.w_d.enable_htlc_forwarding = False
+        electrum.trampoline._TRAMPOLINE_NODES_UNITTESTS = {
+            graph.w_b.name: LNPeerAddr(host="127.0.0.1", port=9735, pubkey=graph.w_b.node_keypair.pubkey),
+            graph.w_c.name: LNPeerAddr(host="127.0.0.1", port=9735, pubkey=graph.w_c.node_keypair.pubkey),
+        }
+        try:
+            self._run_mpp(graph, {'alice_uses_trampoline':True, 'attempts':1}, {'alice_uses_trampoline':True, 'attempts':3})
+        finally:
+            electrum.trampoline._TRAMPOLINE_NODES_UNITTESTS = {}
 
     @needs_test_with_all_chacha20_implementations
     def test_fail_pending_htlcs_on_shutdown(self):

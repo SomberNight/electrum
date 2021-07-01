@@ -125,7 +125,7 @@ Builder.load_string(r'''
                     root.on_ok()
                     root.dismiss()
 
-<LightningChannelItem@CardItem>
+<LightningChannelItem@CardItem>  #
     details: {}
     active: False
     short_channel_id: '<channelId not set>'
@@ -643,7 +643,7 @@ class LightningChannelsDialog(Factory.Popup):
         channels = list(lnworker.channels.values()) if lnworker else []
         backups = list(lnworker.channel_backups.values()) if lnworker else []
         for i in channels + backups:
-            item = Factory.LightningChannelItem()
+            item = Factory.LightningChannelItem()  #
             item.screen = self
             item.active = not i.is_closed()
             item.is_backup = i.is_backup()

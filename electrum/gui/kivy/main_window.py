@@ -1352,7 +1352,7 @@ class ElectrumWindow(App, Logger):
     def _save_backup(self, backup_dir):
         try:
             new_path = self.wallet.save_backup(backup_dir)
-        except Exception as e:
+        except Exception as e:  #
             self.logger.exception("Failed to save wallet backup")
             self.show_error("Failed to save wallet backup" + '\n' + str(e))
             return

@@ -274,6 +274,7 @@ class Network(Logger, NetworkRetryManager[ServerAddr]):
         )
 
         self.asyncio_loop = asyncio.get_event_loop()
+        self.asyncio_loop._thread_id
         assert self.asyncio_loop.is_running(), "event loop not running"
         try:
             self._loop_thread = self.asyncio_loop._mythread  # type: threading.Thread  # only used for sanity checks

@@ -542,7 +542,7 @@ class Daemon(Logger):
             self.stopping_soon.set()
         self.on_stop()
 
-    async def stop(self):
+    async def stop(self):  #
         self.stopping_soon.set()
         await self.stopped_event.wait()
 

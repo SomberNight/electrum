@@ -1466,7 +1466,7 @@ class Peer(Logger):
                 self.logger.info('forward_trampoline: legacy')
                 next_trampoline_onion = None
                 invoice_features = payload["invoice_features"]["invoice_features"]
-                invoice_routing_info = payload["invoice_routing_info"]["invoice_routing_info"]
+                invoice_routing_info = payload["invoice_routing_info"]["invoice_routing_info"]  # TODO impl
             else:
                 self.logger.info('forward_trampoline: end-to-end')
                 invoice_features = LnFeatures.BASIC_MPP_OPT

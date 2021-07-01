@@ -45,7 +45,7 @@ Builder.load_string('''
             size: self.texture_size
             size_hint: None, None
         TextInput:
-            id: user_message
+            id: user_message  #
             size_hint: 1, 0.3
         BoxLayout:
             size_hint: 1, 0.7
@@ -158,7 +158,7 @@ class CrashReporter(BaseCrashReporter, Factory.Popup):
         self.main_window.electrum_config.set_key(BaseCrashReporter.config_key, False)
         self.dismiss()
 
-    def get_user_description(self):
+    def get_user_description(self):  #
         return self.ids.user_message.text
 
     def get_wallet_type(self):
