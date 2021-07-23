@@ -659,9 +659,12 @@ class SimpleConfig(Logger):
             except:
                 pass
 
-    def format_amount(self, x, is_diff=False, whitespaces=False):
+    def format_amount(self, amount_sat, *, is_diff=False, whitespaces=False) -> str:
+        """Formats amount as string, converting to desired unit. Unit is *not* appended.
+        E.g. 500_000 -> '0.005'
+        """
         return format_satoshis(
-            x,
+            amount_sat,
             num_zeros=self.num_zeros,
             decimal_point=self.decimal_point,
             is_diff=is_diff,
@@ -669,11 +672,15 @@ class SimpleConfig(Logger):
             precision=self.amt_precision_post_satoshi,
         )
 
-    def format_amount_and_units(self, amount):
-        return self.format_amount(amount) + ' '+ self.get_base_unit()
+    def format_amount_and_units(self, amount_sat) -> str:
+        """Formats amount as string, converting to desired unit. Unit is appended.
+        E.g. 500_000 -> '0.005 BTC'
+        """
+        return self.format_amount(amount_sat) + " " + self.get_base_unit()
 
-    def format_fee_rate(self, fee_rate):
-        return format_fee_satoshis(fee_rate/1000, num_zeros=self.num_zeros) + ' sat/byte'
+    def format_fee_rate(self, fee_per_kb) -> str:
+        fee_per_byte = fee_per_kb / 1000
+        return format_fee_satoshis(fee_per_byte, num_zeros=self.num_zeros) + ' sat/byte'
 
     def get_base_unit(self):
         return decimal_point_to_base_unit_name(self.decimal_point)

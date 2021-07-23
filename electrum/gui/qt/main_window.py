@@ -879,17 +879,14 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, Logger):
         self.notify_transactions()
 
     def format_amount(self, amount_sat, is_diff=False, whitespaces=False) -> str:
-        """Formats amount as string, converting to desired unit.
-        E.g. 500_000 -> '0.005'
-        """
         return self.config.format_amount(amount_sat, is_diff=is_diff, whitespaces=whitespaces)
 
-    def format_amount_and_units(self, amount_sat, *, timestamp: int = None) -> str:
+    def format_amount_and_units(self, amount_sat, *, timestamp: int = None) -> str:  #
         """Returns string with both bitcoin and fiat amounts, in desired units.
         E.g. 500_000 -> '0.005 BTC (191.42 EUR)'
         """
         text = self.config.format_amount_and_units(amount_sat)
-        fiat = self.fx.format_amount_and_units(amount_sat, timestamp=timestamp) if self.fx else None
+        fiat = self.fx.format_amount_and_units(amount_sat, timestamp=timestamp)
         if text and fiat:
             text += f' ({fiat})'
         return text
@@ -898,9 +895,9 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, Logger):
         """Returns string of FX fiat amount, in desired units.
         E.g. 500_000 -> '191.42 EUR'
         """
-        return self.fx.format_amount_and_units(amount_sat) if self.fx else ''
+        return self.fx.format_amount_and_units(amount_sat)
 
-    def format_fee_rate(self, fee_rate):
+    def format_fee_rate(self, fee_rate):  #
         return self.config.format_fee_rate(fee_rate)
 
     def get_decimal_point(self):

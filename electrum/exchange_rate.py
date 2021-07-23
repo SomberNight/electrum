@@ -485,7 +485,7 @@ class FxThread(ThreadJob):
 
     def __init__(self, config: SimpleConfig, network: Optional[Network]):
         ThreadJob.__init__(self)
-        self.config = config
+        self.config = config  #
         self.network = network
         util.register_callback(self.set_proxy, ['proxy_set'])
         self.ccy = self.get_currency()
@@ -614,19 +614,24 @@ class FxThread(ThreadJob):
             return Decimal('NaN')
         return Decimal(rate)
 
-    def format_amount(self, btc_balance, *, timestamp: int = None) -> str:
+    def format_amount(self, amount_sat, *, timestamp: int = None) -> str:
+        """Returns string of FX fiat amount, in desired units. Unit is *not* appended.
+        E.g. 500_000 -> '191.42 EUR'
+        """
         if timestamp is None:
             rate = self.exchange_rate()
         else:
             rate = self.timestamp_rate(timestamp)
-        return '' if rate.is_nan() else "%s" % self.value_str(btc_balance, rate)
+        return '' if rate.is_nan() else self.value_str(amount_sat, rate)
 
-    def format_amount_and_units(self, btc_balance, *, timestamp: int = None) -> str:
-        if timestamp is None:
-            rate = self.exchange_rate()
-        else:
-            rate = self.timestamp_rate(timestamp)
-        return '' if rate.is_nan() else "%s %s" % (self.value_str(btc_balance, rate), self.ccy)
+    def format_amount_and_units(self, amount_sat, *, timestamp: int = None) -> str:
+        """Returns string of FX fiat amount, in desired units. Unit is appended.
+        E.g. 500_000 -> '191.42 EUR'
+        """
+        fiat_val = self.format_amount(amount_sat, timestamp=timestamp)
+        if not fiat_val:
+            return ''
+        return "{} {}".format(fiat_val, self.ccy)
 
     def get_fiat_status_text(self, btc_balance, base_unit, decimal_point):
         rate = self.exchange_rate()

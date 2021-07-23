@@ -963,7 +963,7 @@ class ElectrumWindow(App, Logger):
     def format_amount(self, x, is_diff=False, whitespaces=False):
         return self.electrum_config.format_amount(x, is_diff=is_diff, whitespaces=whitespaces)
 
-    def format_amount_and_units(self, x) -> str:
+    def format_amount_and_units(self, x) -> str:  #
         if x is None:
             return 'none'
         if x == '!':
@@ -975,14 +975,13 @@ class ElectrumWindow(App, Logger):
 
     def format_amount_and_units_with_fiat(self, x) -> str:
         text = self.format_amount_and_units(x)
-        fiat = self.fx.format_amount_and_units(x) if self.fx else None
+        fiat = self.fx.format_amount_and_units(x)
         if text and fiat:
             text += f' ({fiat})'
         return text
 
     def format_fee_rate(self, fee_rate):
-        # fee_rate is in sat/kB
-        return format_fee_satoshis(fee_rate/1000) + ' sat/byte'
+        return self.electrum_config.format_fee_rate(fee_rate)
 
     #@profiler
     def update_wallet(self, *dt):

@@ -338,7 +338,7 @@ class SendScreen(CScreen, Logger):
             return
         self.do_pay_invoice(invoice)
 
-    def do_pay_invoice(self, invoice):
+    def do_pay_invoice(self, invoice):  #
         if invoice.is_lightning():
             if self.app.wallet.lnworker:
                 amount_sat = invoice.get_amount_sat()
