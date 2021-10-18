@@ -401,7 +401,13 @@ class AddressSynchronizer(Logger):
         self.add_unverified_tx(tx_hash, tx_height)
         self.add_transaction(tx, allow_unrelated=True)
 
-    def receive_history_callback(self, addr: str, hist, tx_fees: Dict[str, int]):
+    def receive_history_callback(
+            self,
+            addr: str,
+            *,
+            hist: Sequence[Tuple[str, int]],
+            tx_fees: Dict[str, int],
+    ) -> None:
         with self.lock:
             old_hist = self.get_address_history(addr)
             for tx_hash, height in old_hist:

@@ -59,6 +59,7 @@ from . import constants
 from .i18n import _
 from .logging import Logger
 from .transaction import Transaction
+from .bitcoin import hash_decode
 
 if TYPE_CHECKING:
     from .network import Network
@@ -125,6 +126,13 @@ def assert_dict_contains_field(d: Any, *, field_name: str) -> Any:
     if field_name not in d:
         raise RequestCorrupted(f'required field {field_name!r} missing from dict')
     return d[field_name]
+
+
+def assert_dict_keys_exact_match(d: Any, *, fields: Sequence[str]) -> None:
+    if not isinstance(d, dict):
+        raise RequestCorrupted(f'{d!r} should be a dict')
+    if set(d) != set(fields):
+        raise RequestCorrupted(f'dict keys should exactly match set: {set(fields)}, instead got {set(d)}')
 
 
 def assert_list_or_tuple(val: Any) -> None:
@@ -950,31 +958,49 @@ class Interface(Logger):
         if not is_hash256_str(sh):
             raise Exception(f"{repr(sh)} is not a scripthash")
         # do request
+        # TODO
+        # blockchain.scripthash.get_history(scripthash, from_height=0, to_height=-1,
+        #                                   client_statushash=None, client_height=None)
         res = await self.session.send_request('blockchain.scripthash.get_history', [sh])
         # check response
-        assert_list_or_tuple(res)
-        prev_height = 1
-        for tx_item in res:
+        from_height = assert_dict_contains_field(res, field_name='from_height')
+        to_height = assert_dict_contains_field(res, field_name='to_height')
+        assert_integer(from_height)
+        assert_integer(to_height)
+        if not (from_height == 0 and to_height == -1):
+            raise RequestCorrupted(f"server is paginating history. this is not handled yet. "
+                                   f"(from_height={from_height}, to_height={to_height})")  # TODO
+        hist = assert_dict_contains_field(res, field_name='history')
+        assert_list_or_tuple(hist)
+        for tx_item in hist:
             height = assert_dict_contains_field(tx_item, field_name='height')
             assert_dict_contains_field(tx_item, field_name='tx_hash')
             assert_integer(height)
             assert_hash256_str(tx_item['tx_hash'])
             if height in (-1, 0):
-                assert_dict_contains_field(tx_item, field_name='fee')
-                assert_non_negative_integer(tx_item['fee'])
-                prev_height = float("inf")  # this ensures confirmed txs can't follow mempool txs
+                assert_dict_keys_exact_match(tx_item, fields=('tx_hash', 'height', 'fee'))
+                fee = assert_dict_contains_field(tx_item, field_name='fee')
+                assert_non_negative_integer(fee)
             else:
-                # check monotonicity of heights
-                if height < prev_height:
-                    raise RequestCorrupted(f'heights of confirmed txs must be in increasing order')
-                prev_height = height
-        hashes = set(map(lambda item: item['tx_hash'], res))
-        if len(hashes) != len(res):
+                assert_dict_keys_exact_match(tx_item, fields=('tx_hash', 'height'))
+            if height < -1:
+                raise RequestCorrupted(f"invalid tx height: {height}")
+        def order_tx_by(tx_item):
+            height = tx_item['height']
+            if height > 0:  # confirmed
+                return 0, height
+            else:  # mempool
+                tx_hash = hash_decode(tx_item['tx_hash'])
+                return 1, -height, tx_hash
+        if hist != sorted(hist, key=order_tx_by):
+            raise RequestCorrupted(f"history txs not in canonical order for sh={sh}")
+        hashes = set(map(lambda item: item['tx_hash'], hist))
+        if len(hashes) != len(hist):
             # Either server is sending garbage... or maybe if server is race-prone
             # a recently mined tx could be included in both last block and mempool?
             # Still, it's simplest to just disregard the response.
             raise RequestCorrupted(f"server history has non-unique txids for sh={sh}")
-        return res
+        return hist
 
     async def listunspent_for_scripthash(self, sh: str) -> List[dict]:
         if not is_hash256_str(sh):

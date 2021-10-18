@@ -24,7 +24,7 @@
 # SOFTWARE.
 import asyncio
 import hashlib
-from typing import Dict, List, TYPE_CHECKING, Tuple, Set
+from typing import Dict, List, TYPE_CHECKING, Tuple, Set, Optional, Any, Sequence, Mapping
 from collections import defaultdict
 import logging
 
@@ -33,9 +33,10 @@ from aiorpcx import TaskGroup, run_in_thread, RPCError
 from . import util
 from .transaction import Transaction, PartialTransaction
 from .util import bh2u, make_aiohttp_session, NetworkJobOnDefaultServer, random_shuffled_copy
-from .bitcoin import address_to_scripthash, is_address
+from .bitcoin import address_to_scripthash, is_address, hash_decode
 from .logging import Logger
 from .interface import GracefulDisconnect, NetworkTimeout
+from .crypto import sha256
 
 if TYPE_CHECKING:
     from .network import Network
@@ -45,13 +46,19 @@ if TYPE_CHECKING:
 class SynchronizerFailure(Exception): pass
 
 
-def history_status(h):
-    if not h:
-        return None
-    status = ''
-    for tx_hash, height in h:
-        status += tx_hash + ':%d:' % height
-    return bh2u(hashlib.sha256(status.encode('ascii')).digest())
+def history_status(hist: Sequence[Mapping[str, Any]]) -> str:
+    status = bytes(32)
+    for item in hist:
+        tx_hash = hash_decode(item['tx_hash'])
+        height = int.to_bytes(item['height'], length=4, byteorder='little', signed=True)
+        fee = item.get('fee', None)
+        if fee is None:
+            fee = b""
+        else:
+            fee = int.to_bytes(fee, length=8, byteorder='little', signed=False)
+        tx_parts = tx_hash + height + fee
+        status = sha256(status + tx_parts)
+    return status.hex()
 
 
 class SynchronizerBase(NetworkJobOnDefaultServer):
@@ -164,8 +171,8 @@ class Synchronizer(SynchronizerBase):
                 and not self._stale_histories)
 
     async def _on_address_status(self, addr, status):
-        history = self.wallet.db.get_addr_history(addr)
-        if history_status(history) == status:
+        cur_history = self.wallet.db.get_addr_history_dicts(addr)
+        if history_status(cur_history) == status:
             return
         # No point in requesting history twice for the same announced status.
         # However if we got announced a new status, we should request history again:
@@ -177,15 +184,15 @@ class Synchronizer(SynchronizerBase):
         h = address_to_scripthash(addr)
         self._requests_sent += 1
         async with self._network_request_semaphore:
-            result = await self.interface.get_history_for_scripthash(h)
+            hist_dicts = await self.interface.get_history_for_scripthash(h)
         self._requests_answered += 1
-        self.logger.info(f"receiving history {addr} {len(result)}")
-        hist = list(map(lambda item: (item['tx_hash'], item['height']), result))
+        self.logger.info(f"receiving history {addr} {len(hist_dicts)}")
+        hist_tuples = list(map(lambda item: (item['tx_hash'], item['height']), hist_dicts))
         # tx_fees
-        tx_fees = [(item['tx_hash'], item.get('fee')) for item in result]
+        tx_fees = [(item['tx_hash'], item.get('fee')) for item in hist_dicts]
         tx_fees = dict(filter(lambda x:x[1] is not None, tx_fees))
         # Check that the status corresponds to what was announced
-        if history_status(hist) != status:
+        if history_status(hist_dicts) != status:
             # could happen naturally if history changed between getting status and history (race)
             self.logger.info(f"error: status mismatch: {addr}. we'll wait a bit for status update.")
             # The server is supposed to send a new status notification, which will trigger a new
@@ -198,14 +205,19 @@ class Synchronizer(SynchronizerBase):
         else:
             self._stale_histories.pop(addr, asyncio.Future()).cancel()
             # Store received history
-            self.wallet.receive_history_callback(addr, hist, tx_fees)
+            self.wallet.receive_history_callback(addr, hist=hist_tuples, tx_fees=tx_fees)
             # Request transactions we don't have
-            await self._request_missing_txs(hist)
+            await self._request_missing_txs(hist_tuples)
 
         # Remove request; this allows up_to_date to be True
         self.requested_histories.discard((addr, status))
 
-    async def _request_missing_txs(self, hist, *, allow_server_not_finding_tx=False):
+    async def _request_missing_txs(
+            self,
+            hist: Sequence[Tuple[str, int]],
+            *,
+            allow_server_not_finding_tx: bool = False,
+    ):
         # "hist" is a list of [tx_hash, tx_height] lists
         transaction_hashes = []
         for tx_hash, tx_height in hist:

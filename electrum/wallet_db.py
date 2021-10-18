@@ -28,7 +28,7 @@ import json
 import copy
 import threading
 from collections import defaultdict
-from typing import Dict, Optional, List, Tuple, Set, Iterable, NamedTuple, Sequence, TYPE_CHECKING, Union
+from typing import Dict, Optional, List, Tuple, Set, Iterable, NamedTuple, Sequence, TYPE_CHECKING, Union, Mapping, Any
 import binascii
 
 from . import util, bitcoin
@@ -1107,8 +1107,22 @@ class WalletDB(JsonDB):
         assert isinstance(addr, str)
         return self.history.get(addr, [])
 
+    @locked
+    def get_addr_history_dicts(self, addr: str) -> Sequence[Mapping[str, Any]]:
+        """Returns history in the form used in the client-server protocol."""
+        assert isinstance(addr, str)
+        hist_tuples = self.history.get(addr, [])
+        hist_dicts = [{'tx_hash': txid, 'height': height}
+                      for txid, height in hist_tuples]
+        for tx_item in hist_dicts:
+            txid = tx_item['tx_hash']
+            height = tx_item['height']
+            if height <= 0:
+                tx_item['fee'] = self.get_tx_fee(txid, trust_server=True)  # note: might be None
+        return hist_dicts
+
     @modifier
-    def set_addr_history(self, addr: str, hist) -> None:
+    def set_addr_history(self, addr: str, hist: Sequence[Tuple[str, int]]) -> None:
         assert isinstance(addr, str)
         self.history[addr] = hist
 
