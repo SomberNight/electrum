@@ -43,6 +43,7 @@ from .logging import Logger
 if TYPE_CHECKING:
     from .network import Network
     from .wallet_db import WalletDB
+    from .interface import ScripthashHistoryChunk
 
 
 TX_HEIGHT_FUTURE = -3
@@ -405,21 +406,20 @@ class AddressSynchronizer(Logger):
             self,
             addr: str,
             *,
-            hist: Sequence[Tuple[str, int]],
-            tx_fees: Dict[str, int],
+            hist: 'ScripthashHistoryChunk',
     ) -> None:
         with self.lock:
             old_hist = self.get_address_history(addr)
             for tx_hash, height in old_hist:
-                if (tx_hash, height) not in hist:
+                if (tx_hash, height) not in hist.hist_tuples:
                     # make tx local
                     self.unverified_tx.pop(tx_hash, None)
                     self.db.remove_verified_tx(tx_hash)
                     if self.verifier:
                         self.verifier.remove_spv_proof_for_tx(tx_hash)
-            self.db.set_addr_history(addr, hist)
+            self.db.set_addr_history(addr, hist.hist_tuples)
 
-        for tx_hash, tx_height in hist:
+        for tx_hash, tx_height in hist.hist_tuples:
             # add it in case it was previously unconfirmed
             self.add_unverified_tx(tx_hash, tx_height)
             # if addr is new, we have to recompute txi and txo
@@ -429,7 +429,7 @@ class AddressSynchronizer(Logger):
             self.add_transaction(tx, allow_unrelated=True)
 
         # Store fees
-        for tx_hash, fee_sat in tx_fees.items():
+        for tx_hash, fee_sat in hist.tx_fees.items():
             self.db.add_tx_fee_from_server(tx_hash, fee_sat)
 
     @profiler

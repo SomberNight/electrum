@@ -29,7 +29,7 @@ import sys
 import traceback
 import asyncio
 import socket
-from typing import Tuple, Union, List, TYPE_CHECKING, Optional, Set, NamedTuple, Any, Sequence, Dict
+from typing import Tuple, Union, List, TYPE_CHECKING, Optional, Set, NamedTuple, Any, Sequence, Dict, Mapping
 from collections import defaultdict
 from ipaddress import IPv4Network, IPv6Network, ip_address, IPv6Address, IPv4Address
 import itertools
@@ -138,6 +138,32 @@ def assert_dict_keys_exact_match(d: Any, *, fields: Sequence[str]) -> None:
 def assert_list_or_tuple(val: Any) -> None:
     if not isinstance(val, (list, tuple)):
         raise RequestCorrupted(f'{val!r} should be a list or tuple')
+
+
+class ScripthashHistoryChunk:
+    from_height: int
+    to_height: int
+    hist_dicts: Sequence[Mapping[str, Any]]
+
+    def __init__(
+            self, *,
+            from_height: int = 0,
+            to_height: int = -1,
+            hist_dicts: Sequence[Mapping[str, Any]],
+    ):
+        self.from_height = from_height
+        self.to_height = to_height
+        self.hist_dicts = hist_dicts
+
+    @util.cached_property
+    def hist_tuples(self) -> Sequence[Tuple[str, int]]:
+        return list(map(lambda item: (item['tx_hash'], item['height']), self.hist_dicts))
+
+    @util.cached_property
+    def tx_fees(self):
+        tx_fees = [(item['tx_hash'], item.get('fee')) for item in self.hist_dicts]
+        tx_fees = dict(filter(lambda x: x[1] is not None, tx_fees))
+        return tx_fees
 
 
 class NotificationSession(RPCSession):
@@ -954,11 +980,10 @@ class Interface(Logger):
             raise RequestCorrupted(f"received tx does not match expected txid {tx_hash} (got {tx.txid()})")
         return raw
 
-    async def get_history_for_scripthash(self, sh: str) -> List[dict]:
+    async def get_history_for_scripthash(self, sh: str) -> ScripthashHistoryChunk:
         if not is_hash256_str(sh):
             raise Exception(f"{repr(sh)} is not a scripthash")
         # do request
-        # TODO
         # blockchain.scripthash.get_history(scripthash, from_height=0, to_height=-1,
         #                                   client_statushash=None, client_height=None)
         res = await self.session.send_request('blockchain.scripthash.get_history', [sh])
@@ -969,7 +994,7 @@ class Interface(Logger):
         assert_integer(to_height)
         if not (from_height == 0 and to_height == -1):
             raise RequestCorrupted(f"server is paginating history. this is not handled yet. "
-                                   f"(from_height={from_height}, to_height={to_height})")  # TODO
+                                   f"(from_height={from_height}, to_height={to_height})")
         hist = assert_dict_contains_field(res, field_name='history')
         assert_list_or_tuple(hist)
         for tx_item in hist:
@@ -1000,7 +1025,10 @@ class Interface(Logger):
             # a recently mined tx could be included in both last block and mempool?
             # Still, it's simplest to just disregard the response.
             raise RequestCorrupted(f"server history has non-unique txids for sh={sh}")
-        return hist
+        return ScripthashHistoryChunk(
+            from_height=from_height,
+            to_height=to_height,
+            hist_dicts=hist)
 
     async def listunspent_for_scripthash(self, sh: str) -> List[dict]:
         if not is_hash256_str(sh):

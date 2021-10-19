@@ -159,7 +159,6 @@ class Synchronizer(SynchronizerBase):
         super()._reset()
         self.requested_tx = {}
         self.requested_histories = set()
-        self._stale_histories = dict()  # type: Dict[str, asyncio.Task]
 
     def diagnostic_name(self):
         return self.wallet.diagnostic_name()
@@ -167,8 +166,7 @@ class Synchronizer(SynchronizerBase):
     def is_up_to_date(self):
         return (not self.requested_addrs
                 and not self.requested_histories
-                and not self.requested_tx
-                and not self._stale_histories)
+                and not self.requested_tx)
 
     async def _on_address_status(self, addr, status):
         cur_history = self.wallet.db.get_addr_history_dicts(addr)
@@ -180,34 +178,17 @@ class Synchronizer(SynchronizerBase):
             return
         # request address history
         self.requested_histories.add((addr, status))
-        self._stale_histories.pop(addr, asyncio.Future()).cancel()
         h = address_to_scripthash(addr)
         self._requests_sent += 1
         async with self._network_request_semaphore:
-            hist_dicts = await self.interface.get_history_for_scripthash(h)
+            hist_chunk = await self.interface.get_history_for_scripthash(h)
         self._requests_answered += 1
-        self.logger.info(f"receiving history {addr} {len(hist_dicts)}")
-        hist_tuples = list(map(lambda item: (item['tx_hash'], item['height']), hist_dicts))
-        # tx_fees
-        tx_fees = [(item['tx_hash'], item.get('fee')) for item in hist_dicts]
-        tx_fees = dict(filter(lambda x:x[1] is not None, tx_fees))
-        # Check that the status corresponds to what was announced
-        if history_status(hist_dicts) != status:
-            # could happen naturally if history changed between getting status and history (race)
-            self.logger.info(f"error: status mismatch: {addr}. we'll wait a bit for status update.")
-            # The server is supposed to send a new status notification, which will trigger a new
-            # get_history. We shall wait a bit for this to happen, otherwise we disconnect.
-            async def disconnect_if_still_stale():
-                timeout = self.network.get_network_timeout_seconds(NetworkTimeout.Generic)
-                await asyncio.sleep(timeout)
-                raise SynchronizerFailure(f"timeout reached waiting for addr {addr}: history still stale")
-            self._stale_histories[addr] = await self.taskgroup.spawn(disconnect_if_still_stale)
-        else:
-            self._stale_histories.pop(addr, asyncio.Future()).cancel()
-            # Store received history
-            self.wallet.receive_history_callback(addr, hist=hist_tuples, tx_fees=tx_fees)
-            # Request transactions we don't have
-            await self._request_missing_txs(hist_tuples)
+        self.logger.info(f"receiving history {addr} {len(hist_chunk.hist_dicts)} "
+                         f"({hist_chunk.from_height}-{hist_chunk.to_height})")
+        # Store received history
+        self.wallet.receive_history_callback(addr, hist=hist_chunk)
+        # Request transactions we don't have
+        await self._request_missing_txs(hist_chunk.hist_tuples)
 
         # Remove request; this allows up_to_date to be True
         self.requested_histories.discard((addr, status))

@@ -1090,7 +1090,9 @@ class Network(Logger, NetworkRetryManager[ServerAddr]):
     @best_effort_reliable
     @catch_server_exceptions
     async def get_history_for_scripthash(self, sh: str) -> List[dict]:
-        return await self.interface.get_history_for_scripthash(sh)
+        hist_chunk = await self.interface.get_history_for_scripthash(sh)
+        # TODO what to return? no pagination done here: this might be partial data only
+        return hist_chunk.hist_dicts
 
     @best_effort_reliable
     @catch_server_exceptions
