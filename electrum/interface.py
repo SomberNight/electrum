@@ -607,19 +607,22 @@ class Interface(Logger):
         finally:
             self._requested_chunks.discard(index)
         assert_dict_contains_field(res, field_name='count')
-        assert_dict_contains_field(res, field_name='hex')
+        headers_list = assert_dict_contains_field(res, field_name='headers')
         assert_dict_contains_field(res, field_name='max')
         assert_non_negative_integer(res['count'])
         assert_non_negative_integer(res['max'])
-        assert_hex_str(res['hex'])
-        if len(res['hex']) != HEADER_SIZE * 2 * res['count']:
-            raise RequestCorrupted('inconsistent chunk hex and count')
+        assert_list_or_tuple(headers_list)
+        if len(headers_list) != res['count']:
+            raise RequestCorrupted('inconsistent len(headers_list) and count')
+        headers_hex = "".join(headers_list)
+        if len(headers_hex) != HEADER_SIZE * 2 * res['count']:
+            raise RequestCorrupted('inconsistent chunk hex size')
         # we never request more than 2016 headers, but we enforce those fit in a single response
         if res['max'] < 2016:
             raise RequestCorrupted(f"server uses too low 'max' count for block.headers: {res['max']} < 2016")
         if res['count'] != size:
             raise RequestCorrupted(f"expected {size} headers but only got {res['count']}")
-        conn = self.blockchain.connect_chunk(index, res['hex'])
+        conn = self.blockchain.connect_chunk(index, headers_hex)
         if not conn:
             return conn, 0
         return conn, res['count']
