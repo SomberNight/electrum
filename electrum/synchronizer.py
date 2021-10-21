@@ -175,20 +175,26 @@ class Synchronizer(SynchronizerBase):
         # No point in requesting history twice for the same announced status.
         # However if we got announced a new status, we should request history again:
         if (addr, status) in self.requested_histories:
-            return
+            return  # TODO if same addr, diff status: delay proccessing?
         # request address history
         self.requested_histories.add((addr, status))
-        h = address_to_scripthash(addr)
-        self._requests_sent += 1
-        async with self._network_request_semaphore:
-            hist_chunk = await self.interface.get_history_for_scripthash(h)
-        self._requests_answered += 1
-        self.logger.info(f"receiving history {addr} {len(hist_chunk.hist_dicts)} "
-                         f"({hist_chunk.from_height}-{hist_chunk.to_height})")
-        # Store received history
-        self.wallet.receive_history_callback(addr, hist=hist_chunk)
-        # Request transactions we don't have
-        await self._request_missing_txs(hist_chunk.hist_tuples)
+        sh = address_to_scripthash(addr)
+        from_height, to_height = 0, -1
+        while True:
+            self._requests_sent += 1
+            async with self._network_request_semaphore:
+                hist_chunk = await self.interface.get_history_for_scripthash(
+                    sh, from_height=from_height, to_height=to_height)
+            self._requests_answered += 1
+            self.logger.info(f"receiving history {addr} {len(hist_chunk.hist_dicts)} "
+                             f"({hist_chunk.from_height}-{hist_chunk.to_height})")
+            # Store received history
+            self.wallet.receive_history_callback(addr, hist=hist_chunk)
+            # Request transactions we don't have
+            await self._request_missing_txs(hist_chunk.hist_tuples)
+            if hist_chunk.to_height == -1:
+                break  # done: syncing reached mempool
+            from_height = hist_chunk.to_height
 
         # Remove request; this allows up_to_date to be True
         self.requested_histories.discard((addr, status))

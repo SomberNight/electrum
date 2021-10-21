@@ -409,17 +409,26 @@ class AddressSynchronizer(Logger):
             hist: 'ScripthashHistoryChunk',
     ) -> None:
         with self.lock:
+            # compare old hist and new hist
+            # find txs that disappeared and turn them into local txs
             old_hist = self.get_address_history(addr)
             for tx_hash, height in old_hist:
-                if (tx_hash, height) not in hist.hist_tuples:
+                if 0 < height < hist.from_height:
+                    continue  # don't touch txs older than where the chunk starts
+                if (tx_hash, height) not in hist.hist_tuples_set:
                     # make tx local
                     self.unverified_tx.pop(tx_hash, None)
+                    # TODO don't delete SPV proofs...
                     self.db.remove_verified_tx(tx_hash)
                     if self.verifier:
                         self.verifier.remove_spv_proof_for_tx(tx_hash)
-            self.db.set_addr_history(addr, hist.hist_tuples)
+            # update history in db
+            new_hist = [(tx_hash, height) for (tx_hash, height) in self.db.get_addr_history(addr)
+                        if height < hist.from_height]
+            new_hist += list(hist.hist_tuples)
+            self.db.set_addr_history(addr, new_hist)
 
-        for tx_hash, tx_height in hist.hist_tuples:
+        for tx_hash, tx_height in hist.hist_tuples:  # TODO
             # add it in case it was previously unconfirmed
             self.add_unverified_tx(tx_hash, tx_height)
             # if addr is new, we have to recompute txi and txo

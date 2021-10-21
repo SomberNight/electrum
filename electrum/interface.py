@@ -70,7 +70,7 @@ ca_path = certifi.where()
 
 BUCKET_NAME_OF_ONION_SERVERS = 'onion'
 
-MAX_INCOMING_MSG_SIZE = 1_000_000  # in bytes
+MAX_INCOMING_MSG_SIZE = 10_000_000  # in bytes
 
 _KNOWN_NETWORK_PROTOCOLS = {'t', 's'}
 PREFERRED_NETWORK_PROTOCOL = 's'
@@ -158,6 +158,10 @@ class ScripthashHistoryChunk:
     @util.cached_property
     def hist_tuples(self) -> Sequence[Tuple[str, int]]:
         return list(map(lambda item: (item['tx_hash'], item['height']), self.hist_dicts))
+
+    @util.cached_property
+    def hist_tuples_set(self) -> Set[Tuple[str, int]]:
+        return set(self.hist_tuples)
 
     @util.cached_property
     def tx_fees(self):
@@ -980,21 +984,39 @@ class Interface(Logger):
             raise RequestCorrupted(f"received tx does not match expected txid {tx_hash} (got {tx.txid()})")
         return raw
 
-    async def get_history_for_scripthash(self, sh: str) -> ScripthashHistoryChunk:
+    async def get_history_for_scripthash(
+            self,
+            sh: str,
+            *,
+            from_height: int = 0,
+            to_height: int = -1,
+    ) -> ScripthashHistoryChunk:
         if not is_hash256_str(sh):
             raise Exception(f"{repr(sh)} is not a scripthash")
+        to_height_or_inf = to_height if to_height >= 0 else float('inf')
+        if not (from_height < to_height_or_inf):
+            raise Exception(f"from_height={from_height} < to_height={to_height} must hold.")
         # do request
         # blockchain.scripthash.get_history(scripthash, from_height=0, to_height=-1,
         #                                   client_statushash=None, client_height=None)
-        res = await self.session.send_request('blockchain.scripthash.get_history', [sh])
+        kwargs = {"scripthash": sh,}
+        if from_height != 0:  # only set param if we want non-default value, to save a few bytes
+            kwargs["from_height"] = from_height
+        if to_height != -1:
+            kwargs["to_height"] = to_height
+        res = await self.session.send_request('blockchain.scripthash.get_history', kwargs)
         # check response
-        from_height = assert_dict_contains_field(res, field_name='from_height')
-        to_height = assert_dict_contains_field(res, field_name='to_height')
-        assert_integer(from_height)
-        assert_integer(to_height)
-        if not (from_height == 0 and to_height == -1):
-            raise RequestCorrupted(f"server is paginating history. this is not handled yet. "
-                                   f"(from_height={from_height}, to_height={to_height})")
+        from_height_s = assert_dict_contains_field(res, field_name='from_height')
+        to_height_s = assert_dict_contains_field(res, field_name='to_height')
+        assert_integer(from_height_s)
+        assert_integer(to_height_s)
+        to_height_s_or_inf = to_height_s if to_height_s >= 0 else float('inf')
+        if not (from_height == from_height_s < to_height_s_or_inf <= to_height_or_inf):
+            raise RequestCorrupted(f"from_height({from_height}) == from_height_s({from_height_s}) "
+                                   f"< to_height_s_or_inf({to_height_s_or_inf}) <= to_height_or_inf({to_height_or_inf}) must hold.")
+        # use only server-sent [from_height, to_height[ values from now on
+        from_height, to_height, to_height_or_inf = from_height_s, to_height_s, to_height_s_or_inf
+        del from_height_s, to_height_s, to_height_s_or_inf
         hist = assert_dict_contains_field(res, field_name='history')
         assert_list_or_tuple(hist)
         for tx_item in hist:
@@ -1006,8 +1028,13 @@ class Interface(Logger):
                 assert_dict_keys_exact_match(tx_item, fields=('tx_hash', 'height', 'fee'))
                 fee = assert_dict_contains_field(tx_item, field_name='fee')
                 assert_non_negative_integer(fee)
+                if to_height != -1:
+                    raise RequestCorrupted(f"found unconfirmed tx but to_height({to_height}) != -1")
             else:
                 assert_dict_keys_exact_match(tx_item, fields=('tx_hash', 'height'))
+                if not (from_height <= height < to_height_or_inf):
+                    raise RequestCorrupted(f"height outside range: "
+                                           f"from_height({from_height}) <= height({height}) < to_height_or_inf({to_height_or_inf})")
             if height < -1:
                 raise RequestCorrupted(f"invalid tx height: {height}")
         def order_tx_by(tx_item):
