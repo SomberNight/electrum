@@ -82,23 +82,23 @@ class SPV(NetworkJobOnDefaultServer):
             if tx_hash in self.requested_merkle or tx_hash in self.merkle_roots:
                 continue
             # or before headers are available
-            if tx_height <= 0 or tx_height > local_height:
+            if not (0 < tx_height <= local_height):
                 continue
             # if it's in the checkpoint region, we still might not have the header
             header = self.blockchain.read_header(tx_height)
             if header is None:
                 if tx_height < constants.net.max_checkpoint():
-                    await self.taskgroup.spawn(self.network.request_chunk(tx_height, None, can_return_early=True))
+                    await self.taskgroup.spawn(self.interface.request_chunk(tx_height, None, can_return_early=True))
                 continue
             # request now
-            self.logger.info(f'requested merkle {tx_hash}')
+            #self.logger.info(f'requested merkle {tx_hash}')
             self.requested_merkle.add(tx_hash)
             await self.taskgroup.spawn(self._request_and_verify_single_proof, tx_hash, tx_height)
 
     async def _request_and_verify_single_proof(self, tx_hash, tx_height):
         try:
             async with self._network_request_semaphore:
-                merkle = await self.network.get_merkle_for_transaction(tx_hash, tx_height)
+                merkle = await self.interface.get_merkle_for_transaction(tx_hash, tx_height)
         except UntrustedServerReturnedError as e:
             if not isinstance(e.original_exception, aiorpcx.jsonrpc.RPCError):
                 raise

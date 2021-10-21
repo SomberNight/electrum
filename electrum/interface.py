@@ -990,12 +990,16 @@ class Interface(Logger):
             *,
             from_height: int = 0,
             to_height: int = -1,
+            client_statushash: str = None,
+            client_height: int = None,
     ) -> ScripthashHistoryChunk:
         if not is_hash256_str(sh):
             raise Exception(f"{repr(sh)} is not a scripthash")
         to_height_or_inf = to_height if to_height >= 0 else float('inf')
         if not (from_height < to_height_or_inf):
             raise Exception(f"from_height={from_height} < to_height={to_height} must hold.")
+        if (client_statushash is None) != (client_height is None):
+            raise Exception(f"either both or neither of client_statushash and client_height must be present")
         # do request
         # blockchain.scripthash.get_history(scripthash, from_height=0, to_height=-1,
         #                                   client_statushash=None, client_height=None)
@@ -1004,6 +1008,12 @@ class Interface(Logger):
             kwargs["from_height"] = from_height
         if to_height != -1:
             kwargs["to_height"] = to_height
+        if client_statushash is not None:
+            if not (from_height <= client_height < to_height_or_inf):
+                raise Exception(f"from_height={from_height} <= client_height={client_height} "
+                                f"< to_height={to_height} must hold.")
+            kwargs["client_statushash"] = client_statushash
+            kwargs["client_height"] = client_height
         res = await self.session.send_request('blockchain.scripthash.get_history', kwargs)
         # check response
         from_height_s = assert_dict_contains_field(res, field_name='from_height')
@@ -1011,9 +1021,13 @@ class Interface(Logger):
         assert_integer(from_height_s)
         assert_integer(to_height_s)
         to_height_s_or_inf = to_height_s if to_height_s >= 0 else float('inf')
-        if not (from_height == from_height_s < to_height_s_or_inf <= to_height_or_inf):
+        if not (from_height <= from_height_s < to_height_s_or_inf <= to_height_or_inf):
             raise RequestCorrupted(f"from_height({from_height}) == from_height_s({from_height_s}) "
                                    f"< to_height_s_or_inf({to_height_s_or_inf}) <= to_height_or_inf({to_height_or_inf}) must hold.")
+        if not (client_height is None and from_height_s == from_height
+                or client_height is not None and from_height_s == client_height + 1):
+            raise RequestCorrupted(f"unexpected from_height_s({from_height_s}). "
+                                   f"from_height={from_height}. client_height={client_height}")
         # use only server-sent [from_height, to_height[ values from now on
         from_height, to_height, to_height_or_inf = from_height_s, to_height_s, to_height_s_or_inf
         del from_height_s, to_height_s, to_height_s_or_inf

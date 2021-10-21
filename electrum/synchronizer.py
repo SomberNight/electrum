@@ -43,20 +43,32 @@ if TYPE_CHECKING:
     from .address_synchronizer import AddressSynchronizer
 
 
+REORGSAFE_DEPTH = 100  # TODO move to constants?
+
+
 class SynchronizerFailure(Exception): pass
 
 
-def history_status(hist: Sequence[Mapping[str, Any]]) -> str:
+def history_status(hist: Sequence[Mapping[str, Any]], *, max_height: int = None) -> str:
+    """Calculates the status hash for the history of an address, as per protocol 1.5+.
+
+    `hist` is assumed to be well-formed and already validated (e.g. txs in sorted order).
+    `max_height` is a cut-off so that only confirmed txs mined at <= max_height are considered
+    """
     status = bytes(32)
     for item in hist:
         tx_hash = hash_decode(item['tx_hash'])
-        height = int.to_bytes(item['height'], length=4, byteorder='little', signed=True)
+        height = item['height']
+        if max_height is not None:
+            if not (0 < height <= max_height):
+                break
+        height_bytes = int.to_bytes(height, length=4, byteorder='little', signed=True)
         fee = item.get('fee', None)
         if fee is None:
             fee = b""
         else:
             fee = int.to_bytes(fee, length=8, byteorder='little', signed=False)
-        tx_parts = tx_hash + height + fee
+        tx_parts = tx_hash + height_bytes + fee
         status = sha256(status + tx_parts)
     return status.hex()
 
@@ -179,15 +191,26 @@ class Synchronizer(SynchronizerBase):
         # request address history
         self.requested_histories.add((addr, status))
         sh = address_to_scripthash(addr)
+        client_height, client_statushash = None, None
+        safe_max_height = self.interface.tip - REORGSAFE_DEPTH
+        if cur_history and safe_max_height > 0:
+            client_height = min(safe_max_height, max(tx['height'] for tx in cur_history))
+            client_statushash = history_status(cur_history, max_height=client_height)
         from_height, to_height = 0, -1
         while True:
             self._requests_sent += 1
             async with self._network_request_semaphore:
                 hist_chunk = await self.interface.get_history_for_scripthash(
-                    sh, from_height=from_height, to_height=to_height)
+                    sh,
+                    from_height=from_height,
+                    to_height=to_height,
+                    client_height=client_height,
+                    client_statushash=client_statushash,
+                )
             self._requests_answered += 1
-            self.logger.info(f"receiving history {addr} {len(hist_chunk.hist_dicts)} "
-                             f"({hist_chunk.from_height}-{hist_chunk.to_height})")
+            self.logger.info(f"receiving history for {addr}. {len(hist_chunk.hist_dicts)} txs. "
+                             f"(got [{hist_chunk.from_height}, {hist_chunk.to_height}[. "
+                             f"requested [{from_height}, {to_height}[, client_height={client_height})")
             # Store received history
             self.wallet.receive_history_callback(addr, hist=hist_chunk)
             # Request transactions we don't have
