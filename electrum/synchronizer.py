@@ -169,8 +169,8 @@ class Synchronizer(SynchronizerBase):
 
     def _reset(self):
         super()._reset()
-        self.requested_tx = {}
-        self.requested_histories = set()
+        self.requested_tx = {}  # type: Dict[str, int]  # txid -> height
+        self.requested_histories = {}  # type: Dict[str, str]  # addr -> status
 
     def diagnostic_name(self):
         return self.wallet.diagnostic_name()
@@ -181,15 +181,25 @@ class Synchronizer(SynchronizerBase):
                 and not self.requested_tx)
 
     async def _on_address_status(self, addr, status):
+        # It might happen that we get announced a new status while processing an older one,
+        # for the same address. In such cases we won't start handling the new status until
+        # finishing with the old one.
+        is_already_requesting_history = addr in self.requested_histories
+        self.requested_histories[addr] = status
+        if is_already_requesting_history:
+            return
+        while True:
+            status = self.requested_histories[addr]
+            await self._sync_address_to_status(addr, status)
+            if status == self.requested_histories[addr]:
+                break
+        self.requested_histories.pop(addr)
+
+    async def _sync_address_to_status(self, addr, status):
         cur_history = self.wallet.db.get_addr_history_dicts(addr)
         if history_status(cur_history) == status:
             return
-        # No point in requesting history twice for the same announced status.
-        # However if we got announced a new status, we should request history again:
-        if (addr, status) in self.requested_histories:
-            return  # TODO if same addr, diff status: delay proccessing?
         # request address history
-        self.requested_histories.add((addr, status))
         sh = address_to_scripthash(addr)
         client_height, client_statushash = None, None
         safe_max_height = self.interface.tip - REORGSAFE_DEPTH
@@ -218,9 +228,8 @@ class Synchronizer(SynchronizerBase):
             if hist_chunk.to_height == -1:
                 break  # done: syncing reached mempool
             from_height = hist_chunk.to_height
-
-        # Remove request; this allows up_to_date to be True
-        self.requested_histories.discard((addr, status))
+        # note: now we could check history_status(wallet.hist...) == status, i.e. whether
+        #       we are synced to the originally announced status, but this is race-prone.
 
     async def _request_missing_txs(
             self,
