@@ -39,6 +39,7 @@ contrib/secp256k1/
 contrib/zbar/
 contrib/libusb/
 contrib/osx/build-venv/
+contrib/.venv_make_packages/
 
 # shared objects
 electrum/*.so
