@@ -58,6 +58,7 @@ class MockNetwork:
     def __init__(self, tx_queue):
         self.callbacks = defaultdict(list)
         self.lnwatcher = None
+        self.lngossip = None
         self.interface = None
         user_config = {}
         user_dir = tempfile.mkdtemp(prefix="electrum-lnpeer-test-")
@@ -175,6 +176,9 @@ class MockLNWallet(Logger, NetworkRetryManager[LNPeerAddr]):
     @property
     def peers(self):
         return self._peers
+
+    def peer_closed(self, peer):
+        pass
 
     def get_channel_by_short_id(self, short_channel_id):
         with self.lock:
@@ -395,7 +399,7 @@ class TestPeer(TestCaseForTestnet):
         alice_channel._state = ChannelState.FUNDED
         bob_channel._state = ChannelState.FUNDED
         # this populates the channel graph:
-        p1.mark_open(alice_channel)
+        p1.mark_open(alice_channel)  #
         p2.mark_open(bob_channel)
         return p1, p2, w1, w2, q1, q2
 
@@ -455,7 +459,7 @@ class TestPeer(TestCaseForTestnet):
 
         # this populates the channel graph:
         for ab, peer_ab in peers.items():
-            peer_ab.mark_open(channels[ab])
+            peer_ab.mark_open(channels[ab])  #
 
         graph = Graph(
             workers=workers,
@@ -518,7 +522,7 @@ class TestPeer(TestCaseForTestnet):
             self.assertEqual(alice_channel.peer_state, PeerState.GOOD)
             self.assertEqual(bob_channel.peer_state, PeerState.GOOD)
             gath.cancel()
-        gath = asyncio.gather(reestablish(), p1._message_loop(), p2._message_loop(), p1.htlc_switch(), p1.htlc_switch())
+        gath = asyncio.gather(reestablish(), p1._main_loop(), p2._main_loop())
         async def f():
             await gath
         with self.assertRaises(concurrent.futures.CancelledError):
@@ -535,7 +539,7 @@ class TestPeer(TestCaseForTestnet):
             result, log = await w1.pay_invoice(pay_req)
             self.assertEqual(result, True)
             gath.cancel()
-        gath = asyncio.gather(pay(), p1._message_loop(), p2._message_loop(), p1.htlc_switch(), p2.htlc_switch())
+        gath = asyncio.gather(pay(), p1._main_loop(), p2._main_loop())
         async def f():
             await gath
         with self.assertRaises(concurrent.futures.CancelledError):
@@ -553,7 +557,7 @@ class TestPeer(TestCaseForTestnet):
             # wait so that pending messages are processed
             #await asyncio.sleep(1)
             gath.cancel()
-        gath = asyncio.gather(reestablish(), p1._message_loop(), p2._message_loop(), p1.htlc_switch(), p2.htlc_switch())
+        gath = asyncio.gather(reestablish(), p1._main_loop(), p2._main_loop())
         async def f():
             await gath
         with self.assertRaises(concurrent.futures.CancelledError):
@@ -572,11 +576,9 @@ class TestPeer(TestCaseForTestnet):
             raise PaymentDone()
         async def f():
             async with OldTaskGroup() as group:
-                await group.spawn(p1._message_loop())
-                await group.spawn(p1.htlc_switch())
-                await group.spawn(p2._message_loop())
-                await group.spawn(p2.htlc_switch())
-                await asyncio.sleep(0.01)
+                await group.spawn(p1._main_loop())
+                await group.spawn(p2._main_loop())
+                await asyncio.sleep(0.2)
                 lnaddr, pay_req = await self.prepare_invoice(w2)
                 invoice_features = lnaddr.get_features()
                 self.assertFalse(invoice_features.supports(LnFeatures.BASIC_MPP_OPT))
@@ -646,11 +648,9 @@ class TestPeer(TestCaseForTestnet):
 
         async def f():
             async with OldTaskGroup() as group:
-                await group.spawn(p1._message_loop())
-                await group.spawn(p1.htlc_switch())
-                await group.spawn(p2._message_loop())
-                await group.spawn(p2.htlc_switch())
-                await asyncio.sleep(0.01)
+                await group.spawn(p1._main_loop())
+                await group.spawn(p2._main_loop())
+                await asyncio.sleep(0.2)
                 await group.spawn(pay())
         with self.assertRaises(PaymentDone):
             run(f())
@@ -677,7 +677,7 @@ class TestPeer(TestCaseForTestnet):
                     lnaddr, pay_req = pay_req_task.result()
                     await group.spawn(single_payment(pay_req))
             gath.cancel()
-        gath = asyncio.gather(many_payments(), p1._message_loop(), p2._message_loop(), p1.htlc_switch(), p2.htlc_switch())
+        gath = asyncio.gather(many_payments(), p1._main_loop(), p2._main_loop())
         async def f():
             await gath
         with self.assertRaises(concurrent.futures.CancelledError):
@@ -700,8 +700,7 @@ class TestPeer(TestCaseForTestnet):
         async def f():
             async with OldTaskGroup() as group:
                 for peer in peers:
-                    await group.spawn(peer._message_loop())
-                    await group.spawn(peer.htlc_switch())
+                    await group.spawn(peer._main_loop())
                 await asyncio.sleep(0.2)
                 lnaddr, pay_req = await self.prepare_invoice(graph.workers['dave'], include_routing_hints=True)
                 await group.spawn(pay(lnaddr, pay_req))
@@ -744,8 +743,7 @@ class TestPeer(TestCaseForTestnet):
         async def f():
             async with OldTaskGroup() as group:
                 for peer in peers:
-                    await group.spawn(peer._message_loop())
-                    await group.spawn(peer.htlc_switch())
+                    await group.spawn(peer._main_loop())
                 await asyncio.sleep(0.2)
                 lnaddr, pay_req = await self.prepare_invoice(graph.workers['dave'], include_routing_hints=True)
                 await group.spawn(pay(pay_req))
@@ -768,8 +766,7 @@ class TestPeer(TestCaseForTestnet):
         async def f():
             async with OldTaskGroup() as group:
                 for peer in peers:
-                    await group.spawn(peer._message_loop())
-                    await group.spawn(peer.htlc_switch())
+                    await group.spawn(peer._main_loop())
                 await asyncio.sleep(0.2)
                 lnaddr, pay_req = await self.prepare_invoice(graph.workers['dave'], include_routing_hints=True)
                 await group.spawn(pay(lnaddr, pay_req))
@@ -803,8 +800,7 @@ class TestPeer(TestCaseForTestnet):
         async def f():
             async with OldTaskGroup() as group:
                 for peer in peers:
-                    await group.spawn(peer._message_loop())
-                    await group.spawn(peer.htlc_switch())
+                    await group.spawn(peer._main_loop())
                 await asyncio.sleep(0.2)
                 lnaddr, pay_req = await self.prepare_invoice(graph.workers['dave'], include_routing_hints=True)
                 invoice_features = lnaddr.get_features()
@@ -866,8 +862,7 @@ class TestPeer(TestCaseForTestnet):
         async def f():
             async with OldTaskGroup() as group:
                 for peer in peers:
-                    await group.spawn(peer._message_loop())
-                    await group.spawn(peer.htlc_switch())
+                    await group.spawn(peer._main_loop())
                 await asyncio.sleep(0.2)
                 lnaddr, pay_req = await self.prepare_invoice(graph.workers['dave'], amount_msat=amount_to_pay, include_routing_hints=True)
                 await group.spawn(pay(lnaddr, pay_req))
@@ -910,18 +905,19 @@ class TestPeer(TestCaseForTestnet):
             else:
                 raise NoPathFound()
 
-        async def f(kwargs):
+        async def f():
             async with OldTaskGroup() as group:
                 for peer in peers:
-                    await group.spawn(peer._message_loop())
-                    await group.spawn(peer.htlc_switch())
+                    await group.spawn(peer._main_loop())
                 await asyncio.sleep(0.2)
-                await group.spawn(pay(**kwargs))
+                with self.assertRaises(NoPathFound):
+                    await pay(**fail_kwargs)
+                with self.assertRaises(PaymentDone):
+                    await pay(**success_kwargs)
+                raise SuccessfulTest()
 
-        with self.assertRaises(NoPathFound):
-            run(f(fail_kwargs))
-        with self.assertRaises(PaymentDone):
-            run(f(success_kwargs))
+        with self.assertRaises(SuccessfulTest):
+            run(f())
 
     @needs_test_with_all_chacha20_implementations
     def test_payment_multipart_with_timeout(self):
@@ -952,8 +948,7 @@ class TestPeer(TestCaseForTestnet):
             await turn_on_trampoline_alice()
             async with OldTaskGroup() as group:
                 for peer in peers:
-                    await group.spawn(peer._message_loop())
-                    await group.spawn(peer.htlc_switch())
+                    await group.spawn(peer._main_loop())
                 await asyncio.sleep(0.2)
                 lnaddr, pay_req = await self.prepare_invoice(graph.workers['dave'], include_routing_hints=True)
                 await group.spawn(pay(lnaddr, pay_req))
@@ -1030,8 +1025,7 @@ class TestPeer(TestCaseForTestnet):
         async def f():
             async with OldTaskGroup() as group:
                 for peer in peers:
-                    await group.spawn(peer._message_loop())
-                    await group.spawn(peer.htlc_switch())
+                    await group.spawn(peer._main_loop())
                 await asyncio.sleep(0.2)
                 await group.spawn(pay())
 
@@ -1066,7 +1060,7 @@ class TestPeer(TestCaseForTestnet):
         async def set_settle():
             await asyncio.sleep(0.1)
             w2.enable_htlc_settle = True
-        gath = asyncio.gather(pay(), set_settle(), p1._message_loop(), p2._message_loop(), p1.htlc_switch(), p2.htlc_switch())
+        gath = asyncio.gather(pay(), set_settle(), p1._main_loop(), p2._main_loop())
         async def f():
             await gath
         with self.assertRaises(concurrent.futures.CancelledError):
@@ -1104,8 +1098,7 @@ class TestPeer(TestCaseForTestnet):
 
             async def main_loop(peer):
                     async with peer.taskgroup as group:
-                        await group.spawn(peer._message_loop())
-                        await group.spawn(peer.htlc_switch())
+                        await group.spawn(peer._main_loop())
 
             coros = [close(), main_loop(p1), main_loop(p2)]
             gath = asyncio.gather(*coros)
@@ -1133,8 +1126,7 @@ class TestPeer(TestCaseForTestnet):
 
             async def main_loop(peer):
                 async with peer.taskgroup as group:
-                    await group.spawn(peer._message_loop())
-                    await group.spawn(peer.htlc_switch())
+                    await group.spawn(peer._main_loop())
 
             coros = [close(), main_loop(p1), main_loop(p2)]
             gath = asyncio.gather(*coros)
@@ -1173,7 +1165,7 @@ class TestPeer(TestCaseForTestnet):
                 payment_hash=payment_hash,
                 payment_secret=payment_secret,
                 min_cltv_expiry=min_cltv_expiry)
-            await asyncio.gather(pay, p1._message_loop(), p2._message_loop(), p1.htlc_switch(), p2.htlc_switch())
+            await asyncio.gather(pay, p1._main_loop(), p2._main_loop())
         with self.assertRaises(PaymentFailure):
             run(f())
 
@@ -1200,8 +1192,7 @@ class TestPeer(TestCaseForTestnet):
         async def f():
             async with OldTaskGroup() as group:
                 for peer in [p1, p2]:
-                    await group.spawn(peer._message_loop())
-                    await group.spawn(peer.htlc_switch())
+                    await group.spawn(peer._main_loop())
                 await asyncio.sleep(0.2)
                 await group.spawn(send_weird_messages())
 
@@ -1226,10 +1217,8 @@ class TestPeer(TestCaseForTestnet):
         async def f():
             nonlocal failing_task
             async with OldTaskGroup() as group:
-                await group.spawn(p1._message_loop())
-                await group.spawn(p1.htlc_switch())
-                failing_task = await group.spawn(p2._message_loop())
-                await group.spawn(p2.htlc_switch())
+                await group.spawn(p1._main_loop())
+                failing_task = await group.spawn(p2._main_loop())
                 await asyncio.sleep(0.2)
                 await group.spawn(send_weird_messages())
 
@@ -1255,10 +1244,8 @@ class TestPeer(TestCaseForTestnet):
         async def f():
             nonlocal failing_task
             async with OldTaskGroup() as group:
-                await group.spawn(p1._message_loop())
-                await group.spawn(p1.htlc_switch())
-                failing_task = await group.spawn(p2._message_loop())
-                await group.spawn(p2.htlc_switch())
+                await group.spawn(p1._main_loop())
+                failing_task = await group.spawn(p2._main_loop())
                 await asyncio.sleep(0.2)
                 await group.spawn(send_weird_messages())
 

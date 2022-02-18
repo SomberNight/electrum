@@ -2156,9 +2156,9 @@ class LNWallet(LNWorker):
                 if not chan.should_try_to_reestablish_peer():
                     continue
                 peer = self._peers.get(chan.node_id, None)
-                if peer:
-                    await peer.taskgroup.spawn(peer.reestablish_channel(chan))
-                else:
+                # if peer:
+                #     await peer.taskgroup.spawn(peer.reestablish_channel(chan))
+                if peer is None:
                     await self.taskgroup.spawn(self.reestablish_peer_for_given_channel(chan))
 
     def current_feerate_per_kw(self):

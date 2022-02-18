@@ -88,7 +88,7 @@ class Peer(Logger):
         self.pubkey = pubkey  # remote pubkey
         self.lnworker = lnworker
         self.privkey = self.transport.privkey  # local privkey
-        self.features = self.lnworker.features  # type: LnFeatures
+        self.features = self.lnworker.features  # type: LnFeatures  #
         self.their_features = LnFeatures(0)  # type: LnFeatures
         self.node_ids = [self.pubkey, privkey_to_pubkey(self.privkey)]
         assert self.node_ids[0] != self.node_ids[1]
@@ -118,7 +118,7 @@ class Peer(Logger):
         assert type(message_name) is str
         if message_name not in self.SPAMMY_MESSAGES:
             self.logger.debug(f"Sending {message_name.upper()}")
-        if message_name.upper() != "INIT" and not self.is_initialized():
+        if message_name.upper() != "INIT" and not self.is_initialized():  #
             raise Exception("tried to send message before we are initialized")
         raw_msg = encode_msg(message_name, **kwargs)
         self._store_raw_msg_if_local_update(raw_msg, message_name=message_name, channel_id=kwargs.get("channel_id"))
@@ -188,7 +188,7 @@ class Peer(Logger):
             self.send_message('ping', num_pong_bytes=4, byteslen=4)
             self.ping_time = time.time()
 
-    def process_message(self, message):
+    def process_message(self, message):  #
         try:
             message_type, payload = decode_msg(message)
         except UnknownOptionalMsgType as e:
@@ -199,6 +199,8 @@ class Peer(Logger):
         # only process INIT if we are a backup
         if self.is_channel_backup is True and message_type != 'init':
             return
+        if not self.is_initialized() and message_type != 'init':
+            raise RemoteMisbehaving(f"received {message_type.upper()} before INIT-exchange finished")
         if message_type in self.ORDERED_MESSAGES:
             chan_id = payload.get('channel_id') or payload["temporary_channel_id"]
             self.ordered_message_queues[chan_id].put_nowait((message_type, payload))
@@ -333,11 +335,28 @@ class Peer(Logger):
     @log_exceptions
     @handle_disconnect
     async def main_loop(self):
+        await self._main_loop()
+
+    async def _main_loop(self):
         async with self.taskgroup as group:
             await group.spawn(self._message_loop())
             await group.spawn(self.htlc_switch())
+            await group.spawn(self._reestablish_channels())
             await group.spawn(self.query_gossip())
             await group.spawn(self.process_gossip())
+
+    async def _reestablish_channels(self):
+        while True:
+            for chan in self.channels.values():
+                if chan.is_closed():
+                    #print(f"xxxx1. {chan=} {chan.get_state()=} {chan.peer_state=}")
+                    continue
+                if not chan.should_try_to_reestablish_peer():
+                    #print(f"xxxx2. {chan=} {chan.get_state()=} {chan.peer_state=}")
+                    continue
+                #print(f"xxxx3. {chan=} {chan.get_state()=} {chan.peer_state=}")
+                await self.taskgroup.spawn(self.reestablish_channel(chan))
+            await asyncio.sleep(1)
 
     async def process_gossip(self):
         while True:
@@ -907,7 +926,7 @@ class Peer(Logger):
             your_last_per_commitment_secret=0,
             my_current_per_commitment_point=latest_point)
 
-    async def reestablish_channel(self, chan: Channel):
+    async def reestablish_channel(self, chan: Channel):  #
         await self.initialized
         chan_id = chan.channel_id
         if chan.should_request_force_close:
@@ -922,7 +941,7 @@ class Peer(Logger):
         chan.peer_state = PeerState.REESTABLISHING
         util.trigger_callback('channel', self.lnworker.wallet, chan)
         # BOLT-02: "A node [...] upon disconnection [...] MUST reverse any uncommitted updates sent by the other side"
-        chan.hm.discard_unsigned_remote_updates()
+        chan.hm.discard_unsigned_remote_updates()  #
         # ctns
         oldest_unrevoked_local_ctn = chan.get_oldest_unrevoked_ctn(LOCAL)
         latest_local_ctn = chan.get_latest_ctn(LOCAL)
@@ -1157,25 +1176,33 @@ class Peer(Logger):
 
     def mark_open(self, chan: Channel):
         assert chan.is_funded()
+        assert chan.config[LOCAL].funding_locked_received
         # only allow state transition from "FUNDED" to "OPEN"
         old_state = chan.get_state()
-        if old_state == ChannelState.OPEN:
+        if old_state != ChannelState.OPEN:
+            if old_state != ChannelState.FUNDED:
+                self.logger.info(f"cannot mark open ({chan.get_id_for_log()}), current state: {repr(old_state)}")
+                return
+            chan.set_state(ChannelState.OPEN)
+            util.trigger_callback('channel', self.lnworker.wallet, chan)
+            # peer may have sent us a channel update for the incoming direction previously
+            pending_channel_update = self.orphan_channel_updates.get(chan.short_channel_id)
+            if pending_channel_update:
+                chan.set_remote_update(pending_channel_update)
+            self.logger.info(f"CHANNEL OPENING COMPLETED ({chan.get_id_for_log()})")
+
+        self.maybe_send_outgoing_gossip_channel_update(chan)
+
+    def maybe_send_outgoing_gossip_channel_update(self, chan: Channel) -> None:
+        """If forwarding is enabled, send channel_update of outgoing edge to peer,
+        so that the channel can be used to receive payments.
+        """
+        if not self.is_initialized():
             return
-        if old_state != ChannelState.FUNDED:
-            self.logger.info(f"cannot mark open ({chan.get_id_for_log()}), current state: {repr(old_state)}")
+        if chan.get_state() != ChannelState.OPEN:
             return
-        assert chan.config[LOCAL].funding_locked_received
-        chan.set_state(ChannelState.OPEN)
-        util.trigger_callback('channel', self.lnworker.wallet, chan)
-        # peer may have sent us a channel update for the incoming direction previously
-        pending_channel_update = self.orphan_channel_updates.get(chan.short_channel_id)
-        if pending_channel_update:
-            chan.set_remote_update(pending_channel_update)
-        self.logger.info(f"CHANNEL OPENING COMPLETED ({chan.get_id_for_log()})")
         forwarding_enabled = self.network.config.get('lightning_forward_payments', False)
         if forwarding_enabled:
-            # send channel_update of outgoing edge to peer,
-            # so that channel can be used to to receive payments
             self.logger.info(f"sending channel update for outgoing edge ({chan.get_id_for_log()})")
             chan_upd = chan.get_outgoing_gossip_channel_update()
             self.transport.send_bytes(chan_upd)

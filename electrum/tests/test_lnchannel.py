@@ -35,7 +35,7 @@ from electrum import lnutil
 from electrum import bip32 as bip32_utils
 from electrum.lnutil import SENT, LOCAL, REMOTE, RECEIVED
 from electrum.logging import console_stderr_handler
-from electrum.lnchannel import ChannelState
+from electrum.lnchannel import ChannelState, PeerState
 from electrum.json_db import StoredDict
 from electrum.coinchooser import PRNG
 
@@ -119,7 +119,8 @@ def bip32(sequence):
 
 def create_test_channels(*, feerate=6000, local_msat=None, remote_msat=None,
                          alice_name="alice", bob_name="bob",
-                         alice_pubkey=b"\x01"*33, bob_pubkey=b"\x02"*33, random_seed=None):
+                         alice_pubkey=b"\x01"*33, bob_pubkey=b"\x02"*33, random_seed=None,
+                         peer_state=PeerState.DISCONNECTED):
     if random_seed is None:  # needed for deterministic randomness
         random_seed = os.urandom(32)
     random_gen = PRNG(random_seed)
@@ -184,6 +185,8 @@ def create_test_channels(*, feerate=6000, local_msat=None, remote_msat=None,
 
     alice.open_with_first_pcp(bob_first, sig_from_bob)
     bob.open_with_first_pcp(alice_first, sig_from_alice)
+    alice.peer_state = peer_state
+    bob.peer_state = peer_state
 
     alice_second = lnutil.secret_to_pubkey(int.from_bytes(lnutil.get_per_commitment_secret_from_seed(alice_seed, lnutil.RevocationStore.START_INDEX - 1), "big"))
     bob_second = lnutil.secret_to_pubkey(int.from_bytes(lnutil.get_per_commitment_secret_from_seed(bob_seed, lnutil.RevocationStore.START_INDEX - 1), "big"))
@@ -228,7 +231,7 @@ class TestChannel(ElectrumTestCase):
         # Create a test channel which will be used for the duration of this
         # unittest. The channel will be funded evenly with Alice having 5 BTC,
         # and Bob having 5 BTC.
-        self.alice_channel, self.bob_channel = create_test_channels()
+        self.alice_channel, self.bob_channel = create_test_channels(peer_state=PeerState.GOOD)
 
         self.paymentPreimage = b"\x01" * 32
         paymentHash = bitcoin.sha256(self.paymentPreimage)
@@ -637,7 +640,7 @@ class TestChannel(ElectrumTestCase):
 
 class TestAvailableToSpend(ElectrumTestCase):
     def test_DesyncHTLCs(self):
-        alice_channel, bob_channel = create_test_channels()
+        alice_channel, bob_channel = create_test_channels(peer_state=PeerState.GOOD)
         self.assertEqual(499986152000, alice_channel.available_to_spend(LOCAL))
         self.assertEqual(500000000000, bob_channel.available_to_spend(LOCAL))
 
@@ -814,7 +817,7 @@ class TestChanReserve(ElectrumTestCase):
 
 class TestDust(ElectrumTestCase):
     def test_DustLimit(self):
-        alice_channel, bob_channel = create_test_channels()
+        alice_channel, bob_channel = create_test_channels(peer_state=PeerState.GOOD)
 
         paymentPreimage = b"\x01" * 32
         paymentHash = bitcoin.sha256(paymentPreimage)
