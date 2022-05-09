@@ -335,8 +335,8 @@ class JadePlugin(HW_PluginBase):
     MIN_SUPPORTED_FW_VERSION = semver.VersionInfo(0, 1, 32)
 
     # For testing with qemu simulator
-    SIMULATOR_PATH = 'tcp:127.0.0.1:2222'
-    SIMULATOR_TEST_SEED = bytes.fromhex('b90e532426d0dc20fffe01037048c018e940300038b165c211915c672e07762c')
+    SIMULATOR_PATH = None  # 'tcp:127.0.0.1:2222'
+    SIMULATOR_TEST_SEED = None  # bytes.fromhex('b90e532426d0dc20fffe01037048c018e940300038b165c211915c672e07762c')
 
     def enumerate_serial(self):
         # Jade is not really an HID device, it shows as a serial/com port device.
