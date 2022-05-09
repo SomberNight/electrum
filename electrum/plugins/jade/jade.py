@@ -242,7 +242,7 @@ class Jade_KeyStore(Hardware_KeyStore):
         raise UserFacingException(_('Encryption and decryption are not implemented by {}').format(self.device))
 
     @runs_in_hwd_thread
-    def sign_message(self, sequence, message, password):
+    def sign_message(self, sequence, message, password, *, script_type=None):
         client = self.get_client()
         bip32_path_prefix = self.get_derivation_prefix()
         return client.sign_message(bip32_path_prefix, sequence, message)
