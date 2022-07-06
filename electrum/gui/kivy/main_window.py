@@ -1346,10 +1346,7 @@ class ElectrumWindow(App, Logger, EventListener):
             # called if old_password works on self.wallet
             self.password = new_password
             if self._use_single_password:
-                path = self.wallet.storage.path
-                self.stop_wallet()  # for safety, let's stop-before and reload-after
                 self.daemon.update_password_for_directory(old_password=old_password, new_password=new_password)
-                self.load_wallet_by_name(path)
                 msg = _("Password updated successfully")
             else:
                 self.wallet.update_password(old_password, new_password)
