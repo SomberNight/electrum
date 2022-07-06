@@ -532,6 +532,22 @@ class Daemon(Logger):
         if path in self._wallets:
             wallet = self._wallets[path]
             return wallet
+        wallet = self._load_wallet(path, password, manual_upgrades=manual_upgrades, config=self.config)
+        if wallet is None:
+            return
+        wallet.start_network(self.network)
+        self._wallets[path] = wallet
+        return wallet
+
+    @staticmethod
+    def _load_wallet(
+            path,
+            password,
+            *,
+            manual_upgrades: bool = True,
+            config: SimpleConfig,
+    ) -> Optional[Abstract_Wallet]:
+        path = standardize_path(path)
         storage = WalletStorage(path)
         if not storage.file_exists():
             return
@@ -547,9 +563,7 @@ class Daemon(Logger):
             return
         if db.get_action():
             return
-        wallet = Wallet(db, storage, config=self.config)
-        wallet.start_network(self.network)
-        self._wallets[path] = wallet
+        wallet = Wallet(db, storage, config=config)
         return wallet
 
     def add_wallet(self, wallet: Abstract_Wallet) -> None:
@@ -642,3 +656,57 @@ class Daemon(Logger):
         finally:
             # app will exit now
             asyncio.run_coroutine_threadsafe(self.stop(), self.asyncio_loop).result()
+
+    def _check_password_for_directory(self, *, old_password, new_password=None) -> Tuple[bool, bool]:
+        """Checks password against all wallets (in dir), returns whether they can be unified and whether they are already.
+        If new_password is not None, update all wallet passwords to new_password.
+        # TODO: introduce locking to prevent daemon.load_wallet running concurrently
+        """
+        dirname = os.path.dirname(self.config.get_wallet_path())  # note: why not take path as arg?
+        failed = []
+        is_unified = True
+        for filename in os.listdir(dirname):
+            path = os.path.join(dirname, filename)
+            path = standardize_path(path)
+            if not os.path.isfile(path):
+                continue
+            wallet = self.get_wallet(path)
+            if wallet is None:
+                try:
+                    wallet = self._load_wallet(path, old_password, manual_upgrades=False, config=self.config)
+                except util.InvalidPassword:
+                    pass
+                except Exception:
+                    self.logger.exception(f'failed to load wallet at {path!r}:')
+                    pass
+            if wallet is None:
+                failed.append(path)
+                continue
+            if not wallet.storage.is_encrypted():
+                is_unified = False
+            try:
+                wallet.check_password(old_password)
+            except Exception:
+                failed.append(path)
+                continue
+            if new_password:
+                self.logger.info(f'updating password for wallet: {path!r}')
+                wallet.update_password(old_password, new_password, encrypt_storage=True)
+        can_be_unified = failed == []
+        is_unified = can_be_unified and is_unified
+        return can_be_unified, is_unified
+
+    def update_password_for_directory(self, *, old_password, new_password) -> bool:
+        """returns whether password is unified"""
+        if new_password is None:
+            # we opened a non-encrypted wallet
+            return False
+        can_be_unified, is_unified = self._check_password_for_directory(
+            old_password=old_password, new_password=None)
+        if not can_be_unified:
+            return False
+        if is_unified and old_password == new_password:
+            return True
+        self._check_password_for_directory(
+            old_password=old_password, new_password=new_password)
+        return True
