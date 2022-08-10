@@ -1435,6 +1435,10 @@ def char_width_in_lineedit() -> int:
     return max(9, char_width)
 
 
+def font_height() -> int:
+    return QFontMetrics(QLabel().font()).height()
+
+
 def webopen(url: str):
     if sys.platform == 'linux' and os.environ.get('APPIMAGE'):
         # When on Linux webbrowser.open can fail in AppImage because it can't find the correct libdbus.
