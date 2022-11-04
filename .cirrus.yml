@@ -204,17 +204,11 @@ task:
     path: "dist/*"
 
 task:
-  name: Android build (QML $APK_ARCH)
+  name: Android build (QML arm32+arm64)
   container:
     dockerfile: contrib/android/Dockerfile
     cpu: 8
     memory: 24G
-  matrix:
-    - env:
-        APK_ARCH: arm64-v8a
-    - env:
-        APK_ARCH: armeabi-v7a
-      only_if: $CIRRUS_TAG != '' || $CIRRUS_BRANCH == 'ci-qml-beta'
   packages_tld_folder_cache:
     folder: packages
     fingerprint_script:
@@ -222,15 +216,17 @@ task:
       - git ls-files -s contrib/android/
   p4a_cache:
     folders:
-      - ".buildozer/android/platform/build-$APK_ARCH/packages"
-      - ".buildozer/android/platform/build-$APK_ARCH/build"
+      - ".buildozer/android/platform/build-armeabi-v7a/packages"
+      - ".buildozer/android/platform/build-arm64-v8a/packages"
+      - ".buildozer/android/platform/build-armeabi-v7a/build"
+      - ".buildozer/android/platform/build-arm64-v8a/build"
     fingerprint_script:
       # note: should *at least* depend on Dockerfile and p4a_recipes/, but contrib/android/ is simplest
       - git ls-files -s contrib/android/
-      - echo "qml $APK_ARCH"
-    populate_script: mkdir -p ".buildozer/android/platform/$APK_ARCH"/{packages,build}
+      - echo "qml armeabi-v7a arm64-v8a"
   build_script:
-    - ./contrib/android/make_apk.sh qml "$APK_ARCH" debug
+    - ./contrib/android/make_apk.sh qml armeabi-v7a debug
+    - ./contrib/android/make_apk.sh qml arm64-v8a debug
   binaries_artifacts:
     path: "dist/*"
 
