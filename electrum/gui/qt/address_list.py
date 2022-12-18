@@ -29,6 +29,7 @@ from PyQt5.QtCore import Qt, QPersistentModelIndex, QModelIndex
 from PyQt5.QtGui import QStandardItemModel, QStandardItem, QFont
 from PyQt5.QtWidgets import QAbstractItemView, QComboBox, QLabel, QMenu
 
+from electrum import bitcoin
 from electrum.i18n import _
 from electrum.util import block_explorer_URL, profiler
 from electrum.plugin import run_hook
@@ -167,7 +168,7 @@ class AddressList(MyTreeView):
         for address in addr_list:
             c, u, x = self.wallet.get_addr_balance(address)
             balance = c + u + x
-            is_used_and_empty = self.wallet.adb.is_used(address) and balance == 0
+            is_used_and_empty = self.wallet.adb.is_addr_used(address) and balance == 0
             if self.show_used == AddressUsageStateFilter.UNUSED and (balance or is_used_and_empty):
                 continue
             if self.show_used == AddressUsageStateFilter.FUNDED and balance == 0:
@@ -217,8 +218,9 @@ class AddressList(MyTreeView):
     def refresh_row(self, key, row):
         assert row is not None
         address = key
+        spk = bitcoin.address_to_script(address)
         label = self.wallet.get_label_for_address(address)
-        num = self.wallet.adb.get_address_history_len(address)
+        num = self.wallet.adb.get_spk_history_len(spk)
         c, u, x = self.wallet.get_addr_balance(address)
         balance = c + u + x
         balance_text = self.parent.format_amount(balance, whitespaces=True)

@@ -9,7 +9,7 @@ from decimal import Decimal
 from kivy.uix.popup import Popup
 
 from electrum.gui.kivy.i18n import _
-from ...util import address_colors
+from electrum.gui.kivy.util import address_colors
 
 if TYPE_CHECKING:
     from ...main_window import ElectrumWindow
@@ -264,7 +264,7 @@ class AddressesDialog(Factory.Popup):
         for address in _list:
             label = wallet.get_label_for_address(address)
             balance = sum(wallet.get_addr_balance(address))
-            is_used_and_empty = wallet.adb.is_used(address) and balance == 0
+            is_used_and_empty = wallet.adb.is_addr_used(address) and balance == 0
             if self.show_used == 1 and (balance or is_used_and_empty):
                 continue
             if self.show_used == 2 and balance == 0:
