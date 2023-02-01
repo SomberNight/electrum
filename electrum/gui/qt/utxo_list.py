@@ -46,14 +46,12 @@ class UTXOList(MyTreeView):
         ADDRESS = 1
         LABEL = 2
         AMOUNT = 3
-        HEIGHT = 4
 
     headers = {
+        Columns.OUTPOINT: _('Output point'),
         Columns.ADDRESS: _('Address'),
         Columns.LABEL: _('Label'),
         Columns.AMOUNT: _('Amount'),
-        Columns.HEIGHT: _('Height'),
-        Columns.OUTPOINT: _('Output point'),
     }
     filter_columns = [Columns.ADDRESS, Columns.LABEL, Columns.OUTPOINT]
     stretch_column = Columns.LABEL
@@ -77,6 +75,7 @@ class UTXOList(MyTreeView):
     def update(self):
         # not calling maybe_defer_update() as it interferes with coincontrol status bar
         utxos = self.wallet.get_utxos()
+        utxos.sort(key=lambda x: x.block_height, reverse=True)
         self._maybe_reset_coincontrol(utxos)
         self._utxo_dict = {}
         self.model().clear()
@@ -85,10 +84,8 @@ class UTXOList(MyTreeView):
             name = utxo.prevout.to_str()
             self._utxo_dict[name] = utxo
             address = utxo.address
-            height = utxo.block_height
-            name_short = utxo.prevout.txid.hex()[:16] + '...' + ":%d" % utxo.prevout.out_idx
             amount = self.parent.format_amount(utxo.value_sats(), whitespaces=True)
-            labels = [name_short, address, '', amount, '%d'%height]
+            labels = [str(utxo.short_id), address, '', amount]
             utxo_item = [QStandardItem(x) for x in labels]
             self.set_editability(utxo_item)
             utxo_item[self.Columns.OUTPOINT].setData(name, self.ROLE_CLIPBOARD_DATA)
@@ -149,6 +146,9 @@ class UTXOList(MyTreeView):
                      not self.wallet.is_frozen_coin(utxo))]
         return coins
 
+    def are_in_coincontrol(self, coins: List[PartialTxInput]) -> bool:
+        return all([utxo.prevout.to_str() in self._spend_set for utxo in coins])
+
     def add_to_coincontrol(self, coins: List[PartialTxInput]):
         coins = self._filter_frozen_coins(coins)
         for utxo in coins:
@@ -192,7 +192,7 @@ class UTXOList(MyTreeView):
         coins = [self._utxo_dict[name] for name in selected]
         # coin control
         if coins:
-            if all([utxo.prevout.to_str() in self._spend_set for utxo in coins]):
+            if self.are_in_coincontrol(coins):
                 menu.addAction(_("Remove from coin control"), lambda: self.remove_from_coincontrol(coins))
             else:
                 menu.addAction(_("Add to coin control"), lambda: self.add_to_coincontrol(coins))
@@ -202,7 +202,7 @@ class UTXOList(MyTreeView):
             addr = utxo.address
             txid = utxo.prevout.txid.hex()
             # "Details"
-            tx = self.wallet.db.get_transaction(txid)
+            tx = self.wallet.adb.get_transaction(txid)
             if tx:
                 label = self.wallet.get_label_for_txid(txid)
                 menu.addAction(_("Details"), lambda: self.parent.show_transaction(tx, tx_desc=label))

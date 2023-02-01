@@ -7,6 +7,8 @@ import "controls"
 
 Pane {
     id: root
+    objectName: 'NetworkOverview'
+
     padding: 0
 
     ColumnLayout {
@@ -29,18 +31,9 @@ Pane {
                 width: parent.width
                 columns: 2
 
-                Label {
+                Heading {
                     Layout.columnSpan: 2
                     text: qsTr('Network')
-                    font.pixelSize: constants.fontSizeLarge
-                    color: Material.accentColor
-                }
-
-                Rectangle {
-                    Layout.columnSpan: 2
-                    Layout.fillWidth: true
-                    height: 1
-                    color: Material.accentColor
                 }
 
                 Label {
@@ -69,8 +62,8 @@ Pane {
                 RowLayout {
                     Image {
                         visible: Network.isProxyTor
-                        Layout.preferredWidth: constants.iconSizeSmall
-                        Layout.preferredHeight: constants.iconSizeSmall
+                        Layout.preferredWidth: constants.iconSizeMedium
+                        Layout.preferredHeight: constants.iconSizeMedium
                         source: '../../icons/tor_logo.png'
                     }
                     Label {
@@ -79,18 +72,9 @@ Pane {
                     }
                 }
 
-                Label {
+                Heading {
                     Layout.columnSpan: 2
                     text: qsTr('On-chain')
-                    font.pixelSize: constants.fontSizeLarge
-                    color: Material.accentColor
-                }
-
-                Rectangle {
-                    Layout.columnSpan: 2
-                    Layout.fillWidth: true
-                    height: 1
-                    color: Material.accentColor
                 }
 
                 Label {
@@ -138,18 +122,9 @@ Pane {
                     id: feeHistogram
                 }
 
-                Label {
+                Heading {
                     Layout.columnSpan: 2
                     text: qsTr('Lightning')
-                    font.pixelSize: constants.fontSizeLarge
-                    color: Material.accentColor
-                }
-
-                Rectangle {
-                    Layout.columnSpan: 2
-                    Layout.fillWidth: true
-                    height: 1
-                    color: Material.accentColor
                 }
 
                 Label {
@@ -173,6 +148,15 @@ Pane {
                     visible: !Config.useGossip
                 }
 
+                Label {
+                    visible: Daemon.currentWallet.isLightning
+                    text: qsTr('Channel peers:');
+                    color: Material.accentColor
+                }
+                Label {
+                    visible: Daemon.currentWallet.isLightning
+                    text: Daemon.currentWallet.lightningNumPeers
+                }
             }
 
         }

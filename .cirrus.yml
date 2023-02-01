@@ -2,7 +2,7 @@ task:
   container:
     image: $ELECTRUM_IMAGE
     cpu: 1
-    memory: 1G
+    memory: 2G
   matrix:
     - name: Tox Python $ELECTRUM_PYTHON_VERSION
       env:
@@ -64,7 +64,7 @@ task:
     fingerprint_script: echo Locale && echo $ELECTRUM_IMAGE && cat $ELECTRUM_REQUIREMENTS_CI
   install_script:
     - apt-get update
-    - apt-get -y install gettext
+    - apt-get -y install gettext qttools5-dev-tools
     - pip install -r $ELECTRUM_REQUIREMENTS_CI
     - pip install requests
   locale_script:
@@ -74,7 +74,7 @@ task:
     ELECTRUM_REQUIREMENTS_CI: contrib/requirements/requirements-ci.txt
     # in addition, crowdin_api_key is set as an "override" in https://cirrus-ci.com/settings/...
   depends_on:
-    - Tox Python 3.9
+    - Tox Python 3.8
   only_if: $CIRRUS_BRANCH == 'master'
 
 task:
@@ -126,7 +126,7 @@ task:
   install_script:
     - pip install flake8
   flake8_script:
-    - flake8 . --count --select=$ELECTRUM_LINTERS --show-source --statistics
+    - flake8 . --count --select=$ELECTRUM_LINTERS --show-source --statistics --exclude "*_pb2.py"
   env:
     ELECTRUM_IMAGE: python:3.8
     ELECTRUM_REQUIREMENTS: contrib/requirements/requirements.txt

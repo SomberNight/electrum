@@ -612,13 +612,13 @@ class Abstract_Wallet(ABC, Logger, EventListener):
         # and not util, also have fx remove it
         text = fx.remove_thousands_separator(text)
         def_fiat = self.default_fiat_value(txid, fx, value_sat)
-        formatted = fx.ccy_amount_str(def_fiat, commas=False)
+        formatted = fx.ccy_amount_str(def_fiat, add_thousands_sep=False)
         def_fiat_rounded = Decimal(formatted)
         reset = not text
         if not reset:
             try:
                 text_dec = Decimal(text)
-                text_dec_rounded = Decimal(fx.ccy_amount_str(text_dec, commas=False))
+                text_dec_rounded = Decimal(fx.ccy_amount_str(text_dec, add_thousands_sep=False))
                 reset = text_dec_rounded == def_fiat_rounded
             except:
                 # garbage. not resetting, but not saving either
@@ -1372,6 +1372,8 @@ class Abstract_Wallet(ABC, Logger, EventListener):
         return self._labels.get(tx_hash) or self._get_default_label_for_txid(tx_hash)
 
     def _get_default_label_for_txid(self, tx_hash: str) -> str:
+        if self.lnworker and (label:= self.lnworker.get_label_for_txid(tx_hash)):
+            return label
         # note: we don't deserialize tx as the history calls us for every tx, and that would be slow
         if not self.db.get_txi_addresses(tx_hash):
             # no inputs are ismine -> likely incoming payment -> concat labels of output addresses
@@ -2114,7 +2116,7 @@ class Abstract_Wallet(ABC, Logger, EventListener):
             received, spent = self.adb.get_addr_io(address)
             item = received.get(txin.prevout.to_str())
             if item:
-                txin_value = item[1]
+                txin_value = item[2]
                 txin.witness_utxo = TxOutput.from_address_and_value(address, txin_value)
         if txin.utxo is None:
             txin.utxo = self.get_input_tx(txin.prevout.txid.hex(), ignore_network_issues=ignore_network_issues)
@@ -2400,8 +2402,8 @@ class Abstract_Wallet(ABC, Logger, EventListener):
             d['URI'] = self.get_request_URI(x)
             # if request was paid onchain, add relevant fields
             # note: addr is reused when getting paid on LN! so we check for that.
-            is_paid, conf, tx_hashes = self._is_onchain_invoice_paid(x)
-            if is_paid and (not self.lnworker or self.lnworker.get_invoice_status(x) != PR_PAID):
+            _, conf, tx_hashes = self._is_onchain_invoice_paid(x)
+            if not is_lightning or not self.lnworker or self.lnworker.get_invoice_status(x) != PR_PAID:
                 if conf is not None:
                     d['confirmations'] = conf
                 d['tx_hashes'] = tx_hashes
