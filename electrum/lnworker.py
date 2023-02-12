@@ -2348,7 +2348,16 @@ class LNWallet(LNWorker):
               that the channel state is set immediately.
         """
         tx = self._force_close_channel(chan_id)
-        return asyncio.create_task(self.network.try_broadcasting(tx, 'force-close'))
+        # GC?  https://textual.textualize.io/blog/2023/02/11/the-heisenbug-lurking-in-your-async-code/
+        # https://bugs.python.org/issue44665
+        # https://github.com/python/cpython/issues/88831
+        # asyncio.create_task
+        # loop.create_task
+        # asyncio.ensure_future
+        # asyncio.run_coroutine_threadsafe  ??
+        # https://news.ycombinator.com/item?id=34754276
+        # TODO test with weakref
+        return asyncio.create_task(self.network.try_broadcasting(tx, 'force-close'))  # GC?
 
     def remove_channel(self, chan_id):
         chan = self.channels[chan_id]

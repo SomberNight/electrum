@@ -1621,7 +1621,7 @@ def create_and_start_event_loop() -> Tuple[asyncio.AbstractEventLoop,
             _asyncio_event_loop = None
 
     loop.set_exception_handler(on_exception)
-    # loop.set_debug(True)
+    loop.set_debug(True)
     stopping_fut = loop.create_future()
     loop_thread = threading.Thread(
         target=run_event_loop,
