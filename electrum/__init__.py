@@ -1,6 +1,9 @@
 import sys
 import os
 
+# os.environ["PYTHONASYNCIODEBUG"] = "1"
+# os.environ["PYTHONDEVMODE"] = "1"
+
 # these are ~duplicated from run_electrum:
 is_bundle = getattr(sys, 'frozen', False)
 is_local = not is_bundle and os.path.exists(os.path.join(os.path.dirname(os.path.dirname(__file__)), "electrum.desktop"))
