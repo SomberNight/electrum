@@ -43,6 +43,7 @@ from typing import (
     Tuple,
     Sequence,
     Mapping,
+    Set,
 )
 
 
@@ -318,7 +319,7 @@ class Descriptor(object):
         self.subdescriptors = subdescriptors
         self.name = name
 
-    def to_string_no_checksum(self) -> str:
+    def to_string_no_checksum(self, *, hide_pubkeys: bool = False) -> str:
         """
         Serializes the descriptor as a string without the descriptor checksum
 
@@ -337,6 +338,12 @@ class Descriptor(object):
         :return: The descriptor with a checksum
         """
         return AddChecksum(self.to_string_no_checksum())
+
+    def to_script_type_str(self) -> str:
+        return "{}({})".format(
+            self.name,
+            self.subdescriptors[0].to_string_no_checksum() if len(self.subdescriptors) > 0 else ""
+        )
 
     def expand(self, *, pos: Optional[int] = None) -> "ExpandedScripts":
         """
@@ -371,6 +378,22 @@ class Descriptor(object):
             script_sig=script_sig,
         )
 
+    def get_satisfaction_progress(
+        self,
+        *,
+        sigdata: Mapping[bytes, bytes] = None,  # pubkey -> sig
+    ) -> Tuple[int, int]:
+        """Returns (num_sigs_we_have, num_sigs_required) towards satisfying this script.
+        Besides signatures, later this can also consider hash-preimages.
+        """
+        assert not self.is_range()
+        nhave, nreq = 0, 0
+        for desc in self.subdescriptors:
+            a, b = desc.get_satisfaction_progress()
+            nhave += a
+            nreq += b
+        return nhave, nreq
+
     def is_range(self) -> bool:
         for pubkey in self.pubkeys:
             if pubkey.is_range():
@@ -382,6 +405,47 @@ class Descriptor(object):
 
     def is_segwit(self) -> bool:
         return any([desc.is_segwit() for desc in self.subdescriptors])
+
+    def get_all_pubkeys(self) -> Set[bytes]:
+        """Returns set of pubkeys that appear at any level in this descriptor."""
+        assert not self.is_range()
+        all_pubkeys = set([p.get_pubkey_bytes() for p in self.pubkeys])
+        for desc in self.subdescriptors:
+            all_pubkeys |= desc.get_all_pubkeys()
+        return all_pubkeys
+
+    def get_simple_singlesig(self) -> Optional['Descriptor']:
+        """Returns innermost pk/pkh/wpkh descriptor, or None if we are not a simple singlesig.
+
+        note: besides pk,pkh,sh(wpkh),wpkh, overly complicated stuff such as sh(pk),wsh(sh(pkh),etc is also accepted
+        """
+        if len(self.subdescriptors) == 1:
+            return self.subdescriptors[0].get_simple_singlesig()
+        return None
+
+    def get_simple_multisig(self) -> Optional['MultisigDescriptor']:
+        """Returns innermost multi descriptor, or None if we are not a simple multisig."""
+        if len(self.subdescriptors) == 1:
+            return self.subdescriptors[0].get_simple_multisig()
+        return None
+
+    def to_legacy_electrum_script_type(self) -> str:
+        if isinstance(self, PKDescriptor):
+            return "p2pk"
+        elif isinstance(self, PKHDescriptor):
+            return "p2pkh"
+        elif isinstance(self, WPKHDescriptor):
+            return "p2wpkh"
+        elif isinstance(self, SHDescriptor) and isinstance(self.subdescriptors[0], WPKHDescriptor):
+            return "p2wpkh-p2sh"
+        elif isinstance(self, SHDescriptor) and isinstance(self.subdescriptors[0], MultisigDescriptor):
+            return "p2sh"
+        elif isinstance(self, WSHDescriptor) and isinstance(self.subdescriptors[0], MultisigDescriptor):
+            return "p2wsh"
+        elif (isinstance(self, SHDescriptor) and isinstance(self.subdescriptors[0], WSHDescriptor)
+              and isinstance(self.subdescriptors[0].subdescriptors[0], MultisigDescriptor)):
+            return "p2wsh-p2sh"
+        return "unknown"
 
 
 class PKDescriptor(Descriptor):
@@ -416,6 +480,14 @@ class PKDescriptor(Descriptor):
             witness_stack=(sig,),
         )
 
+    def get_satisfaction_progress(self, *, sigdata=None) -> Tuple[int, int]:
+        if sigdata is None: sigdata = {}
+        signatures = list(sigdata.values())
+        return len(signatures), 1
+
+    def get_simple_singlesig(self) -> Optional['Descriptor']:
+        return self
+
 
 class PKHDescriptor(Descriptor):
     """
@@ -449,6 +521,14 @@ class PKHDescriptor(Descriptor):
         return ScriptSolutionInner(
             witness_stack=(sig, pubkey),
         )
+
+    def get_satisfaction_progress(self, *, sigdata=None) -> Tuple[int, int]:
+        if sigdata is None: sigdata = {}
+        signatures = list(sigdata.values())
+        return len(signatures), 1
+
+    def get_simple_singlesig(self) -> Optional['Descriptor']:
+        return self
 
 
 class WPKHDescriptor(Descriptor):
@@ -487,8 +567,16 @@ class WPKHDescriptor(Descriptor):
             witness_stack=(sig, pubkey),
         )
 
+    def get_satisfaction_progress(self, *, sigdata=None) -> Tuple[int, int]:
+        if sigdata is None: sigdata = {}
+        signatures = list(sigdata.values())
+        return len(signatures), 1
+
     def is_segwit(self) -> bool:
         return True
+
+    def get_simple_singlesig(self) -> Optional['Descriptor']:
+        return self
 
 
 class MultisigDescriptor(Descriptor):
@@ -546,6 +634,14 @@ class MultisigDescriptor(Descriptor):
         return ScriptSolutionInner(
             witness_stack=(0, *signatures),
         )
+
+    def get_satisfaction_progress(self, *, sigdata=None) -> Tuple[int, int]:
+        if sigdata is None: sigdata = {}
+        signatures = list(sigdata.values())
+        return len(signatures), self.thresh
+
+    def get_simple_multisig(self) -> Optional['MultisigDescriptor']:
+        return self
 
 
 class SHDescriptor(Descriptor):
