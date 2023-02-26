@@ -13,6 +13,9 @@
 # TODO impl ADDR descriptors
 # TODO impl RAW descriptors
 # TODO disable descs we cannot solve: TRDescriptor
+# TODO add checks to validate nestings
+#      https://github.com/bitcoin/bitcoin/blob/94070029fb6b783833973f9fe08a3a871994492f/doc/descriptors.md#reference
+#      e.g. sh is top-level only, wsh is top-level or directly inside sh
 #
 # TODO tests
 #      - port https://github.com/bitcoin-core/HWI/blob/master/test/test_descriptor.py
@@ -24,8 +27,9 @@
 
 from .bip32 import convert_bip32_path_to_list_of_uint32, BIP32Node, KeyOriginInfo
 from . import bitcoin
-from .bitcoin import construct_script, opcodes
+from .bitcoin import construct_script, opcodes, construct_witness
 from .crypto import hash_160, sha256
+from .util import bfh
 
 from binascii import unhexlify
 from enum import Enum
@@ -35,6 +39,7 @@ from typing import (
     Optional,
     Tuple,
     Sequence,
+    Mapping,
 )
 
 
@@ -69,6 +74,18 @@ class ExpandedScripts:
     def address(self, *, net=None) -> Optional[str]:
         if spk := self.output_script:
             return bitcoin.script_to_address(spk.hex(), net=net)
+
+
+class ScriptSolutionInner(NamedTuple):
+    witness_stack: Optional[Sequence] = None
+
+
+class ScriptSolutionTop(NamedTuple):
+    witness: Optional[bytes] = None
+    script_sig: Optional[bytes] = None
+
+
+class MissingSolutionPiece(Exception): pass
 
 
 def PolyMod(c: int, val: int) -> int:
@@ -316,6 +333,33 @@ class Descriptor(object):
         """
         raise NotImplementedError("The Descriptor base class does not implement this method")
 
+    def satisfy_inner(
+        self,
+        *,
+        allow_dummy: bool = False,
+        sigdata: Mapping[bytes, bytes] = None,  # pubkey -> sig
+    ) -> ScriptSolutionInner:
+        raise NotImplementedError("The Descriptor base class does not implement this method")
+
+    def satisfy_top(
+        self,
+        *,
+        allow_dummy: bool = False,
+        sigdata: Mapping[bytes, bytes] = None,  # pubkey -> sig
+    ) -> ScriptSolutionTop:
+        assert not self.is_range()
+        sol = self.satisfy_inner(allow_dummy=allow_dummy, sigdata=sigdata)
+        witness = None
+        script_sig = None
+        if self.is_segwit():
+            witness = bfh(construct_witness(sol.witness_stack))
+        else:
+            script_sig = bfh(construct_script(sol.witness_stack))
+        return ScriptSolutionTop(
+            witness=witness,
+            script_sig=script_sig,
+        )
+
     def is_range(self) -> bool:
         for pubkey in self.pubkeys:
             if pubkey.is_range():
@@ -347,6 +391,20 @@ class PKDescriptor(Descriptor):
         script = construct_script([pubkey, opcodes.OP_CHECKSIG])
         return ExpandedScripts(output_script=bytes.fromhex(script))
 
+    def satisfy_inner(self, *, allow_dummy=False, sigdata=None) -> ScriptSolutionInner:
+        if sigdata is None: sigdata = {}
+        assert not self.is_range()
+        assert not self.subdescriptors
+        pubkey = self.pubkeys[0].get_pubkey_bytes()
+        sig = sigdata.get(pubkey)
+        if sig is None and allow_dummy:
+            sig = 72 * b"\x00"
+        if sig is None:
+            raise MissingSolutionPiece(f"no sig for {pubkey.hex()}")
+        return ScriptSolutionInner(
+            witness_stack=(sig,),
+        )
+
 
 class PKHDescriptor(Descriptor):
     """
@@ -366,6 +424,20 @@ class PKHDescriptor(Descriptor):
         pkh = hash_160(pubkey).hex()
         script = bitcoin.pubkeyhash_to_p2pkh_script(pkh)
         return ExpandedScripts(output_script=bytes.fromhex(script))
+
+    def satisfy_inner(self, *, allow_dummy=False, sigdata=None) -> ScriptSolutionInner:
+        if sigdata is None: sigdata = {}
+        assert not self.is_range()
+        assert not self.subdescriptors
+        pubkey = self.pubkeys[0].get_pubkey_bytes()
+        sig = sigdata.get(pubkey)
+        if sig is None and allow_dummy:
+            sig = 72 * b"\x00"
+        if sig is None:
+            raise MissingSolutionPiece(f"no sig for {pubkey.hex()}")
+        return ScriptSolutionInner(
+            witness_stack=(sig, pubkey),
+        )
 
 
 class WPKHDescriptor(Descriptor):
@@ -390,6 +462,20 @@ class WPKHDescriptor(Descriptor):
             scriptcode_for_sighash=bytes.fromhex(scriptcode),
         )
 
+    def satisfy_inner(self, *, allow_dummy=False, sigdata=None) -> ScriptSolutionInner:
+        if sigdata is None: sigdata = {}
+        assert not self.is_range()
+        assert not self.subdescriptors
+        pubkey = self.pubkeys[0].get_pubkey_bytes()
+        sig = sigdata.get(pubkey)
+        if sig is None and allow_dummy:
+            sig = 72 * b"\x00"
+        if sig is None:
+            raise MissingSolutionPiece(f"no sig for {pubkey.hex()}")
+        return ScriptSolutionInner(
+            witness_stack=(sig, pubkey),
+        )
+
     def is_segwit(self) -> bool:
         return True
 
@@ -410,6 +496,8 @@ class MultisigDescriptor(Descriptor):
         :param is_sorted: Whether this is a ``sortedmulti()`` descriptor
         """
         super().__init__(pubkeys, [], "sortedmulti" if is_sorted else "multi")
+        if not (1 <= thresh <= len(pubkeys) <= 15):
+            raise ValueError(f'{thresh=}, {len(pubkeys)=}')
         self.thresh = thresh
         self.is_sorted = is_sorted
         if self.is_sorted:
@@ -419,20 +507,34 @@ class MultisigDescriptor(Descriptor):
         return "{}({},{})".format(self.name, self.thresh, ",".join([p.to_string() for p in self.pubkeys]))
 
     def expand(self, *, pos: Optional[int] = None) -> "ExpandedScripts":
-        if self.thresh > 16:
-            m = b"\x01" + self.thresh.to_bytes(1, "big")
-        else:
-            m = (self.thresh + 0x50).to_bytes(1, "big") if self.thresh > 0 else b"\x00"
-        n = (len(self.pubkeys) + 0x50).to_bytes(1, "big") if len(self.pubkeys) > 0 else b"\x00"
-        script: bytes = m
         der_pks = [p.get_pubkey_bytes(pos=pos) for p in self.pubkeys]
         if self.is_sorted:
             der_pks.sort()
-        for pk in der_pks:
-            script += len(pk).to_bytes(1, "big") + pk
-        script += n + b"\xae"
-
+        script = bfh(construct_script([self.thresh, *der_pks, len(der_pks), opcodes.OP_CHECKMULTISIG]))
         return ExpandedScripts(output_script=script)
+
+    def satisfy_inner(self, *, allow_dummy=False, sigdata=None) -> ScriptSolutionInner:
+        if sigdata is None: sigdata = {}
+        assert not self.is_range()
+        assert not self.subdescriptors
+        der_pks = [p.get_pubkey_bytes() for p in self.pubkeys]
+        if self.is_sorted:
+            der_pks.sort()
+        signatures = []
+        for pubkey in der_pks:
+            if sig := sigdata.get(pubkey):
+                signatures.append(sig)
+                if len(signatures) >= self.thresh:
+                    break
+        if allow_dummy:
+            dummy_sig = 72 * b"\x00"
+            signatures += (self.thresh - len(signatures)) * [dummy_sig]
+        if len(signatures) < self.thresh:
+            raise MissingSolutionPiece(f"not enough sigs")
+        assert len(signatures) == self.thresh, f"thresh={self.thresh}, but got {len(signatures)} sigs"
+        return ScriptSolutionInner(
+            witness_stack=(0, *signatures),
+        )
 
 
 class SHDescriptor(Descriptor):
@@ -453,12 +555,35 @@ class SHDescriptor(Descriptor):
         sub_scripts = self.subdescriptors[0].expand(pos=pos)
         redeem_script = sub_scripts.output_script
         witness_script = sub_scripts.witness_script
-        script = b"\xa9\x14" + hash_160(redeem_script) + b"\x87"
+        script = bfh(construct_script([opcodes.OP_HASH160, hash_160(redeem_script), opcodes.OP_EQUAL]))
         return ExpandedScripts(
             output_script=script,
             redeem_script=redeem_script,
             witness_script=witness_script,
             scriptcode_for_sighash=sub_scripts.scriptcode_for_sighash,
+        )
+
+    def satisfy_inner(self, *, allow_dummy=False, sigdata=None) -> ScriptSolutionInner:
+        raise Exception("does not make sense for sh()")
+
+    def satisfy_top(self, *, allow_dummy=False, sigdata=None) -> ScriptSolutionTop:
+        assert not self.is_range()
+        assert len(self.subdescriptors) == 1
+        subdesc = self.subdescriptors[0]
+        redeem_script = self.expand().redeem_script
+        witness = None
+        if isinstance(subdesc, WSHDescriptor):
+            witness = subdesc.satisfy_top(allow_dummy=allow_dummy, sigdata=sigdata).witness
+            script_sig = bfh(construct_script([redeem_script]))
+        elif isinstance(subdesc, WPKHDescriptor):
+            witness = subdesc.satisfy_top(allow_dummy=allow_dummy, sigdata=sigdata).witness
+            script_sig = bfh(construct_script([redeem_script]))
+        else:  # legacy p2sh
+            subsol = subdesc.satisfy_inner(allow_dummy=allow_dummy, sigdata=sigdata)
+            script_sig = bfh(construct_script([*subsol.witness_stack, redeem_script]))
+        return ScriptSolutionTop(
+            witness=witness,
+            script_sig=script_sig,
         )
 
 
@@ -479,10 +604,23 @@ class WSHDescriptor(Descriptor):
         assert len(self.subdescriptors) == 1
         sub_scripts = self.subdescriptors[0].expand(pos=pos)
         witness_script = sub_scripts.output_script
-        script = b"\x00\x20" + sha256(witness_script)
+        output_script = bfh(construct_script([0, sha256(witness_script)]))
         return ExpandedScripts(
-            output_script=script,
+            output_script=output_script,
             witness_script=witness_script,
+        )
+
+    def satisfy_inner(self, *, allow_dummy=False, sigdata=None) -> ScriptSolutionInner:
+        raise Exception("does not make sense for wsh()")
+
+    def satisfy_top(self, *, allow_dummy=False, sigdata=None) -> ScriptSolutionTop:
+        assert not self.is_range()
+        assert len(self.subdescriptors) == 1
+        subsol = self.subdescriptors[0].satisfy_inner(allow_dummy=allow_dummy, sigdata=sigdata)
+        witness_script = self.expand().witness_script
+        witness = construct_witness([*subsol.witness_stack, witness_script])
+        return ScriptSolutionTop(
+            witness=bytes.fromhex(witness),
         )
 
     def is_segwit(self) -> bool:
