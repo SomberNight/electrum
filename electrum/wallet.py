@@ -352,6 +352,7 @@ class Abstract_Wallet(ABC, Logger, EventListener):
 
         self.test_addresses_sanity()
         self.register_callbacks()
+        self.db.put('seed_version', 50)
 
     def _init_lnworker(self):
         self.lnworker = None
@@ -448,6 +449,9 @@ class Abstract_Wallet(ABC, Logger, EventListener):
                 await self.adb.stop()
                 await self.taskgroup.cancel_remaining()
         finally:  # even if we get cancelled
+            self.db.data['txi'] = {}
+            self.db.data['txo'] = {}
+            self.db.data['addr_history'] = {}
             if any([ks.is_requesting_to_be_rewritten_to_wallet_file for ks in self.get_keystores()]):
                 self.save_keystore()
             self.save_db()
