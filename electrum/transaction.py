@@ -751,7 +751,7 @@ class Transaction:
         if estimate_size:
             dummy_desc = create_dummy_descriptor_from_address(txin.address)
         if desc := (txin.script_descriptor or dummy_desc):
-            sol = desc.satisfy_top(allow_dummy=estimate_size, sigdata=txin.part_sigs)
+            sol = desc.satisfy(allow_dummy=estimate_size, sigdata=txin.part_sigs)
             if sol.witness is not None:
                 return sol.witness.hex()
             return construct_witness([])
@@ -778,7 +778,7 @@ class Transaction:
                 if redeem_script := desc.expand().redeem_script:
                     return construct_script([redeem_script])
                 return ""
-            sol = desc.satisfy_top(allow_dummy=estimate_size, sigdata=txin.part_sigs)
+            sol = desc.satisfy(allow_dummy=estimate_size, sigdata=txin.part_sigs)
             if sol.script_sig is not None:
                 return sol.script_sig.hex()
             return ""
@@ -1426,7 +1426,7 @@ class PartialTxInput(TxInput, PSBTSection):
             return True
         if desc := self.script_descriptor:
             try:
-                desc.satisfy_top(allow_dummy=False, sigdata=self.part_sigs)
+                desc.satisfy(allow_dummy=False, sigdata=self.part_sigs)
             except MissingSolutionPiece:
                 pass
             else:

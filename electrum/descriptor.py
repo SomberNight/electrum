@@ -79,7 +79,7 @@ class ExpandedScripts:
 
 
 class ScriptSolutionInner(NamedTuple):
-    witness_stack: Optional[Sequence] = None
+    witness_items: Optional[Sequence] = None
 
 
 class ScriptSolutionTop(NamedTuple):
@@ -361,28 +361,33 @@ class Descriptor(object):
         """
         raise NotImplementedError("The Descriptor base class does not implement this method")
 
-    def satisfy_inner(
+    def _satisfy_inner(
         self,
         *,
-        allow_dummy: bool = False,
         sigdata: Mapping[bytes, bytes] = None,  # pubkey -> sig
+        allow_dummy: bool = False,
     ) -> ScriptSolutionInner:
         raise NotImplementedError("The Descriptor base class does not implement this method")
 
-    def satisfy_top(
+    def satisfy(
         self,
         *,
-        allow_dummy: bool = False,
         sigdata: Mapping[bytes, bytes] = None,  # pubkey -> sig
+        allow_dummy: bool = False,
     ) -> ScriptSolutionTop:
+        """Construct a witness and/or scriptSig to be used in a txin, to satisfy the bitcoin SCRIPT.
+
+        Raises MissingSolutionPiece if satisfaction is not yet possible due to e.g. missing a signature,
+        unless `allow_dummy` is set to True, in which case dummy data is used where needed (e.g. for size estimation).
+        """
         assert not self.is_range()
-        sol = self.satisfy_inner(allow_dummy=allow_dummy, sigdata=sigdata)
+        sol = self._satisfy_inner(sigdata=sigdata, allow_dummy=allow_dummy)
         witness = None
         script_sig = None
         if self.is_segwit():
-            witness = bfh(construct_witness(sol.witness_stack))
+            witness = bfh(construct_witness(sol.witness_items))
         else:
-            script_sig = bfh(construct_script(sol.witness_stack))
+            script_sig = bfh(construct_script(sol.witness_items))
         return ScriptSolutionTop(
             witness=witness,
             script_sig=script_sig,
@@ -476,7 +481,7 @@ class PKDescriptor(Descriptor):
         script = construct_script([pubkey, opcodes.OP_CHECKSIG])
         return ExpandedScripts(output_script=bytes.fromhex(script))
 
-    def satisfy_inner(self, *, allow_dummy=False, sigdata=None) -> ScriptSolutionInner:
+    def _satisfy_inner(self, *, sigdata=None, allow_dummy=False) -> ScriptSolutionInner:
         if sigdata is None: sigdata = {}
         assert not self.is_range()
         assert not self.subdescriptors
@@ -487,7 +492,7 @@ class PKDescriptor(Descriptor):
         if sig is None:
             raise MissingSolutionPiece(f"no sig for {pubkey.hex()}")
         return ScriptSolutionInner(
-            witness_stack=(sig,),
+            witness_items=(sig,),
         )
 
     def get_satisfaction_progress(self, *, sigdata=None) -> Tuple[int, int]:
@@ -518,7 +523,7 @@ class PKHDescriptor(Descriptor):
         script = bitcoin.pubkeyhash_to_p2pkh_script(pkh)
         return ExpandedScripts(output_script=bytes.fromhex(script))
 
-    def satisfy_inner(self, *, allow_dummy=False, sigdata=None) -> ScriptSolutionInner:
+    def _satisfy_inner(self, *, sigdata=None, allow_dummy=False) -> ScriptSolutionInner:
         if sigdata is None: sigdata = {}
         assert not self.is_range()
         assert not self.subdescriptors
@@ -529,7 +534,7 @@ class PKHDescriptor(Descriptor):
         if sig is None:
             raise MissingSolutionPiece(f"no sig for {pubkey.hex()}")
         return ScriptSolutionInner(
-            witness_stack=(sig, pubkey),
+            witness_items=(sig, pubkey),
         )
 
     def get_satisfaction_progress(self, *, sigdata=None) -> Tuple[int, int]:
@@ -563,7 +568,7 @@ class WPKHDescriptor(Descriptor):
             scriptcode_for_sighash=bytes.fromhex(scriptcode),
         )
 
-    def satisfy_inner(self, *, allow_dummy=False, sigdata=None) -> ScriptSolutionInner:
+    def _satisfy_inner(self, *, sigdata=None, allow_dummy=False) -> ScriptSolutionInner:
         if sigdata is None: sigdata = {}
         assert not self.is_range()
         assert not self.subdescriptors
@@ -574,7 +579,7 @@ class WPKHDescriptor(Descriptor):
         if sig is None:
             raise MissingSolutionPiece(f"no sig for {pubkey.hex()}")
         return ScriptSolutionInner(
-            witness_stack=(sig, pubkey),
+            witness_items=(sig, pubkey),
         )
 
     def get_satisfaction_progress(self, *, sigdata=None) -> Tuple[int, int]:
@@ -629,7 +634,7 @@ class MultisigDescriptor(Descriptor):
         script = bfh(construct_script([self.thresh, *der_pks, len(der_pks), opcodes.OP_CHECKMULTISIG]))
         return ExpandedScripts(output_script=script)
 
-    def satisfy_inner(self, *, allow_dummy=False, sigdata=None) -> ScriptSolutionInner:
+    def _satisfy_inner(self, *, sigdata=None, allow_dummy=False) -> ScriptSolutionInner:
         if sigdata is None: sigdata = {}
         assert not self.is_range()
         assert not self.subdescriptors
@@ -649,7 +654,7 @@ class MultisigDescriptor(Descriptor):
             raise MissingSolutionPiece(f"not enough sigs")
         assert len(signatures) == self.thresh, f"thresh={self.thresh}, but got {len(signatures)} sigs"
         return ScriptSolutionInner(
-            witness_stack=(0, *signatures),
+            witness_items=(0, *signatures),
         )
 
     def get_satisfaction_progress(self, *, sigdata=None) -> Tuple[int, int]:
@@ -687,24 +692,21 @@ class SHDescriptor(Descriptor):
             scriptcode_for_sighash=sub_scripts.scriptcode_for_sighash,
         )
 
-    def satisfy_inner(self, *, allow_dummy=False, sigdata=None) -> ScriptSolutionInner:
+    def _satisfy_inner(self, *, sigdata=None, allow_dummy=False) -> ScriptSolutionInner:
         raise Exception("does not make sense for sh()")
 
-    def satisfy_top(self, *, allow_dummy=False, sigdata=None) -> ScriptSolutionTop:
+    def satisfy(self, *, sigdata=None, allow_dummy=False) -> ScriptSolutionTop:
         assert not self.is_range()
         assert len(self.subdescriptors) == 1
         subdesc = self.subdescriptors[0]
         redeem_script = self.expand().redeem_script
         witness = None
-        if isinstance(subdesc, WSHDescriptor):
-            witness = subdesc.satisfy_top(allow_dummy=allow_dummy, sigdata=sigdata).witness
-            script_sig = bfh(construct_script([redeem_script]))
-        elif isinstance(subdesc, WPKHDescriptor):
-            witness = subdesc.satisfy_top(allow_dummy=allow_dummy, sigdata=sigdata).witness
+        if isinstance(subdesc, (WSHDescriptor, WPKHDescriptor)):  # witness_v0 nested in p2sh
+            witness = subdesc.satisfy(sigdata=sigdata, allow_dummy=allow_dummy).witness
             script_sig = bfh(construct_script([redeem_script]))
         else:  # legacy p2sh
-            subsol = subdesc.satisfy_inner(allow_dummy=allow_dummy, sigdata=sigdata)
-            script_sig = bfh(construct_script([*subsol.witness_stack, redeem_script]))
+            subsol = subdesc._satisfy_inner(sigdata=sigdata, allow_dummy=allow_dummy)
+            script_sig = bfh(construct_script([*subsol.witness_items, redeem_script]))
         return ScriptSolutionTop(
             witness=witness,
             script_sig=script_sig,
@@ -734,15 +736,15 @@ class WSHDescriptor(Descriptor):
             witness_script=witness_script,
         )
 
-    def satisfy_inner(self, *, allow_dummy=False, sigdata=None) -> ScriptSolutionInner:
+    def _satisfy_inner(self, *, sigdata=None, allow_dummy=False) -> ScriptSolutionInner:
         raise Exception("does not make sense for wsh()")
 
-    def satisfy_top(self, *, allow_dummy=False, sigdata=None) -> ScriptSolutionTop:
+    def satisfy(self, *, sigdata=None, allow_dummy=False) -> ScriptSolutionTop:
         assert not self.is_range()
         assert len(self.subdescriptors) == 1
-        subsol = self.subdescriptors[0].satisfy_inner(allow_dummy=allow_dummy, sigdata=sigdata)
+        subsol = self.subdescriptors[0]._satisfy_inner(sigdata=sigdata, allow_dummy=allow_dummy)
         witness_script = self.expand().witness_script
-        witness = construct_witness([*subsol.witness_stack, witness_script])
+        witness = construct_witness([*subsol.witness_items, witness_script])
         return ScriptSolutionTop(
             witness=bytes.fromhex(witness),
         )
