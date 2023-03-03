@@ -27,13 +27,19 @@ Item {
 
     readonly property int fingerWidth: 64 // TODO: determine finger width from screen dimensions and resolution
 
-    property color colorCredit: "#ff80ff80"
-    property color colorDebit: "#ffff8080"
     property color mutedForeground: 'gray' //Qt.lighter(Material.background, 2)
     property color darkerBackground: Qt.darker(Material.background, 1.20)
     property color lighterBackground: Qt.lighter(Material.background, 1.10)
-    property color colorMine: "yellow"
+    property color notificationBackground: Qt.lighter(Material.background, 1.5)
+
+    property color colorCredit: "#ff80ff80"
+    property color colorDebit: "#ffff8080"
+
+    property color colorInfo: Material.accentColor
+    property color colorWarning: 'yellow'
     property color colorError: '#ffff8080'
+
+    property color colorMine: "yellow"
     property color colorLightningLocal: "blue"
     property color colorLightningRemote: "yellow"
     property color colorChannelOpen: "#ff80ff80"
@@ -41,7 +47,6 @@ Item {
     property color colorPiechartOnchain: Qt.darker(Material.accentColor, 1.50)
     property color colorPiechartFrozen: 'gray'
     property color colorPiechartLightning: 'orange' //Qt.darker(Material.accentColor, 1.20)
-
     property color colorPiechartParticipant: 'gray'
     property color colorPiechartSignature: 'yellow'
 

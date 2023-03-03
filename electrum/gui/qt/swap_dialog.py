@@ -46,7 +46,7 @@ class SwapDialog(WindowModalDialog):
         btn_width = 10 * char_width_in_lineedit()
         self.max_button.setFixedWidth(btn_width)
         self.max_button.setCheckable(True)
-        self.toggle_button = QPushButton(u'\U000021c4')
+        self.toggle_button = QPushButton('  \U000021c4  ')  # whitespace to force larger min width
         self.toggle_button.setEnabled(is_reverse is None)
         # send_follows is used to know whether the send amount field / receive
         # amount field should be adjusted after the fee slider was moved
@@ -95,8 +95,12 @@ class SwapDialog(WindowModalDialog):
         self.update()
 
     def init_recv_amount(self, recv_amount_sat):
-        recv_amount_sat = max(recv_amount_sat, self.swap_manager.min_amount)
-        self.recv_amount_e.setAmount(recv_amount_sat)
+        if recv_amount_sat == '!':
+            self.max_button.setChecked(True)
+            self.spend_max()
+        else:
+            recv_amount_sat = max(recv_amount_sat, self.swap_manager.min_amount)
+            self.recv_amount_e.setAmount(recv_amount_sat)
 
     def fee_slider_callback(self, dyn, pos, fee_rate):
         if dyn:
@@ -138,10 +142,11 @@ class SwapDialog(WindowModalDialog):
         self._update_tx('!')
         if self.tx:
             amount = self.tx.output_value_for_address(ln_dummy_address())
-            max_swap_amt = self.swap_manager.get_max_amount()
-            max_recv_amt_ln = int(self.swap_manager.num_sats_can_receive())
-            max_recv_amt_oc = self.swap_manager.get_send_amount(max_recv_amt_ln, is_reverse=False) or float('inf')
-            max_amt = int(min(max_swap_amt, max_recv_amt_oc))
+            max_amt = self.swap_manager.max_amount_forward_swap()
+            if max_amt is None:
+                self.send_amount_e.setAmount(None)
+                self.max_button.setChecked(False)
+                return
             if amount > max_amt:
                 amount = max_amt
                 self._update_tx(amount)
@@ -163,7 +168,7 @@ class SwapDialog(WindowModalDialog):
         if self.is_reverse and send_amount and send_amount > self.lnworker.num_sats_can_send():
             # cannot send this much on lightning
             recv_amount = None
-        if (not self.is_reverse) and recv_amount and recv_amount > self.swap_manager.num_sats_can_receive():
+        if (not self.is_reverse) and recv_amount and recv_amount > self.lnworker.num_sats_can_receive():
             # cannot receive this much on lightning
             recv_amount = None
         self.recv_amount_e.follows = True
@@ -239,7 +244,7 @@ class SwapDialog(WindowModalDialog):
             onchain_amount = self.send_amount_e.get_amount()
             if lightning_amount is None or onchain_amount is None:
                 return
-            if lightning_amount > self.swap_manager.num_sats_can_receive():
+            if lightning_amount > self.lnworker.num_sats_can_receive():
                 if not self.window.question(CANNOT_RECEIVE_WARNING):
                     return
             self.window.protect(self.do_normal_swap, (lightning_amount, onchain_amount))

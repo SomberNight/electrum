@@ -11,12 +11,19 @@ import "controls"
 Item {
     id: mainView
 
-    property string title: Daemon.currentWallet ? Daemon.currentWallet.name : ''
+    property string title: Daemon.currentWallet ? Daemon.currentWallet.name : qsTr('no wallet loaded')
 
     property var _sendDialog
+    property string _intentUri
 
     function openInvoice(key) {
         var dialog = invoiceDialog.createObject(app, { invoice: invoiceParser, invoice_key: key })
+        dialog.open()
+        return dialog
+    }
+
+    function openRequest(key) {
+        var dialog = receiveDialog.createObject(app, { key: key })
         dialog.open()
         return dialog
     }
@@ -48,13 +55,14 @@ Item {
         }
 
         id: menu
+
         MenuItem {
             icon.color: 'transparent'
             action: Action {
-                text: qsTr('Invoices');
-                onTriggered: menu.openPage(Qt.resolvedUrl('Invoices.qml'))
+                text: qsTr('Wallet details')
                 enabled: Daemon.currentWallet
-                icon.source: '../../icons/tab_receive.png'
+                onTriggered: menu.openPage(Qt.resolvedUrl('WalletDetails.qml'))
+                icon.source: '../../icons/wallet.png'
             }
         }
         MenuItem {
@@ -67,7 +75,7 @@ Item {
             }
         }
         MenuItem {
-            icon.color: 'transparent'
+           icon.color: 'transparent'
             action: Action {
                 text: qsTr('Channels');
                 enabled: Daemon.currentWallet && Daemon.currentWallet.isLightning
@@ -76,32 +84,26 @@ Item {
             }
         }
 
-        MenuItem {
-            icon.color: 'transparent'
-            action: Action {
-                text: qsTr('Preferences');
-                onTriggered: menu.openPage(Qt.resolvedUrl('Preferences.qml'))
-                icon.source: '../../icons/preferences.png'
-            }
-        }
+        MenuSeparator { }
 
         MenuItem {
-            icon.color: 'transparent'
+           icon.color: 'transparent'
             action: Action {
-                text: qsTr('About');
-                onTriggered: menu.openPage(Qt.resolvedUrl('About.qml'))
-                icon.source: '../../icons/electrum.png'
+                text: qsTr('Other wallets');
+                onTriggered: menu.openPage(Qt.resolvedUrl('Wallets.qml'))
+                icon.source: '../../icons/file.png'
             }
         }
 
         function openPage(url) {
-            stack.push(url)
+            stack.pushOnRoot(url)
             currentIndex = -1
         }
     }
 
     ColumnLayout {
         anchors.fill: parent
+        spacing: 0
 
         History {
             id: history
@@ -154,30 +156,12 @@ Item {
             }
         }
 
-        RowLayout {
-            spacing: 0
+        ButtonContainer {
+            id: buttonContainer
+            Layout.fillWidth: true
 
             FlatButton {
-                Layout.fillWidth: false
-                Layout.preferredWidth: implicitHeight
-                text: qsTr('≡')
-                onClicked: {
-                    mainView.menu.open()
-                    mainView.menu.y = mainView.height - mainView.menu.height
-                }
-            }
-            Rectangle {
-                Layout.fillWidth: false
-                Layout.preferredWidth: 2
-                Layout.preferredHeight: parent.height * 2/3
-                Layout.alignment: Qt.AlignVCenter
-                color: constants.darkerBackground
-            }
-            Item {
-                visible: !Daemon.currentWallet
-                Layout.fillWidth: true
-            }
-            FlatButton {
+                id: receiveButton
                 visible: Daemon.currentWallet
                 Layout.fillWidth: true
                 Layout.preferredWidth: 1
@@ -188,14 +172,7 @@ Item {
                     dialog.open()
                 }
             }
-            Rectangle {
-                visible: Daemon.currentWallet
-                Layout.fillWidth: false
-                Layout.preferredWidth: 2
-                Layout.preferredHeight: parent.height * 2/3
-                Layout.alignment: Qt.AlignVCenter
-                color: constants.darkerBackground
-            }
+
             FlatButton {
                 visible: Daemon.currentWallet
                 Layout.fillWidth: true
@@ -241,7 +218,23 @@ Item {
     Connections {
         target: AppController
         function onUriReceived(uri) {
+            console.log('uri received: ' + uri)
+            if (!Daemon.currentWallet) {
+                console.log('No wallet open, deferring')
+                _intentUri = uri
+                return
+            }
             invoiceParser.recipient = uri
+        }
+    }
+
+    Connections {
+        target: Daemon
+        function onWalletLoaded() {
+            if (_intentUri) {
+                invoiceParser.recipient = _intentUri
+                _intentUri = ''
+            }
         }
     }
 
@@ -341,6 +334,10 @@ Item {
                     _confirmPaymentDialog.destroy()
                 }
             }
+            // TODO: lingering confirmPaymentDialogs can raise exceptions in
+            // the child finalizer when currentWallet disappears, but we need
+            // it long enough for the finalizer to finish..
+            // onClosed: destroy()
         }
     }
 

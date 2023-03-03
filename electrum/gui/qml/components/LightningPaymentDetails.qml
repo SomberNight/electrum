@@ -68,15 +68,9 @@ Pane {
                 color: Material.accentColor
             }
 
-            RowLayout {
+            FormattedAmount {
                 visible: lnpaymentdetails.amount.msatsInt < 0
-                Label {
-                    text: Config.formatMilliSats(lnpaymentdetails.fee)
-                }
-                Label {
-                    text: Config.baseUnit
-                    color: Material.accentColor
-                }
+                amount: lnpaymentdetails.fee
             }
 
             Label {
@@ -92,8 +86,6 @@ Pane {
 
                 Layout.columnSpan: 2
                 Layout.fillWidth: true
-                padding: 0
-                leftPadding: constants.paddingSmall
 
                 RowLayout {
                     width: parent.width
@@ -148,8 +140,6 @@ Pane {
             TextHighlightPane {
                 Layout.columnSpan: 2
                 Layout.fillWidth: true
-                padding: 0
-                leftPadding: constants.paddingSmall
 
                 RowLayout {
                     width: parent.width
@@ -182,8 +172,6 @@ Pane {
             TextHighlightPane {
                 Layout.columnSpan: 2
                 Layout.fillWidth: true
-                padding: 0
-                leftPadding: constants.paddingSmall
 
                 RowLayout {
                     width: parent.width
@@ -216,8 +204,6 @@ Pane {
             TextHighlightPane {
                 Layout.columnSpan: 2
                 Layout.fillWidth: true
-                padding: 0
-                leftPadding: constants.paddingSmall
 
                 RowLayout {
                     width: parent.width

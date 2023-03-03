@@ -2,9 +2,12 @@ import QtQuick 2.6
 import QtQuick.Layouts 1.0
 import QtQuick.Controls 2.3
 import QtQuick.Controls.Material 2.0
+import QtQuick.Controls.Material.impl 2.12
 
 import QtQml 2.6
 import QtMultimedia 5.6
+
+import org.electrum 1.0
 
 import "controls"
 
@@ -30,8 +33,71 @@ ApplicationWindow
 
     property variant activeDialogs: []
 
+    property bool _wantClose: false
+    property var _exceptionDialog
+
+    property QtObject appMenu: Menu {
+        parent: Overlay.overlay
+        dim: true
+        modal: true
+        Overlay.modal: Rectangle {
+            color: "#44000000"
+        }
+
+        id: menu
+
+        MenuItem {
+            icon.color: 'transparent'
+            action: Action {
+                text: qsTr('Network')
+                onTriggered: menu.openPage(Qt.resolvedUrl('NetworkOverview.qml'))
+                icon.source: '../../icons/network.png'
+            }
+        }
+
+        MenuItem {
+            icon.color: 'transparent'
+            action: Action {
+                text: qsTr('Preferences');
+                onTriggered: menu.openPage(Qt.resolvedUrl('Preferences.qml'))
+                icon.source: '../../icons/preferences.png'
+            }
+        }
+
+        MenuItem {
+            icon.color: 'transparent'
+            action: Action {
+                text: qsTr('About');
+                onTriggered: menu.openPage(Qt.resolvedUrl('About.qml'))
+                icon.source: '../../icons/electrum.png'
+            }
+        }
+
+        function openPage(url) {
+            stack.pushOnRoot(url)
+            currentIndex = -1
+        }
+    }
+
+    function openAppMenu() {
+        appMenu.open()
+        appMenu.x = app.width - appMenu.width
+        appMenu.y = toolbar.height
+    }
+
     header: ToolBar {
         id: toolbar
+
+        background: Rectangle {
+            implicitHeight: 48
+            color: Material.dialogColor
+
+            layer.enabled: true
+            layer.effect: ElevationEffect {
+                elevation: 4
+                fullWidth: true
+            }
+        }
 
         ColumnLayout {
             spacing: 0
@@ -50,21 +116,29 @@ ApplicationWindow
                     Layout.preferredHeight: 1
                 }
 
+                Image {
+                    Layout.preferredWidth: constants.iconSizeSmall
+                    Layout.preferredHeight: constants.iconSizeSmall
+                    visible: Daemon.currentWallet && (!stack.currentItem.title || stack.currentItem.title == Daemon.currentWallet.name)
+                    source: '../../icons/wallet.png'
+                }
+
                 Label {
+                    Layout.fillWidth: true
                     Layout.preferredHeight: Math.max(implicitHeight, toolbarTopLayout.height)
                     text: stack.currentItem.title
+                        ? stack.currentItem.title
+                        : Daemon.currentWallet.name
                     elide: Label.ElideRight
-                    // horizontalAlignment: Qt.AlignHCenter
                     verticalAlignment: Qt.AlignVCenter
-                    Layout.fillWidth: true
                     font.pixelSize: constants.fontSizeMedium
                     font.bold: true
                     MouseArea {
-                        height: toolbarTopLayout.height
+                        // height: toolbarTopLayout.height
                         anchors.fill: parent
                         onClicked: {
-                            if (stack.currentItem.objectName != 'Wallets')
-                                stack.pushOnRoot(Qt.resolvedUrl('Wallets.qml'))
+                            stack.getRoot().menu.open()
+                            stack.getRoot().menu.y = toolbar.height
                         }
                     }
                 }
@@ -104,20 +178,14 @@ ApplicationWindow
                 LightningNetworkStatusIndicator {
                     MouseArea {
                         anchors.fill: parent
-                        onClicked: {
-                            if (stack.currentItem.objectName != 'NetworkOverview')
-                                stack.push(Qt.resolvedUrl('NetworkOverview.qml'))
-                        }
+                        onClicked: openAppMenu()
                     }
                 }
 
                 OnchainNetworkStatusIndicator {
                     MouseArea {
                         anchors.fill: parent
-                        onClicked: {
-                            if (stack.currentItem.objectName != 'NetworkOverview')
-                                stack.push(Qt.resolvedUrl('NetworkOverview.qml'))
-                        }
+                        onClicked: openAppMenu()
                     }
                 }
             }
@@ -235,6 +303,14 @@ ApplicationWindow
         }
     }
 
+    property alias loadingWalletDialog: _loadingWalletDialog
+    Component {
+        id: _loadingWalletDialog
+        LoadingWalletDialog {
+            onClosed: destroy()
+        }
+    }
+
     property alias channelOpenProgressDialog: _channelOpenProgressDialog
     ChannelOpenProgressDialog {
         id: _channelOpenProgressDialog
@@ -242,12 +318,37 @@ ApplicationWindow
 
     NotificationPopup {
         id: notificationPopup
+        width: parent.width
     }
 
     Component {
         id: crashDialog
         ExceptionDialog {
             z: 1000
+        }
+    }
+
+    property alias swaphelper: _swaphelper
+    Component {
+        id: _swaphelper
+        SwapHelper {
+            id: __swaphelper
+            wallet: Daemon.currentWallet
+            onConfirm: {
+                var dialog = app.messageDialog.createObject(app, {text: message, yesno: true})
+                dialog.yesClicked.connect(function() {
+                    dialog.close()
+                    __swaphelper.executeSwap(true)
+                })
+                dialog.open()
+            }
+            onAuthRequired: {
+                app.handleAuthRequired(__swaphelper, method)
+            }
+            onError: {
+                var dialog = app.messageDialog.createObject(app, { text: message })
+                dialog.open()
+            }
         }
     }
 
@@ -302,28 +403,30 @@ ApplicationWindow
             stack.pop()
         } else {
             // destroy most GUI components so that we don't dump so many null reference warnings on exit
-            if (closeMsgTimer.running) {
+            if (app._wantClose) {
                 app.header.visible = false
                 mainStackView.clear()
             } else {
-                notificationPopup.show('Press Back again to exit')
-                closeMsgTimer.start()
+                var dialog = app.messageDialog.createObject(app, {
+                    text: qsTr('Close Electrum?'),
+                    yesno: true
+                })
+                dialog.yesClicked.connect(function() {
+                    dialog.close()
+                    app._wantClose = true
+                    app.close()
+                })
+                dialog.open()
                 close.accepted = false
             }
         }
     }
 
-    Timer {
-        id: closeMsgTimer
-        interval: 5000
-        repeat: false
-    }
-
     Connections {
         target: Daemon
-        function onWalletRequiresPassword() {
+        function onWalletRequiresPassword(name, path) {
             console.log('wallet requires password')
-            var dialog = openWalletDialog.createObject(app, { path: Daemon.path })
+            var dialog = openWalletDialog.createObject(app, { path: path, name: name })
             dialog.open()
         }
         function onWalletOpenError(error) {
@@ -334,18 +437,30 @@ ApplicationWindow
         function onAuthRequired(method) {
             handleAuthRequired(Daemon, method)
         }
+        function onLoadingChanged() {
+            if (!Daemon.loading)
+                return
+            console.log('wallet loading')
+            var dialog = loadingWalletDialog.createObject(app, { allowClose: false } )
+            dialog.open()
+        }
     }
 
     Connections {
         target: AppController
-        function onUserNotify(message) {
-            notificationPopup.show(message)
+        function onUserNotify(wallet_name, message) {
+            notificationPopup.show(wallet_name, message)
         }
-        function onShowException() {
-            var dialog = crashDialog.createObject(app, {
-                crashData: AppController.crashData()
+        function onShowException(crash_data) {
+            if (app._exceptionDialog)
+                return
+            app._exceptionDialog = crashDialog.createObject(app, {
+                crashData: crash_data
             })
-            dialog.open()
+            app._exceptionDialog.onClosed.connect(function() {
+                app._exceptionDialog = null
+            })
+            app._exceptionDialog.open()
         }
     }
 
@@ -356,10 +471,10 @@ ApplicationWindow
         }
         // TODO: add to notification queue instead of barging through
         function onPaymentSucceeded(key) {
-            notificationPopup.show(qsTr('Payment Succeeded'))
+            notificationPopup.show(Daemon.currentWallet.name, qsTr('Payment Succeeded'))
         }
         function onPaymentFailed(key, reason) {
-            notificationPopup.show(qsTr('Payment Failed') + ': ' + reason)
+            notificationPopup.show(Daemon.currentWallet.name, qsTr('Payment Failed') + ': ' + reason)
         }
     }
 
@@ -416,6 +531,7 @@ ApplicationWindow
     property bool _lockDialogShown: false
 
     onActiveChanged: {
+        console.log('app active = ' + active)
         if (!active) {
             // deactivated
             _lastActive = Date.now()

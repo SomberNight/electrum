@@ -13,6 +13,8 @@ ElDialog {
 
     title: qsTr('Receive Payment')
 
+    property string key
+
     property string _bolt11: request.bolt11
     property string _bip21uri: request.bip21
     property string _address: request.address
@@ -73,6 +75,7 @@ ElDialog {
                 ]
 
                 Rectangle {
+                    id: qrbg
                     Layout.alignment: Qt.AlignHCenter
                     Layout.topMargin: constants.paddingSmall
                     Layout.bottomMargin: constants.paddingSmall
@@ -182,86 +185,99 @@ ElDialog {
                 Rectangle {
                     height: 1
                     Layout.alignment: Qt.AlignHCenter
-                    Layout.preferredWidth: buttons.width
+                    Layout.preferredWidth: qrbg.width
                     color: Material.accentColor
                 }
 
                 GridLayout {
                     columns: 2
-                    visible: request.message || !request.amount.isEmpty
-                    Layout.maximumWidth: buttons.width
+                    Layout.maximumWidth: qrbg.width
                     Layout.alignment: Qt.AlignHCenter
 
                     Label {
-                        visible: request.message
+                        text: qsTr('Status')
+                        color: Material.accentColor
+                    }
+                    Label {
+                        text: request.status_str
+                    }
+                    Label {
                         text: qsTr('Message')
                         color: Material.accentColor
                     }
                     Label {
-                        visible: request.message
                         Layout.fillWidth: true
                         text: request.message
                         wrapMode: Text.Wrap
                     }
                     Label {
-                        visible: !request.amount.isEmpty
                         text: qsTr('Amount')
                         color: Material.accentColor
                     }
                     FormattedAmount {
-                        visible: !request.amount.isEmpty
+                        valid: !request.amount.isEmpty
                         amount: request.amount
                     }
                 }
 
                 Rectangle {
-                    visible: request.message || !request.amount.isEmpty
                     height: 1
                     Layout.alignment: Qt.AlignHCenter
-                    Layout.preferredWidth: buttons.width
+                    Layout.preferredWidth: qrbg.width
                     color: Material.accentColor
                 }
 
-                RowLayout {
-                    id: buttons
-                    Layout.alignment: Qt.AlignHCenter
-                    FlatButton {
-                        icon.source: '../../icons/copy_bw.png'
-                        icon.color: 'transparent'
-                        text: 'Copy'
-                        onClicked: {
-                            if (request.isLightning && rootLayout.state == 'bolt11')
-                                AppController.textToClipboard(_bolt11)
-                            else if (rootLayout.state == 'bip21uri')
-                                AppController.textToClipboard(_bip21uri)
-                            else
-                                AppController.textToClipboard(_address)
-                        }
-                    }
-                    FlatButton {
-                        icon.source: '../../icons/share.png'
-                        text: 'Share'
-                        onClicked: {
-                            enabled = false
-                            if (request.isLightning && rootLayout.state == 'bolt11')
-                                AppController.doShare(_bolt11, qsTr('Payment Request'))
-                            else if (rootLayout.state == 'bip21uri')
-                                AppController.doShare(_bip21uri, qsTr('Payment Request'))
-                            else
-                                AppController.doShare(_address, qsTr('Onchain address'))
-
-                            enabled = true
-                        }
-                    }
-                    FlatButton {
-                        Layout.alignment: Qt.AlignHCenter
-                        icon.source: '../../icons/pen.png'
-                        text: qsTr('Edit')
-                        onClicked: receiveDetailsDialog.open()
-                    }
-                }
             }
 
+        }
+
+        ButtonContainer {
+            id: buttons
+            Layout.fillWidth: true
+
+            FlatButton {
+                Layout.fillWidth: true
+                Layout.preferredWidth: 1
+
+                icon.source: '../../icons/copy_bw.png'
+                icon.color: 'transparent'
+                text: 'Copy'
+                onClicked: {
+                    if (request.isLightning && rootLayout.state == 'bolt11')
+                        AppController.textToClipboard(_bolt11)
+                    else if (rootLayout.state == 'bip21uri')
+                        AppController.textToClipboard(_bip21uri)
+                    else
+                        AppController.textToClipboard(_address)
+                    toaster.show(this, qsTr('Copied!'))
+                }
+            }
+            FlatButton {
+                Layout.fillWidth: true
+                Layout.preferredWidth: 1
+
+                icon.source: '../../icons/share.png'
+                text: 'Share'
+                onClicked: {
+                    enabled = false
+                    if (request.isLightning && rootLayout.state == 'bolt11')
+                        AppController.doShare(_bolt11, qsTr('Payment Request'))
+                    else if (rootLayout.state == 'bip21uri')
+                        AppController.doShare(_bip21uri, qsTr('Payment Request'))
+                    else
+                        AppController.doShare(_address, qsTr('Onchain address'))
+
+                    enabled = true
+                }
+            }
+            FlatButton {
+                Layout.fillWidth: true
+                Layout.preferredWidth: 1
+
+                icon.source: '../../icons/pen.png'
+                text: qsTr('Edit')
+                onClicked: receiveDetailsDialog.open()
+            }
         }
     }
 
@@ -303,13 +319,6 @@ ElDialog {
         z: -1000
         onClicked: parkFocus.focus = true
         FocusScope { id: parkFocus }
-    }
-
-    Component {
-        id: requestdialog
-        RequestDialog {
-            onClosed: destroy()
-        }
     }
 
     function createRequest() {
@@ -396,9 +405,17 @@ ElDialog {
         }
     }
 
+    Toaster {
+        id: toaster
+    }
+
     Component.onCompleted: {
-        // callLater to make sure any popups are on top of the dialog stacking order
-        Qt.callLater(createDefaultRequest)
+        if (dialog.key) {
+            request.key = dialog.key
+        } else {
+            // callLater to make sure any popups are on top of the dialog stacking order
+            Qt.callLater(createDefaultRequest)
+        }
     }
 
     // hack. delay qr rendering until dialog is shown
@@ -410,5 +427,4 @@ ElDialog {
             }
         }
     }
-
 }

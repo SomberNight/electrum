@@ -17,7 +17,7 @@ class QEChannelListModel(QAbstractListModel, QtEventListener):
     _ROLE_NAMES=('cid','state','state_code','initiator','capacity','can_send',
                  'can_receive','l_csv_delay','r_csv_delay','send_frozen','receive_frozen',
                  'type','node_id','node_alias','short_cid','funding_tx','is_trampoline',
-                 'is_backup')
+                 'is_backup', 'is_imported')
     _ROLE_KEYS = range(Qt.UserRole, Qt.UserRole + len(_ROLE_NAMES))
     _ROLE_MAP  = dict(zip(_ROLE_KEYS, [bytearray(x.encode()) for x in _ROLE_NAMES]))
     _ROLE_RMAP = dict(zip(_ROLE_NAMES, _ROLE_KEYS))
@@ -40,6 +40,11 @@ class QEChannelListModel(QAbstractListModel, QtEventListener):
     def on_event_channel(self, wallet, channel):
         if wallet == self.wallet:
             self.on_channel_updated(channel)
+
+    @qt_event_listener
+    def on_event_channels_updated(self, wallet):
+        if wallet == self.wallet:
+            self.init_model()
 
     def on_destroy(self):
         self.unregister_callbacks()
@@ -86,9 +91,11 @@ class QEChannelListModel(QAbstractListModel, QtEventListener):
         if lnc.is_backup():
             item['can_send'] = QEAmount()
             item['can_receive'] = QEAmount()
+            item['is_imported'] = lnc.is_imported
         else:
             item['can_send'] = QEAmount(amount_msat=lnc.available_to_spend(LOCAL))
             item['can_receive'] = QEAmount(amount_msat=lnc.available_to_spend(REMOTE))
+            item['is_imported'] = False
         return item
 
     numOpenChannelsChanged = pyqtSignal()
@@ -167,10 +174,20 @@ class QEChannelListModel(QAbstractListModel, QtEventListener):
                 return
             i = i + 1
 
-    @pyqtSlot(str, 'QVariant', result=QEFilterProxyModel)
     def filterModel(self, role, match):
-        self._filterModel = QEFilterProxyModel(self, self)
-        self._filterModel.setFilterRole(QEChannelListModel._ROLE_RMAP[role])
-        self._filterModel.setFilterValue(match)
-        return self._filterModel
+        _filterModel = QEFilterProxyModel(self, self)
+        assert role in self._ROLE_RMAP
+        _filterModel.setFilterRole(self._ROLE_RMAP[role])
+        _filterModel.setFilterValue(match)
+        return _filterModel
+
+    @pyqtSlot(result=QEFilterProxyModel)
+    def filterModelBackups(self):
+        self._fm_backups = self.filterModel('is_backup', True)
+        return self._fm_backups
+
+    @pyqtSlot(result=QEFilterProxyModel)
+    def filterModelNoBackups(self):
+        self._fm_nobackups = self.filterModel('is_backup', False)
+        return self._fm_nobackups
 

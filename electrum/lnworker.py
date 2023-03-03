@@ -40,7 +40,7 @@ from .transaction import Transaction
 from .transaction import get_script_type_from_output_script
 from .crypto import sha256
 from .bip32 import BIP32Node
-from .util import bh2u, bfh, InvoiceError, resolve_dns_srv, is_ip_address, log_exceptions
+from .util import bfh, InvoiceError, resolve_dns_srv, is_ip_address, log_exceptions
 from .crypto import chacha20_encrypt, chacha20_decrypt
 from .util import ignore_exceptions, make_aiohttp_session
 from .util import timestamp_to_datetime, random_shuffled_copy
@@ -499,12 +499,12 @@ class LNWorker(Logger, EventListener, NetworkRetryManager[LNPeerAddr]):
                 if self.uses_trampoline():
                     addr = trampolines_by_id().get(node_id)
                     if not addr:
-                        raise ConnStringFormatError(_('Address unknown for node:') + ' ' + bh2u(node_id))
+                        raise ConnStringFormatError(_('Address unknown for node:') + ' ' + node_id.hex())
                     host, port = addr.host, addr.port
                 else:
                     addrs = self.channel_db.get_node_addresses(node_id)
                     if not addrs:
-                        raise ConnStringFormatError(_('Don\'t know any addresses for node:') + ' ' + bh2u(node_id))
+                        raise ConnStringFormatError(_('Don\'t know any addresses for node:') + ' ' + node_id.hex())
                     host, port, timestamp = self.choose_preferred_address(list(addrs))
             port = int(port)
             # Try DNS-resolving the host (if needed). This is simply so that
@@ -633,6 +633,7 @@ class LNWallet(LNWorker):
         self.lnrater: LNRater = None
         self.payment_info = self.db.get_dict('lightning_payments')     # RHASH -> amount, direction, is_paid
         self.preimages = self.db.get_dict('lightning_preimages')   # RHASH -> preimage
+        self._bolt11_cache = {}
         # note: this sweep_address is only used as fallback; as it might result in address-reuse
         self.logs = defaultdict(list)  # type: Dict[str, List[HtlcLog]]  # key is RHASH  # (not persisted)
         # used in tests
@@ -761,10 +762,10 @@ class LNWallet(LNWorker):
         self.lnrater = LNRater(self, network)
 
         for chan in self.channels.values():
-            if not chan.is_redeemed():
+            if chan.need_to_subscribe():
                 self.lnwatcher.add_channel(chan.funding_outpoint.to_str(), chan.get_funding_address())
         for cb in self.channel_backups.values():
-            if not cb.is_redeemed():
+            if cb.need_to_subscribe():
                 self.lnwatcher.add_channel(cb.funding_outpoint.to_str(), cb.get_funding_address())
 
         for coro in [
@@ -891,7 +892,7 @@ class LNWallet(LNWorker):
             tx_height = self.wallet.adb.get_tx_height(funding_txid)
             self._labels_cache[funding_txid] = _('Open channel') + ' ' + chan.get_id_for_log()
             item = {
-                'channel_id': bh2u(chan.channel_id),
+                'channel_id': chan.channel_id.hex(),
                 'type': 'channel_opening',
                 'label': self.get_label_for_txid(funding_txid),
                 'txid': funding_txid,
@@ -912,7 +913,7 @@ class LNWallet(LNWorker):
             tx_height = self.wallet.adb.get_tx_height(closing_txid)
             self._labels_cache[closing_txid] = _('Close channel') + ' ' + chan.get_id_for_log()
             item = {
-                'channel_id': bh2u(chan.channel_id),
+                'channel_id': chan.channel_id.hex(),
                 'txid': closing_txid,
                 'label': self.get_label_for_txid(closing_txid),
                 'type': 'channel_closure',
@@ -980,6 +981,7 @@ class LNWallet(LNWorker):
     def channel_state_changed(self, chan: Channel):
         if type(chan) is Channel:
             self.save_channel(chan)
+        self.clear_invoices_cache()
         util.trigger_callback('channel', self.wallet, chan)
 
     def save_channel(self, chan: Channel):
@@ -1309,7 +1311,7 @@ class LNWallet(LNWorker):
             code, data = failure_msg.code, failure_msg.data
             self.logger.info(f"UPDATE_FAIL_HTLC. code={repr(code)}. "
                              f"decoded_data={failure_msg.decode_data()}. data={data.hex()!r}")
-            self.logger.info(f"error reported by {bh2u(erring_node_id)}")
+            self.logger.info(f"error reported by {erring_node_id.hex()}")
             if code == OnionFailureCode.MPP_TIMEOUT:
                 raise PaymentFailure(failure_msg.code_name())
             # trampoline
@@ -1781,27 +1783,31 @@ class LNWallet(LNWorker):
         route[-1].node_features |= invoice_features
         return route
 
-    def create_invoice(
+    def clear_invoices_cache(self):
+        self._bolt11_cache.clear()
+
+    def get_bolt11_invoice(
             self, *,
+            payment_hash: bytes,
             amount_msat: Optional[int],
             message: str,
             expiry: int,
             fallback_address: Optional[str],
-            write_to_disk: bool = True,
             channels: Optional[Sequence[Channel]] = None,
     ) -> Tuple[LnAddr, str]:
+
+        pair = self._bolt11_cache.get(payment_hash)
+        if pair:
+            lnaddr, invoice = pair
+            assert lnaddr.get_amount_msat() == amount_msat
+            return pair
 
         assert amount_msat is None or amount_msat > 0
         timestamp = int(time.time())
         routing_hints, trampoline_hints = self.calc_routing_hints_for_invoice(amount_msat, channels=channels)
-        if not routing_hints:
-            self.logger.info(
-                "Warning. No routing hints added to invoice. "
-                "Other clients will likely not be able to send to us.")
+        self.logger.info(f"creating bolt11 invoice with routing_hints: {routing_hints}")
         invoice_features = self.features.for_invoice()
-        payment_preimage = os.urandom(32)
-        payment_hash = sha256(payment_preimage)
-        info = PaymentInfo(payment_hash, amount_msat, RECEIVED, PR_UNPAID)
+        payment_preimage = self.get_preimage(payment_hash)
         amount_btc = amount_msat/Decimal(COIN*1000) if amount_msat else None
         if expiry == 0:
             expiry = LN_EXPIRY_NEVER
@@ -1820,40 +1826,30 @@ class LNWallet(LNWorker):
             date=timestamp,
             payment_secret=derive_payment_secret_from_payment_preimage(payment_preimage))
         invoice = lnencode(lnaddr, self.node_keypair.privkey)
+        pair = lnaddr, invoice
+        self._bolt11_cache[payment_hash] = pair
+        return pair
+
+    def create_payment_info(self, amount_sat: Optional[int], write_to_disk=True) -> bytes:
+        amount_msat = amount_sat * 1000 if amount_sat else None
+        payment_preimage = os.urandom(32)
+        payment_hash = sha256(payment_preimage)
+        info = PaymentInfo(payment_hash, amount_msat, RECEIVED, PR_UNPAID)
         self.save_preimage(payment_hash, payment_preimage, write_to_disk=False)
         self.save_payment_info(info, write_to_disk=False)
         if write_to_disk:
             self.wallet.save_db()
-        return lnaddr, invoice
-
-    def add_request(
-            self,
-            *,
-            amount_sat: Optional[int],
-            message: str,
-            expiry: int,
-            fallback_address: Optional[str],
-    ) -> str:
-        # passed expiry is relative, it is absolute in the lightning invoice
-        amount_msat = amount_sat * 1000 if amount_sat else None
-        lnaddr, invoice = self.create_invoice(
-            amount_msat=amount_msat,
-            message=message,
-            expiry=expiry,
-            fallback_address=fallback_address,
-            write_to_disk=False,
-        )
-        return invoice
+        return payment_hash
 
     def save_preimage(self, payment_hash: bytes, preimage: bytes, *, write_to_disk: bool = True):
         assert sha256(preimage) == payment_hash
-        self.preimages[bh2u(payment_hash)] = bh2u(preimage)
+        self.preimages[payment_hash.hex()] = preimage.hex()
         if write_to_disk:
             self.wallet.save_db()
 
     def get_preimage(self, payment_hash: bytes) -> Optional[bytes]:
-        r = self.preimages.get(bh2u(payment_hash))
-        return bfh(r) if r else None
+        r = self.preimages.get(payment_hash.hex())
+        return bytes.fromhex(r) if r else None
 
     def get_payment_info(self, payment_hash: bytes) -> Optional[PaymentInfo]:
         """returns None if payment_hash is a payment we are forwarding"""
@@ -1922,6 +1918,8 @@ class LNWallet(LNWorker):
             self.set_payment_status(bfh(key), status)
         util.trigger_callback('invoice_status', self.wallet, key, status)
         self.logger.info(f"invoice status triggered (2) for key {key} and status {status}")
+        # liquidity changed
+        self.clear_invoices_cache()
 
     def set_request_status(self, payment_hash: bytes, status: int) -> None:
         if self.get_payment_status(payment_hash) == status:
@@ -2138,7 +2136,7 @@ class LNWallet(LNWorker):
             channels = list(self.channels.values())
             # we exclude channels that cannot *right now* receive (e.g. peer offline)
             channels = [chan for chan in channels
-                        if (chan.is_active() and not chan.is_frozen_for_receiving())]
+                        if (chan.is_open() and not chan.is_frozen_for_receiving())]
             # Filter out nodes that have low receive capacity compared to invoice amt.
             # Even with MPP, below a certain threshold, including these channels probably
             # hurts more than help, as they lead to many failed attempts for the sender.
@@ -2161,11 +2159,9 @@ class LNWallet(LNWorker):
             return channels
 
     def num_sats_can_receive(self, deltas=None) -> Decimal:
-        """Return a conservative estimate of max sat value we can realistically receive
-        in a single payment. (MPP is allowed)
-
-        The theoretical max would be `sum(chan.available_to_spend(REMOTE) for chan in self.channels)`,
-        but that would require a sender using MPP to magically guess all our channel liquidities.
+        """
+        We no longer assume the sender to send MPP on different channels,
+        because channel liquidities are hard to guess
         """
         if deltas is None:
             deltas = {}
@@ -2182,11 +2178,9 @@ class LNWallet(LNWorker):
             recv_chan_msats = [recv_capacity(chan) for chan in recv_channels]
         if not recv_chan_msats:
             return Decimal(0)
-        can_receive_msat = max(
-            max(recv_chan_msats),       # single-part payment baseline
-            sum(recv_chan_msats) // 2,  # heuristic for MPP
-        )
+        can_receive_msat = max(recv_chan_msats)
         return Decimal(can_receive_msat) / 1000
+
 
     def _suggest_channels_for_rebalance(self, direction, amount_sat) -> Sequence[Tuple[Channel, int]]:
         """
@@ -2287,7 +2281,7 @@ class LNWallet(LNWorker):
             raise Exception('Rebalance requires two different channels')
         if self.uses_trampoline() and chan1.node_id == chan2.node_id:
             raise Exception('Rebalance requires channels from different trampolines')
-        lnaddr, invoice = self.create_invoice(
+        lnaddr, invoice = self.add_reqest(
             amount_msat=amount_msat,
             message='rebalance',
             expiry=3600,
@@ -2296,15 +2290,6 @@ class LNWallet(LNWorker):
         )
         return await self.pay_invoice(
             invoice, channels=[chan1])
-
-    def num_sats_can_receive_no_mpp(self) -> Decimal:
-        with self.lock:
-            channels = [
-                c for c in self.channels.values()
-                if c.is_active() and not c.is_frozen_for_receiving()
-            ]
-            can_receive = max([c.available_to_spend(REMOTE) for c in channels]) if channels else 0
-        return Decimal(can_receive) / 1000
 
     def can_receive_invoice(self, invoice: Invoice) -> bool:
         assert invoice.is_lightning()

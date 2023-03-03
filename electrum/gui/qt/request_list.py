@@ -56,8 +56,7 @@ class RequestList(MyTreeView):
         AMOUNT = 2
         STATUS = 3
         ADDRESS = 4
-        LN_INVOICE = 5
-        LN_RHASH = 6
+        LN_RHASH = 5
 
     headers = {
         Columns.DATE: _('Date'),
@@ -65,12 +64,11 @@ class RequestList(MyTreeView):
         Columns.AMOUNT: _('Amount'),
         Columns.STATUS: _('Status'),
         Columns.ADDRESS: _('Address'),
-        Columns.LN_INVOICE: 'LN Request',
         Columns.LN_RHASH: 'LN RHASH',
     }
     filter_columns = [
         Columns.DATE, Columns.DESCRIPTION, Columns.AMOUNT,
-        Columns.ADDRESS, Columns.LN_INVOICE, Columns.LN_RHASH,
+        Columns.ADDRESS, Columns.LN_RHASH,
     ]
 
     def __init__(self, receive_tab: 'ReceiveTab'):
@@ -150,7 +148,6 @@ class RequestList(MyTreeView):
             labels[self.Columns.AMOUNT] = amount_str
             labels[self.Columns.STATUS] = status_str
             labels[self.Columns.ADDRESS] = req.get_address() or ""
-            labels[self.Columns.LN_INVOICE] = req.lightning_invoice or ""
             labels[self.Columns.LN_RHASH] = req.rhash if req.is_lightning() else ""
             items = [QStandardItem(e) for e in labels]
             self.set_editability(items)
@@ -194,13 +191,13 @@ class RequestList(MyTreeView):
             self.update()
             return
         menu = QMenu(self)
+        copy_menu = self.add_copy_menu(menu, idx)
         if req.get_address():
-            menu.addAction(_("Copy Address"), lambda: self.parent.do_copy(req.get_address(), title='Bitcoin Address'))
+            copy_menu.addAction(_("Address"), lambda: self.parent.do_copy(req.get_address(), title='Bitcoin Address'))
         if URI := self.wallet.get_request_URI(req):
-            menu.addAction(_("Copy URI"), lambda: self.parent.do_copy(URI, title='Bitcoin URI'))
+            copy_menu.addAction(_("Bitcoin URI"), lambda: self.parent.do_copy(URI, title='Bitcoin URI'))
         if req.is_lightning():
-            menu.addAction(_("Copy Lightning Request"), lambda: self.parent.do_copy(req.lightning_invoice, title='Lightning Request'))
-        self.add_copy_menu(menu, idx)
+            copy_menu.addAction(_("Lightning Request"), lambda: self.parent.do_copy(self.wallet.get_bolt11_invoice(req), title='Lightning Request'))
         #if 'view_url' in req:
         #    menu.addAction(_("View in web browser"), lambda: webopen(req['view_url']))
         menu.addAction(_("Delete"), lambda: self.delete_requests([key]))
@@ -218,5 +215,4 @@ class RequestList(MyTreeView):
         def set_visible(col: int, b: bool):
             self.showColumn(col) if b else self.hideColumn(col)
         set_visible(self.Columns.ADDRESS, False)
-        set_visible(self.Columns.LN_INVOICE, False)
         set_visible(self.Columns.LN_RHASH, False)

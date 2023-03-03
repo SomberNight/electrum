@@ -28,19 +28,22 @@ import copy
 import datetime
 import traceback
 import time
-from typing import TYPE_CHECKING, Callable, Optional, List, Union
+from typing import TYPE_CHECKING, Callable, Optional, List, Union, Tuple
 from functools import partial
 from decimal import Decimal
 
-from PyQt5.QtCore import QSize, Qt
-from PyQt5.QtGui import QTextCharFormat, QBrush, QFont, QPixmap
+from PyQt5.QtCore import QSize, Qt, QUrl, QPoint
+from PyQt5.QtGui import QTextCharFormat, QBrush, QFont, QPixmap, QCursor
 from PyQt5.QtWidgets import (QDialog, QLabel, QPushButton, QHBoxLayout, QVBoxLayout, QWidget, QGridLayout,
-                             QTextEdit, QFrame, QAction, QToolButton, QMenu, QCheckBox)
+                             QTextEdit, QFrame, QAction, QToolButton, QMenu, QCheckBox, QTextBrowser, QToolTip,
+                             QApplication)
 import qrcode
 from qrcode import exceptions
 
 from electrum.simple_config import SimpleConfig
 from electrum.util import quantize_feerate
+from electrum import bitcoin
+
 from electrum.bitcoin import base_encode, NLOCKTIME_BLOCKHEIGHT_MAX
 from electrum.i18n import _
 from electrum.plugin import run_hook
@@ -57,13 +60,14 @@ from .util import (MessageBoxMixin, read_QIcon, Buttons, icon_path,
                    BlockingWaitingDialog, getSaveFileName, ColorSchemeItem,
                    get_iconname_qrcode)
 
-from .fee_slider import FeeSlider, FeeComboBox
-from .confirm_tx_dialog import TxEditor
-from .amountedit import FeerateEdit, BTCAmountEdit
-from .locktimeedit import LockTimeEdit
 
 if TYPE_CHECKING:
     from .main_window import ElectrumWindow
+    from electrum.wallet import Abstract_Wallet
+
+
+_logger = get_logger(__name__)
+dialogs = []  # Otherwise python randomly garbage collects the dialogs...
 
 
 class TxSizeLabel(QLabel):
@@ -74,19 +78,277 @@ class TxFiatLabel(QLabel):
     def setAmount(self, fiat_fee):
         self.setText(('≈  %s' % fiat_fee) if fiat_fee else '')
 
-class QTextEditWithDefaultSize(QTextEdit):
+class QTextBrowserWithDefaultSize(QTextBrowser):
+    def __init__(self, width: int = 0, height: int = 0):
+        self._width = width
+        self._height = height
+        QTextBrowser.__init__(self)
     def sizeHint(self):
-        return QSize(0, 100)
+        return QSize(self._width, self._height)
+
+class TxInOutWidget(QWidget):
+
+    def __init__(self, main_window: 'ElectrumWindow', wallet: 'Abstract_Wallet'):
+        QWidget.__init__(self)
+
+        self.wallet = wallet
+        self.main_window = main_window
+        self.tx = None  # type: Optional[Transaction]
+        self.inputs_header = QLabel()
+        self.inputs_textedit = QTextBrowserWithDefaultSize(950, 100)
+        self.inputs_textedit.setOpenLinks(False)  # disable automatic link opening
+        self.inputs_textedit.anchorClicked.connect(self._open_internal_link)  # send links to our handler
+        self.inputs_textedit.setTextInteractionFlags(
+            self.inputs_textedit.textInteractionFlags() | Qt.LinksAccessibleByMouse | Qt.LinksAccessibleByKeyboard)
+        self.inputs_textedit.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.inputs_textedit.customContextMenuRequested.connect(self.on_context_menu_for_inputs)
+        self.txo_color_recv = TxOutputColoring(
+            legend=_("Receiving Address"), color=ColorScheme.GREEN, tooltip=_("Wallet receive address"))
+        self.txo_color_change = TxOutputColoring(
+            legend=_("Change Address"), color=ColorScheme.YELLOW, tooltip=_("Wallet change address"))
+        self.txo_color_2fa = TxOutputColoring(
+            legend=_("TrustedCoin (2FA) batch fee"), color=ColorScheme.BLUE, tooltip=_("TrustedCoin (2FA) fee for the next batch of transactions"))
+        self.outputs_header = QLabel()
+        self.outputs_textedit = QTextBrowserWithDefaultSize(950, 100)
+        self.outputs_textedit.setOpenLinks(False)  # disable automatic link opening
+        self.outputs_textedit.anchorClicked.connect(self._open_internal_link)  # send links to our handler
+        self.outputs_textedit.setTextInteractionFlags(
+            self.outputs_textedit.textInteractionFlags() | Qt.LinksAccessibleByMouse | Qt.LinksAccessibleByKeyboard)
+        self.outputs_textedit.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.outputs_textedit.customContextMenuRequested.connect(self.on_context_menu_for_outputs)
+
+        outheader_hbox = QHBoxLayout()
+        outheader_hbox.setContentsMargins(0, 0, 0, 0)
+        outheader_hbox.addWidget(self.outputs_header)
+        outheader_hbox.addStretch(2)
+        outheader_hbox.addWidget(self.txo_color_recv.legend_label)
+        outheader_hbox.addWidget(self.txo_color_change.legend_label)
+        outheader_hbox.addWidget(self.txo_color_2fa.legend_label)
+
+        vbox = QVBoxLayout()
+        vbox.addWidget(self.inputs_header)
+        vbox.addWidget(self.inputs_textedit)
+        vbox.addLayout(outheader_hbox)
+        vbox.addWidget(self.outputs_textedit)
+        self.setLayout(vbox)
+
+    def update(self, tx):
+        self.tx = tx
+        inputs_header_text = _("Inputs") + ' (%d)'%len(self.tx.inputs())
+
+        self.inputs_header.setText(inputs_header_text)
+
+        ext = QTextCharFormat()  # "external"
+        lnk = QTextCharFormat()
+        lnk.setToolTip(_('Click to open, right-click for menu'))
+        lnk.setAnchor(True)
+        lnk.setUnderlineStyle(QTextCharFormat.SingleUnderline)
+        tf_used_recv, tf_used_change, tf_used_2fa = False, False, False
+        def addr_text_format(addr: str) -> QTextCharFormat:
+            nonlocal tf_used_recv, tf_used_change, tf_used_2fa
+            if self.wallet.is_mine(addr):
+                if self.wallet.is_change(addr):
+                    tf_used_change = True
+                    fmt = QTextCharFormat(self.txo_color_change.text_char_format)
+                else:
+                    tf_used_recv = True
+                    fmt = QTextCharFormat(self.txo_color_recv.text_char_format)
+                fmt.setAnchorHref(addr)
+                fmt.setToolTip(_('Click to open, right-click for menu'))
+                fmt.setAnchor(True)
+                fmt.setUnderlineStyle(QTextCharFormat.SingleUnderline)
+                return fmt
+            elif self.wallet.is_billing_address(addr):
+                tf_used_2fa = True
+                return self.txo_color_2fa.text_char_format
+            return ext
+
+        def insert_tx_io(
+            *,
+            cursor: QCursor,
+            txio_idx: int,
+            is_coinbase: bool,
+            tcf_shortid: QTextCharFormat = None,
+            short_id: str,
+            addr: Optional[str],
+            value: Optional[int],
+        ):
+            tcf_ext = QTextCharFormat(ext)
+            tcf_addr = addr_text_format(addr)
+            if tcf_shortid is None:
+                tcf_shortid = tcf_ext
+            a_name = f"txio_idx {txio_idx}"
+            for tcf in (tcf_ext, tcf_shortid, tcf_addr):  # used by context menu creation
+                tcf.setAnchorNames([a_name])
+            if is_coinbase:
+                cursor.insertText('coinbase', tcf_ext)
+            else:
+                # short_id
+                cursor.insertText(short_id, tcf_shortid)
+                cursor.insertText(" " * max(0, 15 - len(short_id)), tcf_ext)  # padding
+                cursor.insertText('\t', tcf_ext)
+                # addr
+                address_str = addr or '<address unknown>'
+                cursor.insertText(address_str, tcf_addr)
+                cursor.insertText(" " * max(0, 62 - len(address_str)), tcf_ext)  # padding
+                cursor.insertText('\t', tcf_ext)
+                # value
+                value_str = self.main_window.format_amount(value, whitespaces=True)
+                cursor.insertText(value_str, tcf_ext)
+            cursor.insertBlock()
+
+        i_text = self.inputs_textedit
+        i_text.clear()
+        i_text.setFont(QFont(MONOSPACE_FONT))
+        i_text.setReadOnly(True)
+        cursor = i_text.textCursor()
+        for txin_idx, txin in enumerate(self.tx.inputs()):
+            addr = self.wallet.adb.get_txin_address(txin)
+            txin_value = self.wallet.adb.get_txin_value(txin)
+            tcf_shortid = QTextCharFormat(lnk)
+            tcf_shortid.setAnchorHref(txin.prevout.txid.hex())
+            insert_tx_io(
+                cursor=cursor, is_coinbase=txin.is_coinbase_input(), txio_idx=txin_idx,
+                tcf_shortid=tcf_shortid,
+                short_id=str(txin.short_id), addr=addr, value=txin_value,
+            )
+
+        self.outputs_header.setText(_("Outputs") + ' (%d)'%len(self.tx.outputs()))
+        o_text = self.outputs_textedit
+        o_text.clear()
+        o_text.setFont(QFont(MONOSPACE_FONT))
+        o_text.setReadOnly(True)
+        tx_height, tx_pos = None, None
+        tx_hash = self.tx.txid()
+        if tx_hash:
+            tx_height, tx_pos = self.wallet.adb.get_txpos(tx_hash)
+        cursor = o_text.textCursor()
+        for txout_idx, o in enumerate(self.tx.outputs()):
+            if tx_height is not None and tx_pos is not None and tx_pos >= 0:
+                short_id = ShortID.from_components(tx_height, tx_pos, txout_idx)
+            elif tx_hash:
+                short_id = TxOutpoint(bytes.fromhex(tx_hash), txout_idx).short_name()
+            else:
+                short_id = f"unknown:{txout_idx}"
+            addr = o.get_ui_address_str()
+            insert_tx_io(
+                cursor=cursor, is_coinbase=False, txio_idx=txout_idx,
+                short_id=str(short_id), addr=addr, value=o.value,
+            )
+
+        self.txo_color_recv.legend_label.setVisible(tf_used_recv)
+        self.txo_color_change.legend_label.setVisible(tf_used_change)
+        self.txo_color_2fa.legend_label.setVisible(tf_used_2fa)
+
+    def _open_internal_link(self, target):
+        """Accepts either a str txid, str address, or a QUrl which should be
+        of the bare form "txid" and/or "address" -- used by the clickable
+        links in the inputs/outputs QTextBrowsers"""
+        if isinstance(target, QUrl):
+            target = target.toString(QUrl.None_)
+        assert target
+        if bitcoin.is_address(target):
+            # target was an address, open address dialog
+            self.main_window.show_address(target, parent=self)
+        else:
+            # target was a txid, open new tx dialog
+            self.main_window.do_process_from_txid(txid=target, parent=self)
+
+    def on_context_menu_for_inputs(self, pos: QPoint):
+        i_text = self.inputs_textedit
+        global_pos = i_text.viewport().mapToGlobal(pos)
+
+        cursor = i_text.cursorForPosition(pos)
+        charFormat = cursor.charFormat()
+        name = charFormat.anchorNames() and charFormat.anchorNames()[0]
+        if not name:
+            menu = i_text.createStandardContextMenu()
+            menu.exec_(global_pos)
+            return
+
+        menu = QMenu()
+        show_list = []
+        copy_list = []
+        # figure out which input they right-clicked on. input lines have an anchor named "txio_idx N"
+        txin_idx = int(name.split()[1])  # split "txio_idx N", translate N -> int
+        txin = self.tx.inputs()[txin_idx]
+
+        menu.addAction(f"Tx Input #{txin_idx}").setDisabled(True)
+        menu.addSeparator()
+        if txin.is_coinbase_input():
+            menu.addAction(_("Coinbase Input")).setDisabled(True)
+        else:
+            show_list += [(_("Show Prev Tx"), lambda: self._open_internal_link(txin.prevout.txid.hex()))]
+            copy_list += [(_("Copy") + " " + _("Outpoint"), lambda: self.main_window.do_copy(txin.prevout.to_str()))]
+            addr = self.wallet.adb.get_txin_address(txin)
+            if addr:
+                if self.wallet.is_mine(addr):
+                    show_list += [(_("Address Details"), lambda: self.main_window.show_address(addr, parent=self))]
+                copy_list += [(_("Copy Address"), lambda: self.main_window.do_copy(addr))]
+            txin_value = self.wallet.adb.get_txin_value(txin)
+            if txin_value:
+                value_str = self.main_window.format_amount(txin_value)
+                copy_list += [(_("Copy Amount"), lambda: self.main_window.do_copy(value_str))]
+
+        for item in show_list:
+            menu.addAction(*item)
+        if show_list and copy_list:
+            menu.addSeparator()
+        for item in copy_list:
+            menu.addAction(*item)
+
+        menu.addSeparator()
+        std_menu = i_text.createStandardContextMenu()
+        menu.addActions(std_menu.actions())
+        menu.exec_(global_pos)
+
+    def on_context_menu_for_outputs(self, pos: QPoint):
+        o_text = self.outputs_textedit
+        global_pos = o_text.viewport().mapToGlobal(pos)
+
+        cursor = o_text.cursorForPosition(pos)
+        charFormat = cursor.charFormat()
+        name = charFormat.anchorNames() and charFormat.anchorNames()[0]
+        if not name:
+            menu = o_text.createStandardContextMenu()
+            menu.exec_(global_pos)
+            return
+
+        menu = QMenu()
+        show_list = []
+        copy_list = []
+        # figure out which output they right-clicked on. output lines have an anchor named "txio_idx N"
+        txout_idx = int(name.split()[1])  # split "txio_idx N", translate N -> int
+        menu.addAction(f"Tx Output #{txout_idx}").setDisabled(True)
+        menu.addSeparator()
+        if tx_hash := self.tx.txid():
+            outpoint = TxOutpoint(bytes.fromhex(tx_hash), txout_idx)
+            copy_list += [(_("Copy") + " " + _("Outpoint"), lambda: self.main_window.do_copy(outpoint.to_str()))]
+        if addr := self.tx.outputs()[txout_idx].address:
+            if self.wallet.is_mine(addr):
+                show_list += [(_("Address Details"), lambda: self.main_window.show_address(addr, parent=self))]
+            copy_list += [(_("Copy Address"), lambda: self.main_window.do_copy(addr))]
+        txout_value = self.tx.outputs()[txout_idx].value
+        value_str = self.main_window.format_amount(txout_value)
+        copy_list += [(_("Copy Amount"), lambda: self.main_window.do_copy(value_str))]
+
+        for item in show_list:
+            menu.addAction(*item)
+        if show_list and copy_list:
+            menu.addSeparator()
+        for item in copy_list:
+            menu.addAction(*item)
+
+        menu.addSeparator()
+        std_menu = o_text.createStandardContextMenu()
+        menu.addActions(std_menu.actions())
+        menu.exec_(global_pos)
 
 
 
-_logger = get_logger(__name__)
-dialogs = []  # Otherwise python randomly garbage collects the dialogs...
-
-
-def show_transaction(tx: Transaction, *, parent: 'ElectrumWindow', desc=None, prompt_if_unsaved=False):
+def show_transaction(tx: Transaction, *, parent: 'ElectrumWindow', prompt_if_unsaved=False):
     try:
-        d = TxDialog(tx, parent=parent, desc=desc, prompt_if_unsaved=prompt_if_unsaved)
+        d = TxDialog(tx, parent=parent, prompt_if_unsaved=prompt_if_unsaved)
     except SerializationError as e:
         _logger.exception('unable to deserialize the transaction')
         parent.show_critical(_("Electrum was unable to deserialize the transaction:") + "\n" + str(e))
@@ -95,9 +357,10 @@ def show_transaction(tx: Transaction, *, parent: 'ElectrumWindow', desc=None, pr
 
 
 
-class BaseTxDialog(QDialog, MessageBoxMixin):
 
-    def __init__(self, *, parent: 'ElectrumWindow', desc, prompt_if_unsaved, finalized: bool, external_keypairs=None):
+class TxDialog(QDialog, MessageBoxMixin):
+
+    def __init__(self, tx: Transaction, *, parent: 'ElectrumWindow', prompt_if_unsaved, external_keypairs=None):
         '''Transactions in the wallet will show their description.
         Pass desc to give a description for txs not yet in the wallet.
         '''
@@ -105,16 +368,15 @@ class BaseTxDialog(QDialog, MessageBoxMixin):
         QDialog.__init__(self, parent=None)
         self.tx = None  # type: Optional[Transaction]
         self.external_keypairs = external_keypairs
-        self.finalized = finalized
         self.main_window = parent
         self.config = parent.config
         self.wallet = parent.wallet
         self.prompt_if_unsaved = prompt_if_unsaved
         self.saved = False
-        self.desc = desc
+        self.desc = None
+        if txid := tx.txid():
+            self.desc = self.wallet.get_label_for_txid(txid) or None
         self.setMinimumWidth(640)
-        self.resize(1200,600)
-        self.set_title()
 
         self.psbt_only_widgets = []  # type: List[QWidget]
 
@@ -129,30 +391,8 @@ class BaseTxDialog(QDialog, MessageBoxMixin):
 
         vbox.addSpacing(10)
 
-        self.inputs_header = QLabel()
-        vbox.addWidget(self.inputs_header)
-        self.inputs_textedit = QTextEditWithDefaultSize()
-        vbox.addWidget(self.inputs_textedit)
-
-        self.txo_color_recv = TxOutputColoring(
-            legend=_("Receiving Address"), color=ColorScheme.GREEN, tooltip=_("Wallet receive address"))
-        self.txo_color_change = TxOutputColoring(
-            legend=_("Change Address"), color=ColorScheme.YELLOW, tooltip=_("Wallet change address"))
-        self.txo_color_2fa = TxOutputColoring(
-            legend=_("TrustedCoin (2FA) batch fee"), color=ColorScheme.BLUE, tooltip=_("TrustedCoin (2FA) fee for the next batch of transactions"))
-
-        outheader_hbox = QHBoxLayout()
-        outheader_hbox.setContentsMargins(0, 0, 0, 0)
-        vbox.addLayout(outheader_hbox)
-        self.outputs_header = QLabel()
-        outheader_hbox.addWidget(self.outputs_header)
-        outheader_hbox.addStretch(2)
-        outheader_hbox.addWidget(self.txo_color_recv.legend_label)
-        outheader_hbox.addWidget(self.txo_color_change.legend_label)
-        outheader_hbox.addWidget(self.txo_color_2fa.legend_label)
-
-        self.outputs_textedit = QTextEditWithDefaultSize()
-        vbox.addWidget(self.outputs_textedit)
+        self.io_widget = TxInOutWidget(self.main_window, self.wallet)
+        vbox.addWidget(self.io_widget)
 
         self.sign_button = b = QPushButton(_("Sign"))
         b.clicked.connect(self.sign)
@@ -160,7 +400,7 @@ class BaseTxDialog(QDialog, MessageBoxMixin):
         self.broadcast_button = b = QPushButton(_("Broadcast"))
         b.clicked.connect(self.do_broadcast)
 
-        self.save_button = b = QPushButton(_("Save"))
+        self.save_button = b = QPushButton(_("Add to History"))
         b.clicked.connect(self.save)
 
         self.cancel_button = b = QPushButton(_("Close"))
@@ -178,12 +418,9 @@ class BaseTxDialog(QDialog, MessageBoxMixin):
         self.psbt_only_widgets.append(export_submenu)
 
         self.export_actions_button = QToolButton()
-        self.export_actions_button.setText(_("Export"))
+        self.export_actions_button.setText(_("Share"))
         self.export_actions_button.setMenu(export_actions_menu)
         self.export_actions_button.setPopupMode(QToolButton.InstantPopup)
-
-        self.finalize_button = QPushButton(_('Finalize'))
-        self.finalize_button.clicked.connect(self.on_finalize)
 
         partial_tx_actions_menu = QMenu()
         ptx_merge_sigs_action = QAction(_("Merge signatures from"), self)
@@ -201,25 +438,18 @@ class BaseTxDialog(QDialog, MessageBoxMixin):
         # Action buttons
         self.buttons = [self.partial_tx_actions_button, self.sign_button, self.broadcast_button, self.cancel_button]
         # Transaction sharing buttons
-        self.sharing_buttons = [self.finalize_button, self.export_actions_button, self.save_button]
+        self.sharing_buttons = [self.export_actions_button, self.save_button]
         run_hook('transaction_dialog', self)
-        if not self.finalized:
-            self.create_fee_controls()
-            vbox.addWidget(self.feecontrol_fields)
         self.hbox = hbox = QHBoxLayout()
         hbox.addLayout(Buttons(*self.sharing_buttons))
         hbox.addStretch(1)
         hbox.addLayout(Buttons(*self.buttons))
         vbox.addLayout(hbox)
-        self.set_buttons_visibility()
-
         dialogs.append(self)
 
-    def set_buttons_visibility(self):
-        for b in [self.export_actions_button, self.save_button, self.sign_button, self.broadcast_button, self.partial_tx_actions_button]:
-            b.setVisible(self.finalized)
-        for b in [self.finalize_button]:
-            b.setVisible(not self.finalized)
+        self.set_tx(tx)
+        self.update()
+        self.set_title()
 
     def set_tx(self, tx: 'Transaction'):
         # Take a copy; it might get updated in the main window by
@@ -277,7 +507,7 @@ class BaseTxDialog(QDialog, MessageBoxMixin):
         action.triggered.connect(lambda: self.show_qr(tx=gettx()))
         menu.addAction(action)
 
-        action = QAction(_("Export to file"), self)
+        action = QAction(_("Save to file"), self)
         action.triggered.connect(lambda: self.export_to_file(tx=gettx()))
         menu.addAction(action)
 
@@ -413,12 +643,9 @@ class BaseTxDialog(QDialog, MessageBoxMixin):
         self.update()
 
     def update(self):
-        if not self.finalized:
-            self.update_fee_fields()
-            self.finalize_button.setEnabled(self.can_finalize())
         if self.tx is None:
             return
-        self.update_io()
+        self.io_widget.update(self.tx)
         desc = self.desc
         base_unit = self.main_window.base_unit()
         format_amount = self.main_window.format_amount
@@ -431,8 +658,7 @@ class BaseTxDialog(QDialog, MessageBoxMixin):
         txid = self.tx.txid()
         fx = self.main_window.fx
         tx_item_fiat = None
-        if (self.finalized  # ensures we don't use historical rates for tx being constructed *now*
-                and txid is not None and fx.is_enabled() and amount is not None):
+        if (txid is not None and fx.is_enabled() and amount is not None):
             tx_item_fiat = self.wallet.get_tx_item_fiat(
                 tx_hash=txid, amount_sat=abs(amount), fx=fx, tx_fee=fee)
         lnworker_history = self.wallet.lnworker.get_onchain_history() if self.wallet.lnworker else {}
@@ -440,14 +666,14 @@ class BaseTxDialog(QDialog, MessageBoxMixin):
             item = lnworker_history[txid]
             ln_amount = item['amount_msat'] / 1000
             if amount is None:
-                tx_mined_status = self.wallet.lnworker.lnwatcher.adb.get_tx_height(txid)
+                tx_mined_status = self.wallet.adb.get_tx_height(txid)
         else:
             ln_amount = None
         self.broadcast_button.setEnabled(tx_details.can_broadcast)
         can_sign = not self.tx.is_complete() and \
             (self.wallet.can_sign(self.tx) or bool(self.external_keypairs))
         self.sign_button.setEnabled(can_sign)
-        if self.finalized and tx_details.txid:
+        if tx_details.txid:
             self.tx_hash_e.setText(tx_details.txid)
         else:
             # note: when not finalized, RBF and locktime changes do not trigger
@@ -477,8 +703,7 @@ class BaseTxDialog(QDialog, MessageBoxMixin):
         else:
             locktime_final_str = f"LockTime: {self.tx.locktime} ({datetime.datetime.fromtimestamp(self.tx.locktime)})"
         self.locktime_final_label.setText(locktime_final_str)
-        if self.locktime_e.get_locktime() is None:
-            self.locktime_e.set_locktime(self.tx.locktime)
+
         self.rbf_label.setText(_('Replace by fee') + f": {not self.tx.is_final()}")
 
         if tx_mined_status.header_hash:
@@ -522,10 +747,7 @@ class BaseTxDialog(QDialog, MessageBoxMixin):
             fee_rate = Decimal(fee) / size  # sat/byte
             fee_str += '  ( %s ) ' % self.main_window.format_fee_rate(fee_rate * 1000)
             if isinstance(self.tx, PartialTransaction):
-                if isinstance(self, PreviewTxDialog):
-                    invoice_amt = self.tx.output_value() if self.output_value == '!' else self.output_value
-                else:
-                    invoice_amt = amount
+                invoice_amt = amount
                 fee_warning_tuple = self.wallet.get_tx_fee_warning(
                     invoice_amt=invoice_amt, tx_size=size, fee=fee)
                 if fee_warning_tuple:
@@ -553,7 +775,7 @@ class BaseTxDialog(QDialog, MessageBoxMixin):
             self.ln_amount_label.setText(ln_amount_str)
         else:
             self.ln_amount_label.hide()
-        show_psbt_only_widgets = self.finalized and isinstance(self.tx, PartialTransaction)
+        show_psbt_only_widgets = isinstance(self.tx, PartialTransaction)
         for widget in self.psbt_only_widgets:
             if isinstance(widget, QMenu):
                 widget.menuAction().setVisible(show_psbt_only_widgets)
@@ -564,78 +786,11 @@ class BaseTxDialog(QDialog, MessageBoxMixin):
 
         self.save_button.setEnabled(tx_details.can_save_as_local)
         if tx_details.can_save_as_local:
-            self.save_button.setToolTip(_("Save transaction offline"))
+            self.save_button.setToolTip(_("Add transaction to history, without broadcasting it"))
         else:
-            self.save_button.setToolTip(_("Transaction already saved or not yet signed."))
+            self.save_button.setToolTip(_("Transaction already in history or not yet signed."))
 
         run_hook('transaction_dialog_update', self)
-
-    def update_io(self):
-        inputs_header_text = _("Inputs") + ' (%d)'%len(self.tx.inputs())
-        if not self.finalized:
-            selected_coins = self.main_window.get_manually_selected_coins()
-            if selected_coins is not None:
-                inputs_header_text += f"  -  " + _("Coin selection active ({} UTXOs selected)").format(len(selected_coins))
-        self.inputs_header.setText(inputs_header_text)
-
-        ext = QTextCharFormat()
-        tf_used_recv, tf_used_change, tf_used_2fa = False, False, False
-        def text_format(addr):
-            nonlocal tf_used_recv, tf_used_change, tf_used_2fa
-            if self.wallet.is_mine(addr):
-                if self.wallet.is_change(addr):
-                    tf_used_change = True
-                    return self.txo_color_change.text_char_format
-                else:
-                    tf_used_recv = True
-                    return self.txo_color_recv.text_char_format
-            elif self.wallet.is_billing_address(addr):
-                tf_used_2fa = True
-                return self.txo_color_2fa.text_char_format
-            return ext
-
-        def insert_tx_io(cursor, is_coinbase, short_id, address, value):
-            if is_coinbase:
-                cursor.insertText('coinbase')
-            else:
-                address_str = address or '<address unknown>'
-                value_str = self.main_window.format_amount(value, whitespaces=True)
-                cursor.insertText("%-15s\t"%str(short_id), ext)
-                cursor.insertText("%-62s"%address_str, text_format(address))
-                cursor.insertText('\t', ext)
-                cursor.insertText(value_str, ext)
-            cursor.insertBlock()
-
-        i_text = self.inputs_textedit
-        i_text.clear()
-        i_text.setFont(QFont(MONOSPACE_FONT))
-        i_text.setReadOnly(True)
-        cursor = i_text.textCursor()
-        for txin in self.tx.inputs():
-            addr = self.wallet.adb.get_txin_address(txin)
-            txin_value = self.wallet.adb.get_txin_value(txin)
-            insert_tx_io(cursor, txin.is_coinbase_output(), txin.short_id, addr, txin_value)
-
-        self.outputs_header.setText(_("Outputs") + ' (%d)'%len(self.tx.outputs()))
-        o_text = self.outputs_textedit
-        o_text.clear()
-        o_text.setFont(QFont(MONOSPACE_FONT))
-        o_text.setReadOnly(True)
-        tx_height, tx_pos = self.wallet.adb.get_txpos(self.tx.txid())
-        tx_hash = bytes.fromhex(self.tx.txid())
-        cursor = o_text.textCursor()
-        for index, o in enumerate(self.tx.outputs()):
-            if tx_pos is not None and tx_pos >= 0:
-                short_id = ShortID.from_components(tx_height, tx_pos, index)
-            else:
-                short_id = TxOutpoint(tx_hash, index).short_name()
-
-            addr, value = o.get_ui_address_str(), o.value
-            insert_tx_io(cursor, False, short_id, addr, value)
-
-        self.txo_color_recv.legend_label.setVisible(tf_used_recv)
-        self.txo_color_change.legend_label.setVisible(tf_used_change)
-        self.txo_color_2fa.legend_label.setVisible(tf_used_2fa)
 
     def add_tx_stats(self, vbox):
         hbox_stats = QHBoxLayout()
@@ -686,19 +841,6 @@ class BaseTxDialog(QDialog, MessageBoxMixin):
         self.locktime_final_label = TxDetailLabel()
         vbox_right.addWidget(self.locktime_final_label)
 
-        locktime_setter_hbox = QHBoxLayout()
-        locktime_setter_hbox.setContentsMargins(0, 0, 0, 0)
-        locktime_setter_hbox.setSpacing(0)
-        locktime_setter_label = TxDetailLabel()
-        locktime_setter_label.setText("LockTime: ")
-        self.locktime_e = LockTimeEdit(self)
-        locktime_setter_hbox.addWidget(locktime_setter_label)
-        locktime_setter_hbox.addWidget(self.locktime_e)
-        locktime_setter_hbox.addStretch(1)
-        self.locktime_setter_widget = QWidget()
-        self.locktime_setter_widget.setLayout(locktime_setter_hbox)
-        vbox_right.addWidget(self.locktime_setter_widget)
-
         self.block_height_label = TxDetailLabel()
         vbox_right.addWidget(self.block_height_label)
         vbox_right.addStretch(1)
@@ -711,12 +853,12 @@ class BaseTxDialog(QDialog, MessageBoxMixin):
         vbox.addWidget(self.block_hash_label)
 
         # set visibility after parenting can be determined by Qt
-        self.rbf_label.setVisible(self.finalized)
-        self.locktime_final_label.setVisible(self.finalized)
-        self.locktime_setter_widget.setVisible(not self.finalized)
+        self.rbf_label.setVisible(True)
+        self.locktime_final_label.setVisible(True)
 
     def set_title(self):
-        self.setWindowTitle(_("Create transaction") if not self.finalized else _("Transaction"))
+        txid = self.tx.txid() or "<no txid yet>"
+        self.setWindowTitle(_("Transaction") + ' ' + txid)
 
     def can_finalize(self) -> bool:
         return False
@@ -760,236 +902,3 @@ class TxOutputColoring:
         self.text_char_format.setBackground(QBrush(self.color))
         self.text_char_format.setToolTip(tooltip)
 
-
-class TxDialog(BaseTxDialog):
-    def __init__(self, tx: Transaction, *, parent: 'ElectrumWindow', desc, prompt_if_unsaved):
-        BaseTxDialog.__init__(self, parent=parent, desc=desc, prompt_if_unsaved=prompt_if_unsaved, finalized=True)
-        self.set_tx(tx)
-        self.update()
-
-
-class PreviewTxDialog(BaseTxDialog, TxEditor):
-
-    def __init__(
-            self,
-            *,
-            make_tx,
-            external_keypairs,
-            window: 'ElectrumWindow',
-            output_value: Union[int, str],
-    ):
-        TxEditor.__init__(
-            self,
-            window=window,
-            make_tx=make_tx,
-            is_sweep=bool(external_keypairs),
-            output_value=output_value,
-        )
-        BaseTxDialog.__init__(self, parent=window, desc='', prompt_if_unsaved=False,
-                              finalized=False, external_keypairs=external_keypairs)
-        BlockingWaitingDialog(window, _("Preparing transaction..."),
-                              lambda: self.update_tx(fallback_to_zero_fee=True))
-        self.update()
-
-    def create_fee_controls(self):
-
-        self.size_e = TxSizeLabel()
-        self.size_e.setAlignment(Qt.AlignCenter)
-        self.size_e.setAmount(0)
-        self.size_e.setStyleSheet(ColorScheme.DEFAULT.as_stylesheet())
-
-        self.fiat_fee_label = TxFiatLabel()
-        self.fiat_fee_label.setAlignment(Qt.AlignCenter)
-        self.fiat_fee_label.setAmount(0)
-        self.fiat_fee_label.setStyleSheet(ColorScheme.DEFAULT.as_stylesheet())
-
-        self.feerate_e = FeerateEdit(lambda: 0)
-        self.feerate_e.setAmount(self.config.fee_per_byte())
-        self.feerate_e.textEdited.connect(partial(self.on_fee_or_feerate, self.feerate_e, False))
-        self.feerate_e.editingFinished.connect(partial(self.on_fee_or_feerate, self.feerate_e, True))
-
-        self.fee_e = BTCAmountEdit(self.main_window.get_decimal_point)
-        self.fee_e.textEdited.connect(partial(self.on_fee_or_feerate, self.fee_e, False))
-        self.fee_e.editingFinished.connect(partial(self.on_fee_or_feerate, self.fee_e, True))
-
-        self.fee_e.textChanged.connect(self.entry_changed)
-        self.feerate_e.textChanged.connect(self.entry_changed)
-
-        self.fee_slider = FeeSlider(self, self.config, self.fee_slider_callback)
-        self.fee_combo = FeeComboBox(self.fee_slider)
-        self.fee_slider.setFixedWidth(self.fee_e.width())
-
-        def feerounding_onclick():
-            text = (self.feerounding_text + '\n\n' +
-                    _('To somewhat protect your privacy, Electrum tries to create change with similar precision to other outputs.') + ' ' +
-                    _('At most 100 satoshis might be lost due to this rounding.') + ' ' +
-                    _("You can disable this setting in '{}'.").format(_('Preferences')) + '\n' +
-                    _('Also, dust is not kept as change, but added to the fee.')  + '\n' +
-                    _('Also, when batching RBF transactions, BIP 125 imposes a lower bound on the fee.'))
-            self.show_message(title=_('Fee rounding'), msg=text)
-
-        self.feerounding_icon = QToolButton()
-        self.feerounding_icon.setIcon(read_QIcon('info.png'))
-        self.feerounding_icon.setAutoRaise(True)
-        self.feerounding_icon.clicked.connect(feerounding_onclick)
-        self.feerounding_icon.setVisible(False)
-
-        self.feecontrol_fields = QWidget()
-        hbox = QHBoxLayout(self.feecontrol_fields)
-        hbox.setContentsMargins(0, 0, 0, 0)
-        grid = QGridLayout()
-        grid.addWidget(QLabel(_("Target fee:")), 0, 0)
-        grid.addWidget(self.feerate_e, 0, 1)
-        grid.addWidget(self.size_e, 0, 2)
-        grid.addWidget(self.fee_e, 0, 3)
-        grid.addWidget(self.feerounding_icon, 0, 4)
-        grid.addWidget(self.fiat_fee_label, 0, 5)
-        grid.addWidget(self.fee_slider, 1, 1)
-        grid.addWidget(self.fee_combo, 1, 2)
-        hbox.addLayout(grid)
-        hbox.addStretch(1)
-
-    def fee_slider_callback(self, dyn, pos, fee_rate):
-        super().fee_slider_callback(dyn, pos, fee_rate)
-        self.fee_slider.activate()
-        if fee_rate:
-            fee_rate = Decimal(fee_rate)
-            self.feerate_e.setAmount(quantize_feerate(fee_rate / 1000))
-        else:
-            self.feerate_e.setAmount(None)
-        self.fee_e.setModified(False)
-
-    def on_fee_or_feerate(self, edit_changed, editing_finished):
-        edit_other = self.feerate_e if edit_changed == self.fee_e else self.fee_e
-        if editing_finished:
-            if edit_changed.get_amount() is None:
-                # This is so that when the user blanks the fee and moves on,
-                # we go back to auto-calculate mode and put a fee back.
-                edit_changed.setModified(False)
-        else:
-            # edit_changed was edited just now, so make sure we will
-            # freeze the correct fee setting (this)
-            edit_other.setModified(False)
-        self.fee_slider.deactivate()
-        self.update()
-
-    def is_send_fee_frozen(self):
-        return self.fee_e.isVisible() and self.fee_e.isModified() \
-               and (self.fee_e.text() or self.fee_e.hasFocus())
-
-    def is_send_feerate_frozen(self):
-        return self.feerate_e.isVisible() and self.feerate_e.isModified() \
-               and (self.feerate_e.text() or self.feerate_e.hasFocus())
-
-    def set_feerounding_text(self, num_satoshis_added):
-        self.feerounding_text = (_('Additional {} satoshis are going to be added.')
-                                 .format(num_satoshis_added))
-
-    def get_fee_estimator(self):
-        if self.is_send_fee_frozen() and self.fee_e.get_amount() is not None:
-            fee_estimator = self.fee_e.get_amount()
-        elif self.is_send_feerate_frozen() and self.feerate_e.get_amount() is not None:
-            amount = self.feerate_e.get_amount()  # sat/byte feerate
-            amount = 0 if amount is None else amount * 1000  # sat/kilobyte feerate
-            fee_estimator = partial(
-                SimpleConfig.estimate_fee_for_feerate, amount)
-        else:
-            fee_estimator = None
-        return fee_estimator
-
-    def entry_changed(self):
-        # blue color denotes auto-filled values
-        text = ""
-        fee_color = ColorScheme.DEFAULT
-        feerate_color = ColorScheme.DEFAULT
-        if self.not_enough_funds:
-            fee_color = ColorScheme.RED
-            feerate_color = ColorScheme.RED
-        elif self.fee_e.isModified():
-            feerate_color = ColorScheme.BLUE
-        elif self.feerate_e.isModified():
-            fee_color = ColorScheme.BLUE
-        else:
-            fee_color = ColorScheme.BLUE
-            feerate_color = ColorScheme.BLUE
-        self.fee_e.setStyleSheet(fee_color.as_stylesheet())
-        self.feerate_e.setStyleSheet(feerate_color.as_stylesheet())
-        #
-        self.needs_update = True
-
-    def update_fee_fields(self):
-        freeze_fee = self.is_send_fee_frozen()
-        freeze_feerate = self.is_send_feerate_frozen()
-        tx = self.tx
-        if self.no_dynfee_estimates and tx:
-            size = tx.estimated_size()
-            self.size_e.setAmount(size)
-        if self.not_enough_funds or self.no_dynfee_estimates:
-            if not freeze_fee:
-                self.fee_e.setAmount(None)
-            if not freeze_feerate:
-                self.feerate_e.setAmount(None)
-            self.feerounding_icon.setVisible(False)
-            return
-
-        assert tx is not None
-        size = tx.estimated_size()
-        fee = tx.get_fee()
-
-        self.size_e.setAmount(size)
-        fiat_fee = self.main_window.format_fiat_and_units(fee)
-        self.fiat_fee_label.setAmount(fiat_fee)
-
-        # Displayed fee/fee_rate values are set according to user input.
-        # Due to rounding or dropping dust in CoinChooser,
-        # actual fees often differ somewhat.
-        if freeze_feerate or self.fee_slider.is_active():
-            displayed_feerate = self.feerate_e.get_amount()
-            if displayed_feerate is not None:
-                displayed_feerate = quantize_feerate(displayed_feerate)
-            elif self.fee_slider.is_active():
-                # fallback to actual fee
-                displayed_feerate = quantize_feerate(fee / size) if fee is not None else None
-                self.feerate_e.setAmount(displayed_feerate)
-            displayed_fee = round(displayed_feerate * size) if displayed_feerate is not None else None
-            self.fee_e.setAmount(displayed_fee)
-        else:
-            if freeze_fee:
-                displayed_fee = self.fee_e.get_amount()
-            else:
-                # fallback to actual fee if nothing is frozen
-                displayed_fee = fee
-                self.fee_e.setAmount(displayed_fee)
-            displayed_fee = displayed_fee if displayed_fee else 0
-            displayed_feerate = quantize_feerate(displayed_fee / size) if displayed_fee is not None else None
-            self.feerate_e.setAmount(displayed_feerate)
-
-        # show/hide fee rounding icon
-        feerounding = (fee - displayed_fee) if (fee and displayed_fee is not None) else 0
-        self.set_feerounding_text(int(feerounding))
-        self.feerounding_icon.setToolTip(self.feerounding_text)
-        self.feerounding_icon.setVisible(abs(feerounding) >= 1)
-
-    def can_finalize(self):
-        return (self.tx is not None
-                and not self.not_enough_funds)
-
-    def on_finalize(self):
-        if not self.can_finalize():
-            return
-        assert self.tx
-        self.finalized = True
-        self.stop_editor_updates()
-        self.tx.set_rbf(True)
-        locktime = self.locktime_e.get_locktime()
-        if locktime is not None:
-            self.tx.locktime = locktime
-        for widget in [self.fee_slider, self.fee_combo, self.feecontrol_fields,
-                       self.locktime_setter_widget, self.locktime_e]:
-            widget.setEnabled(False)
-            widget.setVisible(False)
-        for widget in [self.rbf_label, self.locktime_final_label]:
-            widget.setVisible(True)
-        self.set_title()
-        self.set_buttons_visibility()
-        self.update()

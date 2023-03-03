@@ -13,8 +13,10 @@ Pane {
 
     padding: 0
 
+    property string title: qsTr('Wallets')
+
     function createWallet() {
-        var dialog = app.newWalletWizard.createObject(rootItem)
+        var dialog = app.newWalletWizard.createObject(app)
         dialog.open()
         dialog.walletCreated.connect(function() {
             Daemon.availableWallets.reload()
@@ -56,7 +58,10 @@ Pane {
                         height: row.height
 
                         onClicked: {
-                            Daemon.load_wallet(model.path)
+                            if (!Daemon.currentWallet || Daemon.currentWallet.name != model.name)
+                                Daemon.load_wallet(model.path)
+                            else
+                                app.stack.pop()
                         }
 
                         RowLayout {
@@ -113,6 +118,7 @@ Pane {
         FlatButton {
             Layout.fillWidth: true
             text: 'Create Wallet'
+            icon.source: '../../icons/add.png'
             onClicked: rootItem.createWallet()
         }
     }
@@ -120,8 +126,8 @@ Pane {
     Connections {
         target: Daemon
         function onWalletLoaded() {
-            Daemon.availableWallets.reload()
-            app.stack.pop()
+            if (app.stack.currentItem.objectName == 'Wallets')
+                app.stack.pop()
         }
     }
 

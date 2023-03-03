@@ -5,7 +5,7 @@
 import hashlib
 from typing import List, Tuple, NamedTuple, Union, Iterable, Sequence, Optional
 
-from .util import bfh, bh2u, BitcoinException
+from .util import bfh, BitcoinException
 from . import constants
 from . import ecc
 from .crypto import hash_160, hmac_oneshot
@@ -16,6 +16,8 @@ from .logging import get_logger
 _logger = get_logger(__name__)
 BIP32_PRIME = 0x80000000
 UINT32_MAX = (1 << 32) - 1
+
+BIP32_HARDENED_CHAR = "h"  # default "hardened" char we put in str paths
 
 
 def protect_against_invalid_ecpoint(func):
@@ -345,7 +347,7 @@ def convert_bip32_intpath_to_strpath(path: Sequence[int]) -> str:
             raise ValueError(f"bip32 path child index out of range: {child_index}")
         prime = ""
         if child_index & BIP32_PRIME:
-            prime = "'"
+            prime = BIP32_HARDENED_CHAR
             child_index = child_index ^ BIP32_PRIME
         s += str(child_index) + prime + '/'
     # cut trailing "/"

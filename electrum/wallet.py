@@ -57,7 +57,7 @@ from .util import (NotEnoughFunds, UserCancelled, profiler, OldTaskGroup, ignore
                    format_satoshis, format_fee_satoshis, NoDynamicFeeEstimates,
                    WalletFileException, BitcoinException,
                    InvalidPassword, format_time, timestamp_to_datetime, Satoshis,
-                   Fiat, bfh, bh2u, TxMinedInfo, quantize_feerate, create_bip21_uri, OrderedDictWithIndex, parse_max_spend)
+                   Fiat, bfh, TxMinedInfo, quantize_feerate, create_bip21_uri, OrderedDictWithIndex, parse_max_spend)
 from .simple_config import SimpleConfig, FEE_RATIO_HIGH_WARNING, FEERATE_WARNING_HIGH_FEE
 from .bitcoin import COIN, TYPE_ADDRESS
 from .bitcoin import is_address, address_to_script, is_minikey, relayfee, dust_threshold
@@ -74,7 +74,7 @@ from .transaction import (Transaction, TxInput, UnknownTxinType, TxOutput,
 from .plugin import run_hook
 from .address_synchronizer import (AddressSynchronizer, TX_HEIGHT_LOCAL,
                                    TX_HEIGHT_UNCONF_PARENT, TX_HEIGHT_UNCONFIRMED, TX_HEIGHT_FUTURE)
-from .invoices import Invoice
+from .invoices import Invoice, Request
 from .invoices import PR_PAID, PR_UNPAID, PR_UNKNOWN, PR_EXPIRED, PR_UNCONFIRMED
 from .contacts import Contacts
 from .interface import NetworkException
@@ -295,6 +295,7 @@ class Abstract_Wallet(ABC, Logger, EventListener):
     txin_type: str
     wallet_type: str
     lnworker: Optional['LNWallet']
+    network: Optional['Network']
 
     def __init__(self, db: WalletDB, storage: Optional[WalletStorage], *, config: SimpleConfig):
 
@@ -316,6 +317,8 @@ class Abstract_Wallet(ABC, Logger, EventListener):
             self.adb.add_address(addr)
         self.lock = self.adb.lock
         self.transaction_lock = self.adb.transaction_lock
+        self._last_full_history = None
+        self._tx_parents_cache = {}
 
         self.taskgroup = OldTaskGroup()
 
@@ -452,6 +455,16 @@ class Abstract_Wallet(ABC, Logger, EventListener):
     def is_up_to_date(self) -> bool:
         return self._up_to_date
 
+    def tx_is_related(self, tx):
+        is_mine = any([self.is_mine(out.address) for out in tx.outputs()])
+        is_mine |= any([self.is_mine(self.adb.get_txin_address(txin)) for txin in tx.inputs()])
+        return is_mine
+
+    def clear_tx_parents_cache(self):
+        with self.lock, self.transaction_lock:
+            self._tx_parents_cache.clear()
+            self._last_full_history = None
+
     @event_listener
     async def on_event_adb_set_up_to_date(self, adb):
         if self.adb != adb:
@@ -472,20 +485,24 @@ class Abstract_Wallet(ABC, Logger, EventListener):
             self.logger.info(f'set_up_to_date: {up_to_date}')
 
     @event_listener
-    def on_event_adb_added_tx(self, adb, tx_hash):
+    def on_event_adb_added_tx(self, adb, tx_hash: str, tx: Transaction):
         if self.adb != adb:
             return
-        tx = self.db.get_transaction(tx_hash)
-        if not tx:
-            raise Exception(tx_hash)
-        is_mine = any([self.is_mine(out.address) for out in tx.outputs()])
-        is_mine |= any([self.is_mine(self.adb.get_txin_address(txin)) for txin in tx.inputs()])
-        if not is_mine:
+        if not self.tx_is_related(tx):
             return
+        self.clear_tx_parents_cache()
         if self.lnworker:
             self.lnworker.maybe_add_backup_from_tx(tx)
         self._update_invoices_and_reqs_touched_by_tx(tx_hash)
         util.trigger_callback('new_transaction', self, tx)
+
+    @event_listener
+    def on_event_adb_removed_tx(self, adb, txid: str, tx: Transaction):
+        if self.adb != adb:
+            return
+        if not self.tx_is_related(tx):
+            return
+        self.clear_tx_parents_cache()
 
     @event_listener
     def on_event_adb_added_verified_tx(self, adb, tx_hash):
@@ -710,8 +727,11 @@ class Abstract_Wallet(ABC, Logger, EventListener):
         return any([chan.funding_outpoint.txid == txid
                     for chan in self.lnworker.channels.values()])
 
-    def is_swap_tx(self, tx: Transaction) -> bool:
-        return bool(self.lnworker.swap_manager.get_swap_by_tx(tx)) if self.lnworker else False
+    def get_swap_by_claim_tx(self, tx: Transaction) -> bool:
+        return self.lnworker.swap_manager.get_swap_by_claim_tx(tx) if self.lnworker else None
+
+    def get_swap_by_funding_tx(self, tx: Transaction) -> bool:
+        return bool(self.lnworker.swap_manager.get_swap_by_funding_tx(tx)) if self.lnworker else None
 
     def get_wallet_delta(self, tx: Transaction) -> TxWalletDelta:
         """Return the effect a transaction has on the wallet.
@@ -757,7 +777,7 @@ class Abstract_Wallet(ABC, Logger, EventListener):
         tx_wallet_delta = self.get_wallet_delta(tx)
         is_relevant = tx_wallet_delta.is_relevant
         is_any_input_ismine = tx_wallet_delta.is_any_input_ismine
-        is_swap = self.is_swap_tx(tx)
+        is_swap = bool(self.get_swap_by_claim_tx(tx))
         fee = tx_wallet_delta.fee
         exp_n = None
         can_broadcast = False
@@ -840,6 +860,33 @@ class Abstract_Wallet(ABC, Logger, EventListener):
             can_remove=can_remove,
             is_lightning_funding_tx=is_lightning_funding_tx,
         )
+
+    def get_tx_parents(self, txid) -> Dict:
+        """
+        recursively calls itself and returns a flat dict:
+        txid -> list of parent txids
+        """
+        if not self.is_up_to_date():
+            return {}
+        if self._last_full_history is None:
+            self._last_full_history = self.get_full_history(None)
+
+        with self.lock, self.transaction_lock:
+            result = self._tx_parents_cache.get(txid, None)
+            if result is not None:
+                return result
+            result = {}
+            parents = []
+            tx = self.adb.get_transaction(txid)
+            assert tx, f"cannot find {txid} in db"
+            for i, txin in enumerate(tx.inputs()):
+                _txid = txin.prevout.txid.hex()
+                parents.append(_txid)
+                if _txid in self._last_full_history.keys():
+                    result.update(self.get_tx_parents(_txid))
+            result[txid] = parents
+            self._tx_parents_cache[txid] = result
+            return result
 
     def get_balance(self, **kwargs):
         domain = self.get_addresses()
@@ -2180,9 +2227,15 @@ class Abstract_Wallet(ABC, Logger, EventListener):
             for k in self.get_keystores():
                 if k.can_sign_txin(txin):
                     return True
-        if self.is_swap_tx(tx):
+        if self.get_swap_by_claim_tx(tx):
             return True
         return False
+
+    def _get_rawtx_from_network(self, txid: str) -> str:
+        """legacy hack. do not use in new code."""
+        assert self.network
+        return self.network.run_from_another_thread(
+            self.network.get_transaction(txid, timeout=10))
 
     def get_input_tx(self, tx_hash: str, *, ignore_network_issues=False) -> Optional[Transaction]:
         # First look up an input transaction in the wallet where it
@@ -2191,8 +2244,7 @@ class Abstract_Wallet(ABC, Logger, EventListener):
         tx = self.db.get_transaction(tx_hash)
         if not tx and self.network and self.network.has_internet_connection():
             try:
-                raw_tx = self.network.run_from_another_thread(
-                    self.network.get_transaction(tx_hash, timeout=10))
+                raw_tx = self._get_rawtx_from_network(tx_hash)
             except NetworkException as e:
                 _logger.info(f'got network error getting input txn. err: {repr(e)}. txid: {tx_hash}. '
                              f'if you are intentionally offline, consider using the --offline flag')
@@ -2235,7 +2287,7 @@ class Abstract_Wallet(ABC, Logger, EventListener):
         if not isinstance(tx, PartialTransaction):
             return
         # note: swap signing does not require the password
-        swap = self.lnworker.swap_manager.get_swap_by_tx(tx) if self.lnworker else None
+        swap = self.get_swap_by_claim_tx(tx)
         if swap:
             self.lnworker.swap_manager.sign_tx(tx, swap)
             return
@@ -2392,7 +2444,7 @@ class Abstract_Wallet(ABC, Logger, EventListener):
         }
         if is_lightning:
             d['rhash'] = x.rhash
-            d['lightning_invoice'] = x.lightning_invoice
+            d['lightning_invoice'] = self.get_bolt11_invoice(x)
             d['amount_msat'] = x.get_amount_msat()
             if self.lnworker and status == PR_UNPAID:
                 d['can_receive'] = self.lnworker.can_receive_invoice(x)
@@ -2426,7 +2478,7 @@ class Abstract_Wallet(ABC, Logger, EventListener):
             'invoice_id': key,
         }
         if is_lightning:
-            d['lightning_invoice'] = x.lightning_invoice
+            d['lightning_invoice'] = self.get_bolt11_invoice(x)
             d['amount_msat'] = x.get_amount_msat()
             if self.lnworker and status == PR_UNPAID:
                 d['can_pay'] = self.lnworker.can_pay_invoice(x)
@@ -2457,6 +2509,18 @@ class Abstract_Wallet(ABC, Logger, EventListener):
                     relevant_invoice_keys.add(invoice_key)
         self._update_onchain_invoice_paid_detection(relevant_invoice_keys)
 
+    def get_bolt11_invoice(self, req: Request) -> str:
+        if not self.lnworker:
+            return ''
+        amount_msat = req.amount_msat if req.amount_msat > 0 else None
+        lnaddr, invoice = self.lnworker.get_bolt11_invoice(
+            payment_hash=req.payment_hash,
+            amount_msat=amount_msat,
+            message=req.message,
+            expiry=req.exp,
+            fallback_address=req.get_address() if self.config.get('bolt11_fallback', True) else None)
+        return invoice
+
     def create_request(self, amount_sat: int, message: str, exp_delay: int, address: Optional[str]):
         # for receiving
         amount_sat = amount_sat or 0
@@ -2464,21 +2528,11 @@ class Abstract_Wallet(ABC, Logger, EventListener):
         message = message or ''
         address = address or None  # converts "" to None
         exp_delay = exp_delay or 0
-        timestamp = int(Invoice._get_cur_time())
-        fallback_address = address if self.config.get('bolt11_fallback', True) else None
-        lightning = self.has_lightning()
-        if lightning:
-            lightning_invoice = self.lnworker.add_request(
-                amount_sat=amount_sat,
-                message=message,
-                expiry=exp_delay,
-                fallback_address=fallback_address,
-            )
-        else:
-            lightning_invoice = None
+        timestamp = int(Request._get_cur_time())
+        payment_hash = self.lnworker.create_payment_info(amount_sat, write_to_disk=False) if self.has_lightning() else None
         outputs = [ PartialTxOutput.from_address_and_value(address, amount_sat)] if address else []
         height = self.adb.get_local_height()
-        req = Invoice(
+        req = Request(
             outputs=outputs,
             message=message,
             time=timestamp,
@@ -2486,7 +2540,7 @@ class Abstract_Wallet(ABC, Logger, EventListener):
             exp=exp_delay,
             height=height,
             bip70=None,
-            lightning_invoice=lightning_invoice,
+            payment_hash=payment_hash,
         )
         key = self.add_payment_request(req)
         return key
@@ -2770,7 +2824,7 @@ class Abstract_Wallet(ABC, Logger, EventListener):
             fee: int) -> Optional[Tuple[bool, str, str]]:
 
         feerate = Decimal(fee) / tx_size  # sat/byte
-        fee_ratio = Decimal(fee) / invoice_amt if invoice_amt else 1
+        fee_ratio = Decimal(fee) / invoice_amt if invoice_amt else 0
         long_warning = None
         short_warning = None
         allow_send = True
@@ -2807,7 +2861,6 @@ class Abstract_Wallet(ABC, Logger, EventListener):
         ln_is_error = False
         ln_swap_suggestion = None
         ln_rebalance_suggestion = None
-        lnaddr = req.lightning_invoice or ''
         URI = self.get_request_URI(req) or ''
         lightning_online = self.lnworker and self.lnworker.num_peers() > 0
         can_receive_lightning = self.lnworker and amount_sat <= self.lnworker.num_sats_can_receive()
@@ -2827,7 +2880,7 @@ class Abstract_Wallet(ABC, Logger, EventListener):
             URI_help = _('This request cannot be paid on-chain')
             if is_amt_too_small_for_onchain:
                 URI_help = _('Amount too small to be received onchain')
-        if not lnaddr:
+        if not req.is_lightning():
             ln_is_error = True
             ln_help = _('This request does not have a Lightning invoice.')
 
@@ -2835,7 +2888,7 @@ class Abstract_Wallet(ABC, Logger, EventListener):
             if self.adb.is_used(addr):
                 address_help = URI_help = (_("This address has already been used. "
                                              "For better privacy, do not reuse it for new payments."))
-            if lnaddr:
+            if req.is_lightning():
                 if not lightning_online:
                     ln_is_error = True
                     ln_help = _('You must be online to receive Lightning payments.')
@@ -3085,9 +3138,14 @@ class Imported_Wallet(Simple_Wallet):
     @profiler
     def try_detecting_internal_addresses_corruption(self):
         # we check only a random sample, for performance
-        addresses = self.get_addresses()
-        addresses = random.sample(addresses, min(len(addresses), 10))
-        for addr_found in addresses:
+        addresses_all = self.get_addresses()
+        # some random *used* addresses (note: we likely have not synced yet)
+        addresses_used = [addr for addr in addresses_all if self.adb.is_used(addr)]
+        sample1 = random.sample(addresses_used, min(len(addresses_used), 10))
+        # some random *unused* addresses
+        addresses_unused = [addr for addr in addresses_all if not self.adb.is_used(addr)]
+        sample2 = random.sample(addresses_unused, min(len(addresses_unused), 10))
+        for addr_found in itertools.chain(sample1, sample2):
             self.check_address_for_corruption(addr_found)
 
     def check_address_for_corruption(self, addr):
@@ -3167,12 +3225,16 @@ class Deterministic_Wallet(Abstract_Wallet):
     @profiler
     def try_detecting_internal_addresses_corruption(self):
         addresses_all = self.get_addresses()
-        # sample 1: first few
-        addresses_sample1 = addresses_all[:10]
-        # sample2: a few more randomly selected
-        addresses_rand = addresses_all[10:]
-        addresses_sample2 = random.sample(addresses_rand, min(len(addresses_rand), 10))
-        for addr_found in itertools.chain(addresses_sample1, addresses_sample2):
+        # first few addresses
+        nfirst_few = 10
+        sample1 = addresses_all[:nfirst_few]
+        # some random *used* addresses (note: we likely have not synced yet)
+        addresses_used = [addr for addr in addresses_all[nfirst_few:] if self.adb.is_used(addr)]
+        sample2 = random.sample(addresses_used, min(len(addresses_used), 10))
+        # some random *unused* addresses
+        addresses_unused = [addr for addr in addresses_all[nfirst_few:] if not self.adb.is_used(addr)]
+        sample3 = random.sample(addresses_unused, min(len(addresses_unused), 10))
+        for addr_found in itertools.chain(sample1, sample2, sample3):
             self.check_address_for_corruption(addr_found)
 
     def check_address_for_corruption(self, addr):

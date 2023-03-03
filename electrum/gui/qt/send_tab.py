@@ -15,7 +15,7 @@ from electrum import util, paymentrequest
 from electrum import lnutil
 from electrum.plugin import run_hook
 from electrum.i18n import _
-from electrum.util import (get_asyncio_loop, bh2u, FailedToParsePaymentIdentifier,
+from electrum.util import (get_asyncio_loop, FailedToParsePaymentIdentifier,
                            InvalidBitcoinURI, maybe_extract_lightning_payment_identifier, NotEnoughFunds,
                            NoDynamicFeeEstimates, InvoiceError, parse_max_spend)
 from electrum.invoices import PR_PAID, Invoice
@@ -28,7 +28,6 @@ from electrum.lnurl import decode_lnurl, request_lnurl, callback_lnurl, LNURLErr
 from .amountedit import AmountEdit, BTCAmountEdit, SizedFreezableLineEdit
 from .util import WaitingDialog, HelpLabel, MessageBoxMixin, EnterButton, char_width_in_lineedit
 from .confirm_tx_dialog import ConfirmTxDialog
-from .transaction_dialog import PreviewTxDialog
 
 if TYPE_CHECKING:
     from .main_window import ElectrumWindow
@@ -234,7 +233,7 @@ class SendTab(QWidget, MessageBoxMixin, Logger):
             output_value = '!'
         else:
             output_value = sum(output_values)
-        conf_dlg = ConfirmTxDialog(window=self.window, make_tx=make_tx, output_value=output_value, is_sweep=is_sweep)
+        conf_dlg = ConfirmTxDialog(window=self.window, make_tx=make_tx, output_value=output_value)
         if conf_dlg.not_enough_funds:
             # Check if we had enough funds excluding fees,
             # if so, still provide opportunity to set lower fees.
@@ -243,37 +242,26 @@ class SendTab(QWidget, MessageBoxMixin, Logger):
                 self.show_message(text)
                 return
 
-        # shortcut to advanced preview (after "enough funds" check!)
-        if self.config.get('advanced_preview'):
-            preview_dlg = PreviewTxDialog(
-                window=self.window,
-                make_tx=make_tx,
-                external_keypairs=external_keypairs,
-                output_value=output_value)
-            preview_dlg.show()
+        tx = conf_dlg.run()
+        if tx is None:
+            # user cancelled
+            return
+        is_preview = conf_dlg.is_preview
+        if is_preview:
+            self.window.show_transaction(tx)
             return
 
-        cancelled, is_send, password, tx = conf_dlg.run()
-        if cancelled:
-            return
-        if is_send:
-            self.save_pending_invoice()
-            def sign_done(success):
-                if success:
-                    self.window.broadcast_or_show(tx)
-            self.window.sign_tx_with_password(
-                tx,
-                callback=sign_done,
-                password=password,
-                external_keypairs=external_keypairs,
-            )
-        else:
-            preview_dlg = PreviewTxDialog(
-                window=self.window,
-                make_tx=make_tx,
-                external_keypairs=external_keypairs,
-                output_value=output_value)
-            preview_dlg.show()
+        self.save_pending_invoice()
+        def sign_done(success):
+            if success:
+                self.window.broadcast_or_show(tx)
+            else:
+                raise
+
+        self.window.sign_tx(
+            tx,
+            callback=sign_done,
+            external_keypairs=external_keypairs)
 
     def get_text_not_enough_funds_mentioning_frozen(self) -> str:
         text = _("Not enough funds")
@@ -408,7 +396,7 @@ class SendTab(QWidget, MessageBoxMixin, Logger):
             self.show_error(_("Invoice requires unknown or incompatible Lightning feature") + f":\n{e!r}")
             return
 
-        pubkey = bh2u(lnaddr.pubkey.serialize())
+        pubkey = lnaddr.pubkey.serialize().hex()
         for k,v in lnaddr.tags:
             if k == 'd':
                 description = v

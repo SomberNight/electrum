@@ -144,6 +144,10 @@ class NoDynamicFeeEstimates(Exception):
         return _('Dynamic fee estimates not available')
 
 
+class BelowDustLimit(Exception):
+    pass
+
+
 class InvalidPassword(Exception):
     def __init__(self, message: Optional[str] = None):
         self.message = message
@@ -585,17 +589,6 @@ def to_bytes(something, encoding='utf8') -> bytes:
 bfh = bytes.fromhex
 
 
-def bh2u(x: bytes) -> str:
-    """
-    str with hex representation of a bytes-like object
-
-    >>> x = bytes((1, 2, 10))
-    >>> bh2u(x)
-    '01020A'
-    """
-    return x.hex()
-
-
 def xor_bytes(a: bytes, b: bytes) -> bytes:
     size = min(len(a), len(b))
     return ((int.from_bytes(a[:size], "big") ^ int.from_bytes(b[:size], "big"))
@@ -897,6 +890,8 @@ signet_block_explorers = {
                        {'tx': 'tx/', 'addr': 'address/'}),
     'wakiyamap.dev': ('https://signet-explorer.wakiyamap.dev/',
                        {'tx': 'tx/', 'addr': 'address/'}),
+    'ex.signet.bublina.eu.org': ('https://ex.signet.bublina.eu.org/',
+                       {'tx': 'tx/', 'addr': 'address/'}),
     'system default': ('blockchain:/',
                        {'tx': 'tx/', 'addr': 'address/'}),
 }
@@ -1034,7 +1029,7 @@ def parse_URI(uri: str, on_pr: Callable = None, *, loop=None) -> dict:
             raise InvalidBitcoinURI(f"failed to parse 'exp' field: {repr(e)}") from e
     if 'sig' in out:
         try:
-            out['sig'] = bh2u(bitcoin.base_decode(out['sig'], base=58))
+            out['sig'] = bitcoin.base_decode(out['sig'], base=58).hex()
         except Exception as e:
             raise InvalidBitcoinURI(f"failed to parse 'sig' field: {repr(e)}") from e
     if 'lightning' in out:
@@ -1566,12 +1561,17 @@ def is_tor_socks_port(host: str, port: int) -> bool:
     return False
 
 
+AS_LIB_USER_I_WANT_TO_MANAGE_MY_OWN_ASYNCIO_LOOP = False  # used by unit tests
+
 _asyncio_event_loop = None  # type: Optional[asyncio.AbstractEventLoop]
 def get_asyncio_loop() -> asyncio.AbstractEventLoop:
     """Returns the global asyncio event loop we use."""
-    if _asyncio_event_loop is None:
-        raise Exception("event loop not created yet")
-    return _asyncio_event_loop
+    if loop := _asyncio_event_loop:
+        return loop
+    if AS_LIB_USER_I_WANT_TO_MANAGE_MY_OWN_ASYNCIO_LOOP:
+        if loop := get_running_loop():
+            return loop
+    raise Exception("event loop not created yet")
 
 
 def create_and_start_event_loop() -> Tuple[asyncio.AbstractEventLoop,
@@ -1782,7 +1782,6 @@ class CallbackManager:
     def __init__(self):
         self.callback_lock = threading.Lock()
         self.callbacks = defaultdict(list)      # note: needs self.callback_lock
-        self.asyncio_loop = None
 
     def register_callback(self, func, events):
         with self.callback_lock:
@@ -1800,21 +1799,20 @@ class CallbackManager:
         Can be called from any thread. The callback itself will get scheduled
         on the event loop.
         """
-        if self.asyncio_loop is None:
-            self.asyncio_loop = get_asyncio_loop()
-            assert self.asyncio_loop.is_running(), "event loop not running"
+        loop = get_asyncio_loop()
+        assert loop.is_running(), "event loop not running"
         with self.callback_lock:
             callbacks = self.callbacks[event][:]
         for callback in callbacks:
             # FIXME: if callback throws, we will lose the traceback
             if asyncio.iscoroutinefunction(callback):
-                asyncio.run_coroutine_threadsafe(callback(*args), self.asyncio_loop)
-            elif get_running_loop() == self.asyncio_loop:
+                asyncio.run_coroutine_threadsafe(callback(*args), loop)
+            elif get_running_loop() == loop:
                 # run callback immediately, so that it is guaranteed
                 # to have been executed when this method returns
                 callback(*args)
             else:
-                self.asyncio_loop.call_soon_threadsafe(callback, *args)
+                loop.call_soon_threadsafe(callback, *args)
 
 
 callback_mgr = CallbackManager()

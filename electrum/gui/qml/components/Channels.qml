@@ -78,7 +78,7 @@ Pane {
                     Layout.preferredWidth: parent.width
                     Layout.fillHeight: true
                     clip: true
-                    model: Daemon.currentWallet.channelModel.filterModel('is_backup', false)
+                    model: Daemon.currentWallet.channelModel.filterModelNoBackups()
 
                     delegate: ChannelDelegate {
                         onClicked: {
@@ -103,34 +103,45 @@ Pane {
         }
 
 
-        FlatButton {
+        ButtonContainer {
             Layout.fillWidth: true
-            text: qsTr('Swap');
-            visible: Daemon.currentWallet.lightningCanSend.satsInt > 0 || Daemon.currentWallet.lightningCanReceive.satInt > 0
-            icon.source: '../../icons/status_waiting.png'
-            onClicked: {
-                var dialog = swapDialog.createObject(root)
-                dialog.open()
+            FlatButton {
+                Layout.fillWidth: true
+                Layout.preferredWidth: 1
+                text: qsTr('Swap');
+                visible: Daemon.currentWallet.lightningCanSend.satsInt > 0 || Daemon.currentWallet.lightningCanReceive.satInt > 0
+                icon.source: Qt.resolvedUrl('../../icons/update.png')
+                onClicked: {
+                    var swaphelper = app.swaphelper.createObject(app)
+                    swaphelper.swapStarted.connect(function() {
+                        var dialog = swapProgressDialog.createObject(app, { swaphelper: swaphelper })
+                        dialog.open()
+                    })
+                    var dialog = swapDialog.createObject(root, { swaphelper: swaphelper })
+                    dialog.open()
+                }
             }
-        }
 
-        FlatButton {
-            Layout.fillWidth: true
-            text: qsTr('Open Channel')
-            onClicked: {
-                var dialog = openChannelDialog.createObject(root)
-                dialog.open()
+            FlatButton {
+                Layout.fillWidth: true
+                Layout.preferredWidth: 1
+                text: qsTr('Open Channel')
+                onClicked: {
+                    var dialog = openChannelDialog.createObject(root)
+                    dialog.open()
+                }
+                icon.source: '../../icons/lightning.png'
             }
-            icon.source: '../../icons/lightning.png'
-        }
 
-        FlatButton {
-            Layout.fillWidth: true
-            text: qsTr('Channel backups')
-            onClicked: {
-                app.stack.push(Qt.resolvedUrl('ChannelBackups.qml'))
+            FlatButton {
+                Layout.fillWidth: true
+                Layout.preferredWidth: 1
+                text: qsTr('Channel backups')
+                onClicked: {
+                    app.stack.push(Qt.resolvedUrl('ChannelBackups.qml'))
+                }
+                icon.source: '../../icons/file.png'
             }
-            icon.source: '../../icons/file.png'
         }
 
     }
@@ -138,6 +149,13 @@ Pane {
     Component {
         id: swapDialog
         SwapDialog {
+            onClosed: destroy()
+        }
+    }
+
+    Component {
+        id: swapProgressDialog
+        SwapProgressDialog {
             onClosed: destroy()
         }
     }

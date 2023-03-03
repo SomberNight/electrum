@@ -11,6 +11,8 @@ Pane {
 
     padding: 0
 
+    property string title: qsTr("Network")
+
     ColumnLayout {
         anchors.fill: parent
         spacing: 0
@@ -30,47 +32,6 @@ Pane {
                 id: contentLayout
                 width: parent.width
                 columns: 2
-
-                Heading {
-                    Layout.columnSpan: 2
-                    text: qsTr('Network')
-                }
-
-                Label {
-                    text: qsTr('Proxy:');
-                    color: Material.accentColor
-                }
-                Label {
-                    text: 'mode' in Network.proxy ? qsTr('enabled') : qsTr('disabled')
-                }
-
-                Label {
-                    visible: 'mode' in Network.proxy
-                    text: qsTr('Proxy server:');
-                    color: Material.accentColor
-                }
-                Label {
-                    visible: 'mode' in Network.proxy
-                    text: Network.proxy['host'] ? Network.proxy['host'] + ':' + Network.proxy['port'] : ''
-                }
-
-                Label {
-                    visible: 'mode' in Network.proxy
-                    text: qsTr('Proxy type:');
-                    color: Material.accentColor
-                }
-                RowLayout {
-                    Image {
-                        visible: Network.isProxyTor
-                        Layout.preferredWidth: constants.iconSizeMedium
-                        Layout.preferredHeight: constants.iconSizeMedium
-                        source: '../../icons/tor_logo.png'
-                    }
-                    Label {
-                        visible: 'mode' in Network.proxy
-                        text: Network.isProxyTor ? 'TOR' : Network.proxy['mode']
-                    }
-                }
 
                 Heading {
                     Layout.columnSpan: 2
@@ -128,7 +89,7 @@ Pane {
                 }
 
                 Label {
-                    text: qsTr('Gossip:');
+                    text: Config.useGossip ? qsTr('Gossip:') : qsTr('Trampoline:')
                     color: Material.accentColor
                 }
                 ColumnLayout {
@@ -144,7 +105,7 @@ Pane {
                     }
                 }
                 Label {
-                    text: qsTr('disabled');
+                    text: qsTr('enabled');
                     visible: !Config.useGossip
                 }
 
@@ -157,30 +118,77 @@ Pane {
                     visible: Daemon.currentWallet.isLightning
                     text: Daemon.currentWallet.lightningNumPeers
                 }
+
+                Heading {
+                    Layout.columnSpan: 2
+                    text: qsTr('Network')
+                }
+
+                Label {
+                    text: qsTr('Proxy:');
+                    color: Material.accentColor
+                }
+                Label {
+                    text: 'mode' in Network.proxy ? qsTr('enabled') : qsTr('none')
+                }
+
+                Label {
+                    visible: 'mode' in Network.proxy
+                    text: qsTr('Proxy server:');
+                    color: Material.accentColor
+                }
+                Label {
+                    visible: 'mode' in Network.proxy
+                    text: Network.proxy['host'] ? Network.proxy['host'] + ':' + Network.proxy['port'] : ''
+                }
+
+                Label {
+                    visible: 'mode' in Network.proxy
+                    text: qsTr('Proxy type:');
+                    color: Material.accentColor
+                }
+                RowLayout {
+                    Image {
+                        visible: Network.isProxyTor
+                        Layout.preferredWidth: constants.iconSizeMedium
+                        Layout.preferredHeight: constants.iconSizeMedium
+                        source: '../../icons/tor_logo.png'
+                    }
+                    Label {
+                        visible: 'mode' in Network.proxy
+                        text: Network.isProxyTor ? 'TOR' : Network.proxy['mode']
+                    }
+                }
+
             }
 
         }
 
-        FlatButton {
+        ButtonContainer {
             Layout.fillWidth: true
-            text: qsTr('Server Settings');
-            icon.source: '../../icons/network.png'
-            onClicked: {
-                var dialog = serverConfig.createObject(root)
-                dialog.open()
+
+            FlatButton {
+                Layout.fillWidth: true
+                Layout.preferredWidth: 1
+                text: qsTr('Server Settings');
+                icon.source: '../../icons/network.png'
+                onClicked: {
+                    var dialog = serverConfig.createObject(root)
+                    dialog.open()
+                }
+            }
+
+            FlatButton {
+                Layout.fillWidth: true
+                Layout.preferredWidth: 1
+                text: qsTr('Proxy Settings');
+                icon.source: '../../icons/status_connected_proxy.png'
+                onClicked: {
+                    var dialog = proxyConfig.createObject(root)
+                    dialog.open()
+                }
             }
         }
-
-        FlatButton {
-            Layout.fillWidth: true
-            text: qsTr('Proxy Settings');
-            icon.source: '../../icons/status_connected_proxy.png'
-            onClicked: {
-                var dialog = proxyConfig.createObject(root)
-                dialog.open()
-            }
-        }
-
     }
 
     function setFeeHistogram() {

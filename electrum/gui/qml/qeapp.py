@@ -49,14 +49,12 @@ notification = None
 
 class QEAppController(BaseCrashReporter, QObject):
     _dummy = pyqtSignal()
-    userNotify = pyqtSignal(str)
+    userNotify = pyqtSignal(str, str)
     uriReceived = pyqtSignal(str)
-    showException = pyqtSignal()
+    showException = pyqtSignal('QVariantMap')
     sendingBugreport = pyqtSignal()
     sendingBugreportSuccess = pyqtSignal(str)
     sendingBugreportFailure = pyqtSignal(str)
-
-    _crash_user_text = ''
 
     def __init__(self, qedaemon, plugins):
         BaseCrashReporter.__init__(self, None, None, None)
@@ -64,6 +62,10 @@ class QEAppController(BaseCrashReporter, QObject):
 
         self._qedaemon = qedaemon
         self._plugins = plugins
+
+        self._crash_user_text = ''
+        self._app_started = False
+        self._intent = ''
 
         # set up notification queue and notification_timer
         self.user_notification_queue = queue.Queue()
@@ -94,7 +96,7 @@ class QEAppController(BaseCrashReporter, QObject):
 
     def on_wallet_usernotify(self, wallet, message):
         self.logger.debug(message)
-        self.user_notification_queue.put(message)
+        self.user_notification_queue.put((wallet,message))
         if not self.notification_timer.isActive():
             self.logger.debug('starting app notification timer')
             self.notification_timer.start()
@@ -111,11 +113,12 @@ class QEAppController(BaseCrashReporter, QObject):
         self.user_notification_last_time = now
         self.logger.info("Notifying GUI about new user notifications")
         try:
-            self.userNotify.emit(self.user_notification_queue.get_nowait())
+            wallet, message = self.user_notification_queue.get_nowait()
+            self.userNotify.emit(str(wallet), message)
         except queue.Empty:
             pass
 
-    def notifyAndroid(self, message):
+    def notifyAndroid(self, wallet_name, message):
         try:
             # TODO: lazy load not in UI thread please
             global notification
@@ -141,15 +144,23 @@ class QEAppController(BaseCrashReporter, QObject):
             self.logger.error(f'unable to bind intent: {repr(e)}')
 
     def on_new_intent(self, intent):
+        if not self._app_started:
+            self._intent = intent
+            return
+
         data = str(intent.getDataString())
+        self.logger.debug(f'received intent: {repr(data)}')
         scheme = str(intent.getScheme()).lower()
         if scheme == BITCOIN_BIP21_URI_SCHEME or scheme == LIGHTNING_URI_SCHEME:
             self.uriReceived.emit(data)
 
+    def startupFinished(self):
+        self._app_started = True
+        if self._intent:
+            self.on_new_intent(self._intent)
+
     @pyqtSlot(str, str)
     def doShare(self, data, title):
-        #if platform != 'android':
-            #return
         try:
             from jnius import autoclass, cast
         except ImportError:
@@ -222,7 +233,7 @@ class QEAppController(BaseCrashReporter, QObject):
     @pyqtSlot(object,object,object,object)
     def crash(self, config, e, text, tb):
         self.exc_args = (e, text, tb) # for BaseCrashReporter
-        self.showException.emit()
+        self.showException.emit(self.crashData())
 
     @pyqtSlot()
     def sendReport(self):
@@ -297,8 +308,8 @@ class ElectrumQmlApplication(QGuiApplication):
         qmlRegisterType(QETxCanceller, 'org.electrum', 1, 0, 'TxCanceller')
 
         qmlRegisterUncreatableType(QEAmount, 'org.electrum', 1, 0, 'Amount', 'Amount can only be used as property')
-        qmlRegisterUncreatableType(QENewWalletWizard, 'org.electrum', 1, 0, 'NewWalletWizard', 'NewWalletWizard can only be used as property')
-        qmlRegisterUncreatableType(QEServerConnectWizard, 'org.electrum', 1, 0, 'ServerConnectWizard', 'ServerConnectWizard can only be used as property')
+        qmlRegisterUncreatableType(QENewWalletWizard, 'org.electrum', 1, 0, 'QNewWalletWizard', 'QNewWalletWizard can only be used as property')
+        qmlRegisterUncreatableType(QEServerConnectWizard, 'org.electrum', 1, 0, 'QServerConnectWizard', 'QServerConnectWizard can only be used as property')
         qmlRegisterUncreatableType(QEFilterProxyModel, 'org.electrum', 1, 0, 'FilterProxyModel', 'FilterProxyModel can only be used as property')
         qmlRegisterUncreatableType(QSortFilterProxyModel, 'org.electrum', 1, 0, 'QSortFilterProxyModel', 'QSortFilterProxyModel can only be used as property')
 
@@ -351,6 +362,7 @@ class ElectrumQmlApplication(QGuiApplication):
         if object is None:
             self._valid = False
         self.engine.objectCreated.disconnect(self.objectCreated)
+        self.appController.startupFinished()
 
     def message_handler(self, line, funct, file):
         # filter out common harmless messages

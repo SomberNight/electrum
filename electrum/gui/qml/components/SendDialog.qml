@@ -49,69 +49,30 @@ ElDialog {
             onFound: dialog.dispatch(scanData)
         }
 
-        FlatButton {
+        ButtonContainer {
             Layout.fillWidth: true
-            icon.source: '../../icons/pen.png'
-            text: qsTr('Manual input')
-            onClicked: {
-                var _mid = manualInputDialog.createObject(mainView)
-                _mid.accepted.connect(function() {
-                    dialog.dispatch(_mid.recipient)
-                })
-                _mid.open()
-            }
-        }
 
-        FlatButton {
-            Layout.fillWidth: true
-            icon.source: '../../icons/paste.png'
-            text: qsTr('Paste from clipboard')
-            onClicked: dialog.dispatch(AppController.clipboardToText())
-        }
-    }
-
-    Component {
-        id: manualInputDialog
-        ElDialog {
-            property alias recipient: recipientTextEdit.text
-
-            iconSource: Qt.resolvedUrl('../../icons/pen.png')
-
-            anchors.centerIn: parent
-            implicitWidth: parent.width * 0.9
-
-            parent: Overlay.overlay
-            modal: true
-
-            Overlay.modal: Rectangle {
-                color: "#aa000000"
-            }
-
-            title: qsTr('Manual Input')
-
-            ColumnLayout {
-                width: parent.width
-
-                Label {
-                    text: 'Enter a bitcoin address or a Lightning invoice'
-                    wrapMode: Text.Wrap
-                    Layout.maximumWidth: parent.width
-                }
-
-                TextField {
-                    id: recipientTextEdit
-                    topPadding: constants.paddingXXLarge
-                    bottomPadding: constants.paddingXXLarge
-                    Layout.preferredWidth: parent.width
-                    font.family: FixedFont
-
-                    wrapMode: TextInput.WrapAnywhere
-                    placeholderText: qsTr('Enter the payment request here')
+            FlatButton {
+                Layout.fillWidth: true
+                Layout.preferredWidth: 1
+                icon.source: '../../icons/tab_receive.png'
+                text: qsTr('Invoices')
+                enabled: Daemon.currentWallet.invoiceModel.rowCount() // TODO: only count non-expired
+                onClicked: {
+                    dialog.close()
+                    app.stack.push(Qt.resolvedUrl('Invoices.qml'))
                 }
             }
 
-            onClosed: destroy()
+            FlatButton {
+                Layout.fillWidth: true
+                Layout.preferredWidth: 1
+                icon.source: '../../icons/paste.png'
+                text: qsTr('Paste from clipboard')
+                onClicked: dialog.dispatch(AppController.clipboardToText())
+            }
         }
+
     }
 
     Bitcoin {

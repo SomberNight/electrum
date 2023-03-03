@@ -10,6 +10,8 @@ import "controls"
 ElDialog {
     id: root
 
+    required property QtObject swaphelper
+
     width: parent.width
     height: parent.height
 
@@ -48,7 +50,9 @@ ElDialog {
                 Image {
                     Layout.preferredWidth: constants.iconSizeSmall
                     Layout.preferredHeight: constants.iconSizeSmall
-                    source: swaphelper.isReverse ? '../../icons/lightning.png' : '../../icons/bitcoin.png'
+                    source: swaphelper.isReverse
+                        ? '../../icons/lightning.png'
+                        : '../../icons/bitcoin.png'
                     visible: swaphelper.valid
                 }
             }
@@ -81,7 +85,9 @@ ElDialog {
                 Image {
                     Layout.preferredWidth: constants.iconSizeSmall
                     Layout.preferredHeight: constants.iconSizeSmall
-                    source: swaphelper.isReverse ? '../../icons/bitcoin.png' : '../../icons/lightning.png'
+                    source: swaphelper.isReverse
+                        ? '../../icons/bitcoin.png'
+                        : '../../icons/lightning.png'
                     visible: swaphelper.valid
                 }
             }
@@ -121,7 +127,9 @@ ElDialog {
                     color: Material.accentColor
                 }
                 Label {
-                    text: '(' + swaphelper.serverfeeperc + ')'
+                    text: swaphelper.serverfeeperc
+                        ? '(' + swaphelper.serverfeeperc + ')'
+                        : ''
                 }
             }
 
@@ -162,15 +170,6 @@ ElDialog {
                 if (activeFocus)
                     swaphelper.sliderPos = value
             }
-            Component.onCompleted: {
-                value = swaphelper.sliderPos
-            }
-            Connections {
-                target: swaphelper
-                function onSliderPosChanged() {
-                    swapslider.value = swaphelper.sliderPos
-                }
-            }
         }
 
         InfoTextArea {
@@ -188,30 +187,24 @@ ElDialog {
             Layout.columnSpan: 2
             Layout.fillWidth: true
             text: qsTr('Swap')
-            icon.source: '../../icons/status_waiting.png'
+            icon.source: Qt.resolvedUrl('../../icons/update.png')
             enabled: swaphelper.valid
             onClicked: swaphelper.executeSwap()
         }
     }
 
-    SwapHelper {
-        id: swaphelper
-        wallet: Daemon.currentWallet
-        onError: {
-            var dialog = app.messageDialog.createObject(app, {'text': message})
-            dialog.open()
+    Connections {
+        target: swaphelper
+        function onSliderPosChanged() {
+            swapslider.value = swaphelper.sliderPos
         }
-        onConfirm: {
-            var dialog = app.messageDialog.createObject(app, {'text': message, 'yesno': true})
-            dialog.yesClicked.connect(function() {
-                dialog.close()
-                swaphelper.executeSwap(true)
-            })
-            dialog.open()
+        function onSwapSuccess() {
+            root.close()
         }
-        onAuthRequired: {
-            app.handleAuthRequired(swaphelper, method)
-        }
-        onSwapStarted: root.close() // TODO: show swap progress monitor
     }
+
+    Component.onCompleted: {
+        swapslider.value = swaphelper.sliderPos
+    }
+
 }

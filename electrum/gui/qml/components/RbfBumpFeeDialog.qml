@@ -16,6 +16,7 @@ ElDialog {
     signal txaccepted
 
     title: qsTr('Bump Fee')
+    iconSource: Qt.resolvedUrl('../../icons/rocket.png')
 
     width: parent.width
     height: parent.height
@@ -55,6 +56,8 @@ ElDialog {
                 Layout.preferredWidth: 1
                 Layout.fillWidth: true
                 ElComboBox {
+                    enabled: rbffeebumper.canChangeBumpMethod
+
                     textRole: 'text'
                     valueRole: 'value'
 
@@ -196,8 +199,7 @@ ElDialog {
                 delegate: TextHighlightPane {
                     Layout.columnSpan: 2
                     Layout.fillWidth: true
-                    padding: 0
-                    leftPadding: constants.paddingSmall
+
                     RowLayout {
                         width: parent.width
                         Label {

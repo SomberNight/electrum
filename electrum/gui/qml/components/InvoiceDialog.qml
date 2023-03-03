@@ -50,6 +50,15 @@ ElDialog {
 
                 columns: 2
 
+                InfoTextArea {
+                    Layout.columnSpan: 2
+                    Layout.fillWidth: true
+                    Layout.bottomMargin: constants.paddingLarge
+                    visible: invoice.userinfo
+                    text: invoice.userinfo
+                    iconStyle: InfoTextArea.IconStyle.Warn
+                }
+
                 Label {
                     text: qsTr('Type')
                     color: Material.accentColor
@@ -92,12 +101,10 @@ ElDialog {
                 }
 
                 TextHighlightPane {
-                    visible: invoice.invoiceType == Invoice.OnchainInvoice
-
                     Layout.columnSpan: 2
                     Layout.fillWidth: true
 
-                    padding: 0
+                    visible: invoice.invoiceType == Invoice.OnchainInvoice
                     leftPadding: constants.paddingMedium
 
                     Label {
@@ -115,19 +122,32 @@ ElDialog {
                 }
 
                 TextHighlightPane {
-                    visible: invoice.invoiceType == Invoice.LightningInvoice
-
                     Layout.columnSpan: 2
                     Layout.fillWidth: true
 
-                    padding: 0
+                    visible: invoice.invoiceType == Invoice.LightningInvoice
                     leftPadding: constants.paddingMedium
 
-                    Label {
+                    RowLayout {
                         width: parent.width
-                        text: 'pubkey' in invoice.lnprops ? invoice.lnprops.pubkey : ''
-                        font.family: FixedFont
-                        wrapMode: Text.Wrap
+                        Label {
+                            id: pubkeyLabel
+                            Layout.fillWidth: true
+                            text: 'pubkey' in invoice.lnprops ? invoice.lnprops.pubkey : ''
+                            font.family: FixedFont
+                            wrapMode: Text.Wrap
+                        }
+                        ToolButton {
+                            icon.source: '../../icons/share.png'
+                            icon.color: 'transparent'
+                            enabled: pubkeyLabel.text
+                            onClicked: {
+                                var dialog = app.genericShareDialog.createObject(app,
+                                    { title: qsTr('Node public key'), text: invoice.lnprops.pubkey }
+                                )
+                                dialog.open()
+                            }
+                        }
                     }
                 }
 
@@ -138,19 +158,32 @@ ElDialog {
                 }
 
                 TextHighlightPane {
-                    visible: invoice.invoiceType == Invoice.LightningInvoice
-
                     Layout.columnSpan: 2
                     Layout.fillWidth: true
 
-                    padding: 0
+                    visible: invoice.invoiceType == Invoice.LightningInvoice
                     leftPadding: constants.paddingMedium
 
-                    Label {
+                    RowLayout {
                         width: parent.width
-                        text: 'payment_hash' in invoice.lnprops ? invoice.lnprops.payment_hash : ''
-                        font.family: FixedFont
-                        wrapMode: Text.Wrap
+                        Label {
+                            id: paymenthashLabel
+                            Layout.fillWidth: true
+                            text: 'payment_hash' in invoice.lnprops ? invoice.lnprops.payment_hash : ''
+                            font.family: FixedFont
+                            wrapMode: Text.Wrap
+                        }
+                        ToolButton {
+                            icon.source: '../../icons/share.png'
+                            icon.color: 'transparent'
+                            enabled: paymenthashLabel.text
+                            onClicked: {
+                                var dialog = app.genericShareDialog.createObject(app,
+                                    { title: qsTr('Payment hash'), text: invoice.lnprops.payment_hash }
+                                )
+                                dialog.open()
+                            }
+                        }
                     }
                 }
 
@@ -162,13 +195,10 @@ ElDialog {
                 }
 
                 TextHighlightPane {
-                    visible: invoice.message
-
                     Layout.columnSpan: 2
                     Layout.fillWidth: true
-                    Layout.alignment: Qt.AlignHCenter
 
-                    padding: 0
+                    visible: invoice.message
                     leftPadding: constants.paddingMedium
 
                     Label {
@@ -193,8 +223,7 @@ ElDialog {
                     Layout.fillWidth: true
                     Layout.alignment: Qt.AlignHCenter
 
-                    padding: 0
-                    leftPadding: constants.paddingXXLarge
+                    leftPadding: constants.paddingXLarge
 
                     property bool editmode: false
 
@@ -271,21 +300,22 @@ ElDialog {
                             }
 
                             Label {
-                                text: Config.baseUnit
-                                color: Material.accentColor
                                 Layout.fillWidth: amountMax.visible ? false : true
                                 Layout.columnSpan: amountMax.visible ? 1 : 2
+
+                                text: Config.baseUnit
+                                color: Material.accentColor
                             }
                             Switch {
                                 id: amountMax
+                                Layout.fillWidth: true
+
                                 text: qsTr('Max')
                                 visible: _canMax
-                                Layout.fillWidth: true
-                                checked: invoice.amount.isMax
+                                checked: false
                                 onCheckedChanged: {
-                                    if (activeFocus) {
+                                    if (activeFocus)
                                         invoice.amount.isMax = checked
-                                    }
                                 }
                             }
 
@@ -325,51 +355,49 @@ ElDialog {
 
                 }
 
-                Item { Layout.preferredHeight: constants.paddingLarge; Layout.preferredWidth: 1 }
+            }
+        }
 
-                InfoTextArea {
-                    Layout.columnSpan: 2
-                    Layout.alignment: Qt.AlignHCenter
-                    Layout.preferredWidth: parent.width * 3/4
-                    visible: invoice.userinfo
-                    text: invoice.userinfo
+        ButtonContainer {
+            Layout.fillWidth: true
+
+            FlatButton {
+                Layout.fillWidth: true
+                Layout.preferredWidth: 1
+                text: qsTr('Pay')
+                icon.source: '../../icons/confirmed.png'
+                enabled: invoice.invoiceType != Invoice.Invalid && invoice.canPay && !amountContainer.editmode
+                onClicked: {
+                    if (invoice_key == '') // save invoice if not retrieved from key
+                        invoice.save_invoice()
+                    dialog.close()
+                    doPay() // only signal here
                 }
             }
-        }
+            FlatButton {
+                Layout.fillWidth: true
+                Layout.preferredWidth: 1
+                text: qsTr('Delete')
+                icon.source: '../../icons/delete.png'
+                visible: invoice_key != ''
+                onClicked: {
+                    invoice.wallet.delete_invoice(invoice_key)
+                    dialog.close()
+                }
+            }
 
-        FlatButton {
-            Layout.fillWidth: true
-            text: qsTr('Pay')
-            icon.source: '../../icons/confirmed.png'
-            enabled: invoice.invoiceType != Invoice.Invalid && invoice.canPay && !amountContainer.editmode
-            onClicked: {
-                if (invoice_key == '') // save invoice if not retrieved from key
+            FlatButton {
+                Layout.fillWidth: true
+                Layout.preferredWidth: 1
+                text: qsTr('Save')
+                icon.source: '../../icons/save.png'
+                visible: invoice_key == ''
+                enabled: invoice.canSave
+                onClicked: {
+                    app.stack.push(Qt.resolvedUrl('Invoices.qml'))
                     invoice.save_invoice()
-                dialog.close()
-                doPay() // only signal here
-            }
-        }
-        FlatButton {
-            Layout.fillWidth: true
-            text: qsTr('Delete')
-            icon.source: '../../icons/delete.png'
-            visible: invoice_key != ''
-            onClicked: {
-                invoice.wallet.delete_invoice(invoice_key)
-                dialog.close()
-            }
-        }
-
-        FlatButton {
-            Layout.fillWidth: true
-            text: qsTr('Save')
-            icon.source: '../../icons/save.png'
-            visible: invoice_key == ''
-            enabled: invoice.canSave
-            onClicked: {
-                app.stack.push(Qt.resolvedUrl('Invoices.qml'))
-                invoice.save_invoice()
-                dialog.close()
+                    dialog.close()
+                }
             }
         }
 
@@ -379,7 +407,10 @@ ElDialog {
         if (invoice_key != '') {
             invoice.initFromKey(invoice_key)
         }
-        if (invoice.amount.isEmpty)
+        if (invoice.amount.isEmpty) {
             amountContainer.editmode = true
+        } else if (invoice.amount.isMax) {
+            amountMax.checked = true
+        }
     }
 }
