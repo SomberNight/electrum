@@ -83,9 +83,10 @@ class UTXODialog(WindowModalDialog):
     def update(self):
 
         txid = self.utxo.prevout.txid.hex()
-        parents = self.wallet.get_tx_parents(txid)
+        tx_parent_map = self.wallet.get_tx_parents(txid)  # TODO not up_to_date
+        parents = tx_parent_map[txid][0] + tx_parent_map[txid][1]
         num_parents = len(parents)
-        parents_copy = copy.deepcopy(parents)
+        tx_parent_map_copy = copy.deepcopy(tx_parent_map)
         cursor = self.parents_list.textCursor()
         ext = QTextCharFormat()
 
@@ -103,14 +104,14 @@ class UTXODialog(WindowModalDialog):
         self.parents_list.clear()
         self.num_reuse = 0
         def print_ascii_tree(_txid, prefix, is_last, is_uncle):
-            if _txid not in parents:
+            if _txid not in tx_parent_map:
                 return
             tx_mined_info = self.wallet.adb.get_tx_height(_txid)
             tx_height = tx_mined_info.height
             tx_pos = tx_mined_info.txpos
             key = "%dx%d"%(tx_height, tx_pos) if tx_pos is not None else _txid[0:8]
             label = self.wallet.get_label_for_txid(_txid) or ""
-            if _txid not in parents_copy:
+            if _txid not in tx_parent_map_copy:
                 label = '[duplicate]'
             c = '' if _txid == txid else (ASCII_EDGE if is_last else ASCII_BRANCH)
             cursor.insertText(prefix + c, ext)
@@ -129,7 +130,7 @@ class UTXODialog(WindowModalDialog):
             cursor.insertText(label, ext)
             cursor.insertBlock()
             next_prefix = '' if txid == _txid else prefix + (ASCII_SPACE if is_last else ASCII_PIPE)
-            parents_list, uncle_list = parents_copy.pop(_txid, ([],[]))
+            parents_list, uncle_list = tx_parent_map_copy.pop(_txid, ([],[]))
             for i, p in enumerate(parents_list + uncle_list):
                 is_last = (i == len(parents_list) + len(uncle_list)- 1)
                 is_uncle = (i > len(parents_list) - 1)

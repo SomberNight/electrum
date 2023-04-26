@@ -894,10 +894,9 @@ class Abstract_Wallet(ABC, Logger, EventListener):
         with self.lock, self.transaction_lock:
             if self._last_full_history is None:
                 self._last_full_history = self.get_full_history(None)
-            result = self._tx_parents_cache.get(txid, None)
-            if result is not None:
-                return result
-            result = {}   # type: Dict[str, Tuple[List[str], List[str]]]
+            if txid in self._tx_parents_cache:
+                return self._tx_parents_cache
+            tx_parent_map = {}   # type: Dict[str, Tuple[List[str], List[str]]]
             parents = []  # type: List[str]
             uncles = []   # type: List[str]
             tx = self.adb.get_transaction(txid)
@@ -920,10 +919,10 @@ class Abstract_Wallet(ABC, Logger, EventListener):
 
             for _txid in parents + uncles:
                 if _txid in self._last_full_history.keys():
-                    result.update(self.get_tx_parents(_txid))
-            result[txid] = parents, uncles
-            self._tx_parents_cache[txid] = result
-            return result
+                    tx_parent_map.update(self.get_tx_parents(_txid))
+            tx_parent_map[txid] = parents, uncles
+            self._tx_parents_cache.update(tx_parent_map)
+            return self._tx_parents_cache
 
     def get_balance(self, **kwargs):
         domain = self.get_addresses()
