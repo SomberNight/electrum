@@ -1,8 +1,8 @@
 #!/bin/bash
 
 PYINSTALLER_REPO="https://github.com/pyinstaller/pyinstaller.git"
-PYINSTALLER_COMMIT="0fe956a2c6157e1b276819de1a050c242de70a29"
-# ^ latest commit from "v4" branch, somewhat after "4.10" tag
+PYINSTALLER_COMMIT="413cce49ff28d87fad4472f4953489226ec90c84"
+# ^ tag "v5.11.0"
 
 PYTHON_VERSION=3.9.13
 
