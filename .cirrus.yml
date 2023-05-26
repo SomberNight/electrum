@@ -1,3 +1,4 @@
+# unit tests matrix
 task:
   container:
     image: $ELECTRUM_IMAGE
@@ -60,6 +61,29 @@ task:
     CI_BRANCH: $CIRRUS_BRANCH
     CI_PULL_REQUEST: $CIRRUS_PR
     # in addition, COVERALLS_REPO_TOKEN is set as an "override" in https://cirrus-ci.com/settings/...
+  depends_on:
+    - Flake8 Mandatory
+
+# unit tests with pinned dep versions
+task:
+  container:
+    image: python:3.8
+    cpu: 2
+    memory: 2G
+  name: pytest with pinned deps
+  version_script:
+    - python3 --version
+  install_script:
+    - apt-get update
+    - apt-get install automake libtool
+    - ./contrib/make_libsecp256k1.sh
+    - pip install --no-build-isolation --no-dependencies -r contrib/deterministic-build/requirements-build-base.txt
+    - pip install --no-build-isolation --no-dependencies --no-binary ":all:" -r contrib/deterministic-build/requirements.txt
+    - pip install --no-build-isolation --no-dependencies -r contrib/deterministic-build/requirements-binaries.txt
+      # ^ TODO don't need pyqt5, but need cryptography, pycryptodomex, pyaes...
+    - pip install pytest
+  tox_script:
+    - pytest electrum/tests -v
   depends_on:
     - Flake8 Mandatory
 
