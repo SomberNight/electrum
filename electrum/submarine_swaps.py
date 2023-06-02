@@ -13,7 +13,7 @@ from .ecc import ECPrivkey
 from .bitcoin import (script_to_p2wsh, opcodes, p2wsh_nested_script, push_script,
                       is_segwit_address, construct_witness)
 from .transaction import PartialTxInput, PartialTxOutput, PartialTransaction, Transaction, TxInput, TxOutpoint
-from .transaction import script_GetOp, match_script_against_template, OPPushDataGeneric, OPPushDataPubkey
+from .transaction import script_GetOp, match_script_against_template, OPPushDataGeneric, OPPushDataPubkey33
 from .util import log_exceptions, BelowDustLimit
 from .lnutil import REDEEM_AFTER_DOUBLE_SPENT_DELAY, ln_dummy_address
 from .bitcoin import dust_threshold
@@ -40,15 +40,15 @@ API_URL_REGTEST = 'https://localhost/api'
 
 WITNESS_TEMPLATE_SWAP = [
     opcodes.OP_HASH160,
-    OPPushDataGeneric(lambda x: x == 20),
+    OPPushDataGeneric(lambda x: x == 20),  # HTLC RHASH
     opcodes.OP_EQUAL,
     opcodes.OP_IF,
-    OPPushDataPubkey,
+        OPPushDataPubkey33,  # server pubkey
     opcodes.OP_ELSE,
-    OPPushDataGeneric(None),
-    opcodes.OP_CHECKLOCKTIMEVERIFY,
-    opcodes.OP_DROP,
-    OPPushDataPubkey,
+        OPPushDataGeneric(None),  # timeoutBlockHeight
+        opcodes.OP_CHECKLOCKTIMEVERIFY,
+        opcodes.OP_DROP,
+        OPPushDataPubkey33,  # client pubkey
     opcodes.OP_ENDIF,
     opcodes.OP_CHECKSIG
 ]
@@ -61,22 +61,23 @@ WITNESS_TEMPLATE_SWAP = [
 # check wasn't there the user could generate a preimage with a
 # different length which would still allow for claiming the onchain
 # coins but the invoice couldn't be settled
+# (In the forward swap case, the update_fulfill_htlc msg in BOLT-02
+# specifies the length of the preimage, and the recipient of that msg
+# verifies it.)
 
 WITNESS_TEMPLATE_REVERSE_SWAP = [
-    opcodes.OP_SIZE,
-    OPPushDataGeneric(None),
-    opcodes.OP_EQUAL,
+    opcodes.OP_SIZE, 32, opcodes.OP_EQUAL,
     opcodes.OP_IF,
-    opcodes.OP_HASH160,
-    OPPushDataGeneric(lambda x: x == 20),
-    opcodes.OP_EQUALVERIFY,
-    OPPushDataPubkey,
+        opcodes.OP_HASH160,
+        OPPushDataGeneric(lambda x: x == 20),  # HTLC RHASH
+        opcodes.OP_EQUALVERIFY,
+        OPPushDataPubkey33,  # client pubkey
     opcodes.OP_ELSE,
-    opcodes.OP_DROP,
-    OPPushDataGeneric(None),
-    opcodes.OP_CHECKLOCKTIMEVERIFY,
-    opcodes.OP_DROP,
-    OPPushDataPubkey,
+        opcodes.OP_DROP,
+        OPPushDataGeneric(None),  # timeoutBlockHeight
+        opcodes.OP_CHECKLOCKTIMEVERIFY,
+        opcodes.OP_DROP,
+        OPPushDataPubkey33,  # server pubkey
     opcodes.OP_ENDIF,
     opcodes.OP_CHECKSIG
 ]

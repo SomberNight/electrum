@@ -583,6 +583,7 @@ class OPGeneric:
                or (isinstance(item, type) and issubclass(item, cls))
 
 OPPushDataPubkey = OPPushDataGeneric(lambda x: x in (33, 65))
+OPPushDataPubkey33 = OPPushDataGeneric(lambda x: x == 33)
 OP_ANYSEGWIT_VERSION = OPGeneric(lambda x: x in list(range(opcodes.OP_1, opcodes.OP_16 + 1)))
 
 SCRIPTPUBKEY_TEMPLATE_P2PKH = [opcodes.OP_DUP, opcodes.OP_HASH160,
