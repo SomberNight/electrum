@@ -28,8 +28,8 @@ fi
 
 # create symlink
 rm -f ${PROJECT_ROOT}/.buildozer
-mkdir -p "${PROJECT_ROOT}/.buildozer_$1"
-ln -s ".buildozer_$1" ${PROJECT_ROOT}/.buildozer
+mkdir -p "${PROJECT_ROOT}/.buildozer_$1_qt6"
+ln -s ".buildozer_$1_qt6" ${PROJECT_ROOT}/.buildozer
 
 DOCKER_BUILD_FLAGS=""
 if [ ! -z "$ELECBUILD_NOCACHE" ] ; then
@@ -44,7 +44,7 @@ fi
 info "building docker image."
 docker build \
     $DOCKER_BUILD_FLAGS \
-    -t electrum-android-builder-img \
+    -t electrum-android-builder-img-qt6 \
     --file "$CONTRIB_ANDROID/Dockerfile" \
     "$PROJECT_ROOT"
 
@@ -85,7 +85,7 @@ docker run -it --rm \
     -v "$PROJECT_ROOT_OR_FRESHCLONE_ROOT"/.buildozer/.gradle:/home/user/.gradle \
     $DOCKER_RUN_FLAGS \
     --workdir /home/user/wspace/electrum \
-    electrum-android-builder-img \
+    electrum-android-builder-img-qt6 \
     ./contrib/android/make_apk.sh "$@"
 
 # make sure resulting binary location is independent of fresh_clone
