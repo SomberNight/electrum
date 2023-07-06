@@ -24,6 +24,7 @@ source.exclude_dirs = bin, build, dist, contrib, env,
     electrum/www,
     electrum/gui/qt,
     electrum/gui/kivy,
+    electrum/plugins/payserver,
     packages/qdarkstyle,
     packages/qtpy,
     packages/bin,
@@ -138,11 +139,11 @@ android.add_jars = .buildozer/android/platform/*/build/libs_collections/Electrum
 
 # (list) List of Java files to add to the android project (can be java or a
 # directory containing the files)
-android.add_src = electrum/gui/kivy/data/java-classes/
+#android.add_src = electrum/gui/kivy/data/java-classes/
 
-android.gradle_dependencies = me.dm7.barcodescanner:zxing:1.9.8
+#android.gradle_dependencies = me.dm7.barcodescanner:zxing:1.9.8
 
-android.add_activities = org.electrum.qr.SimpleScannerActivity
+#android.add_activities = org.electrum.qr.SimpleScannerActivity
 
 # (str) python-for-android branch to use, if not master, useful to try
 # not yet merged features.
