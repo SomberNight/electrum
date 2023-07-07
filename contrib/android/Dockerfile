@@ -183,7 +183,7 @@ RUN cd /opt \
     && cd buildozer \
     && git remote add sombernight https://github.com/SomberNight/buildozer \
     && git fetch --all \
-    # commit: from branch sombernight/electrum_20210421 (note: careful with force-pushing! see #8162) \
+    # commit: from branch master (note: careful with force-pushing! see #8162) \
     # no, this is master
     && git checkout "10f9c8b789f4f4cb020356bdb50607eceae10493^{commit}" \
     && /opt/venv/bin/python3 -m pip install --no-build-isolation --no-dependencies -e .
@@ -195,9 +195,9 @@ RUN cd /opt \
     && git remote add sombernight https://github.com/SomberNight/python-for-android \
     && git remote add accumulator https://github.com/accumulator/python-for-android \
     && git fetch --all \
-    # commit: from branch accumulator/electrum_20210421d (note: careful with force-pushing! see #8162) \
+    # commit: from branch accumulator/qt6-wip (note: careful with force-pushing! see #8162) \
     #
-    && git checkout "710cc81d9cdcdcef910547074f031e8a3f102d63^{commit}" \
+    && git checkout "ca4100f3acc90290b6f531094640a6db9ff6d4de^{commit}" \
     && /opt/venv/bin/python3 -m pip install --no-build-isolation --no-dependencies -e .
 
 # build env vars
