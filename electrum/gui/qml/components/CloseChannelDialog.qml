@@ -172,10 +172,10 @@ ElDialog {
         }
     }
 
-    function showBackupThenClose() {
+    function showBackupThenClose() {  //
         var sharedialog = app.genericShareDialog.createObject(app, {
             title: qsTr('Save channel backup and force close'),
-            text_qr: channeldetails.channelBackup(),
+            text: channeldetails.channelBackup(),
             text_help: channeldetails.messageForceCloseBackup,
             helpTextIconStyle: InfoTextArea.IconStyle.Warn
         })

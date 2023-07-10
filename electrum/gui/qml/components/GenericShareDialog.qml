@@ -8,9 +8,11 @@ import "controls"
 ElDialog {
     id: dialog
 
+    // text should always be set. text_qr can optionally be set if we want different data
+    // in the QR code than on clipboard.
     property string text
     property string text_qr
-    // if text_qr is undefined text will be used
+
     property string text_help
     property int helpTextIconStyle: InfoTextArea.IconStyle.Info
 

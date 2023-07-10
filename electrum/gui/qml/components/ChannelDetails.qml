@@ -255,7 +255,7 @@ Pane {
                 onClicked: {
                     var dialog = app.genericShareDialog.createObject(root, {
                         title: qsTr('Channel Backup for %1').arg(channeldetails.shortCid),
-                        text_qr: channeldetails.channelBackup(),
+                        text: channeldetails.channelBackup(),
                         text_help: channeldetails.channelBackupHelpText(),
                         iconSource: Qt.resolvedUrl('../../icons/file.png')
                     })
