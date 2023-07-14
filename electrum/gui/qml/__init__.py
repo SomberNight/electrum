@@ -105,7 +105,7 @@ class ElectrumGui(BaseElectrumGui, Logger):
         signal.signal(signal.SIGINT, lambda *args: self.stop())
 
         self.logger.info('Entering main loop')
-        self.app.exec_()
+        self.app.exec()
 
     def stop(self):
         self.logger.info('closing GUI')

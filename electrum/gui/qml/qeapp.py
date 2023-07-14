@@ -70,9 +70,9 @@ class QEAppController(BaseCrashReporter, QObject):
     sendingBugreportFailure = pyqtSignal(str)
     secureWindowChanged = pyqtSignal()
 
-    def __init__(self, qedaemon: 'QEDaemon', plugins: 'Plugins'):
+    def __init__(self, qedaemon: 'QEDaemon', plugins: 'Plugins', parent=None):
         BaseCrashReporter.__init__(self, None, None, None)
-        QObject.__init__(self)
+        QObject.__init__(self, parent)
 
         self._qedaemon = qedaemon
         self._plugins = plugins
@@ -322,6 +322,13 @@ class ElectrumQmlApplication(QGuiApplication):
 
         ElectrumQmlApplication._daemon = daemon
 
+        # TODO QT6 order of declaration is important now?
+        qmlRegisterType(QEAmount, 'org.electrum', 1, 0, 'Amount')
+        qmlRegisterType(QENewWalletWizard, 'org.electrum', 1, 0, 'QNewWalletWizard')
+        qmlRegisterType(QEServerConnectWizard, 'org.electrum', 1, 0, 'QServerConnectWizard')
+        qmlRegisterType(QEFilterProxyModel, 'org.electrum', 1, 0, 'FilterProxyModel')
+        qmlRegisterType(QSortFilterProxyModel, 'org.electrum', 1, 0, 'QSortFilterProxyModel')
+
         qmlRegisterType(QEWallet, 'org.electrum', 1, 0, 'Wallet')
         qmlRegisterType(QEWalletDB, 'org.electrum', 1, 0, 'WalletDB')
         qmlRegisterType(QEBitcoin, 'org.electrum', 1, 0, 'Bitcoin')
@@ -367,10 +374,10 @@ class ElectrumQmlApplication(QGuiApplication):
 
         self.context = self.engine.rootContext()
         self.plugins = plugins
-        self._qeconfig = QEConfig(config)
-        self._qenetwork = QENetwork(daemon.network, self._qeconfig)
-        self.daemon = QEDaemon(daemon)
-        self.appController = QEAppController(self.daemon, self.plugins)
+        self._qeconfig = QEConfig(config, self)
+        self._qenetwork = QENetwork(daemon.network, self._qeconfig, self)
+        self.daemon = QEDaemon(daemon, self)
+        self.appController = QEAppController(self.daemon, self.plugins, self)
         self._maxAmount = QEAmount(is_max=True)
         self.context.setContextProperty('AppController', self.appController)
         self.context.setContextProperty('Config', self._qeconfig)
@@ -387,7 +394,7 @@ class ElectrumQmlApplication(QGuiApplication):
 
         self.plugins.load_plugin('trustedcoin')
 
-        qInstallMessageHandler(self.message_handler)
+        # qInstallMessageHandler(self.message_handler)
 
         # get notified whether root QML document loads or not
         self.engine.objectCreated.connect(self.objectCreated)

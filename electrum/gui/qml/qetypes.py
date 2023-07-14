@@ -11,6 +11,7 @@ from electrum.i18n import _
 # should also capture millisats amounts and MAX/'!' indicators
 # and (unformatted) string representations
 
+
 class QEAmount(QObject):
     _logger = get_logger(__name__)
 

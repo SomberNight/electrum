@@ -224,7 +224,9 @@ ApplicationWindow
         id: mainStackView
         width: parent.width
         height: keyboardFreeZone.height - header.height
-        initialItem: Qt.resolvedUrl('WalletMainView.qml')
+        initialItem: Component {
+            WalletMainView {}
+        }
 
         function getRoot() {
             return mainStackView.get(0)
@@ -452,7 +454,7 @@ ApplicationWindow
         }
     }
 
-    onClosing: {
+    onClosing: (close) => {
         if (activeDialogs.length > 0) {
             var activeDialog = activeDialogs[activeDialogs.length - 1]
             if (activeDialog.allowClose) {
