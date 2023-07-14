@@ -1,8 +1,8 @@
 import itertools
 from typing import TYPE_CHECKING
 
-from PyQt5.QtCore import pyqtSlot
-from PyQt5.QtCore import Qt, QAbstractListModel, QModelIndex
+from PyQt6.QtCore import  pyqtSlot
+from PyQt6.QtCore import Qt, QAbstractListModel, QModelIndex
 
 from electrum.logging import get_logger
 from electrum.util import Satoshis
@@ -18,7 +18,7 @@ class QEAddressListModel(QAbstractListModel):
 
     # define listmodel rolemap
     _ROLE_NAMES=('type', 'iaddr', 'address', 'label', 'balance', 'numtx', 'held')
-    _ROLE_KEYS = range(Qt.UserRole, Qt.UserRole + len(_ROLE_NAMES))
+    _ROLE_KEYS = range(Qt.ItemDataRole.UserRole, Qt.ItemDataRole.UserRole + len(_ROLE_NAMES))
     _ROLE_MAP  = dict(zip(_ROLE_KEYS, [bytearray(x.encode()) for x in _ROLE_NAMES]))
 
     def __init__(self, wallet: 'Abstract_Wallet', parent=None):
@@ -41,7 +41,7 @@ class QEAddressListModel(QAbstractListModel):
             address = self._change_addresses[index.row() - len(self._receive_addresses)]
         else:
             address = self._receive_addresses[index.row()]
-        role_index = role - Qt.UserRole
+        role_index = role - Qt.ItemDataRole.UserRole
         value = address[self._ROLE_NAMES[role_index]]
         if isinstance(value, (bool, list, int, str, QEAmount)) or value is None:
             return value
