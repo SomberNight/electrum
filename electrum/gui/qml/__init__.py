@@ -6,18 +6,18 @@ import traceback
 from typing import TYPE_CHECKING
 
 try:
-    import PyQt5
+    import PyQt6
 except Exception:
-    sys.exit("Error: Could not import PyQt5 on Linux systems, you may try 'sudo apt-get install python3-pyqt5'")
+    sys.exit("Error: Could not import PyQt6 on Linux systems, you may try 'sudo apt-get install python3-pyqt5'")
 
 try:
-    import PyQt5.QtQml
+    import PyQt6.QtQml
 except Exception:
-    sys.exit("Error: Could not import PyQt5.QtQml on Linux systems, you may try 'sudo apt-get install python3-pyqt5.qtquick'")
+    sys.exit("Error: Could not import PyQt6.QtQml on Linux systems, you may try 'sudo apt-get install python3-pyqt5.qtquick'")
 
-from PyQt5.QtCore import (Qt, QCoreApplication, QObject, QLocale, QTranslator, QTimer, pyqtSignal,
+from PyQt6.QtCore import (Qt, QCoreApplication, QObject, QLocale, QTranslator, QTimer, pyqtSignal,
                           QT_VERSION_STR, PYQT_VERSION_STR)
-from PyQt5.QtGui import QGuiApplication
+from PyQt6.QtGui import QGuiApplication
 
 from electrum.i18n import _, set_language, languages
 from electrum.plugin import run_hook
@@ -65,7 +65,7 @@ class ElectrumGui(BaseElectrumGui, Logger):
         # GC-ed when windows are closed
         #network.add_jobs([DebugMem([Abstract_Wallet, SPV, Synchronizer,
         #                            ElectrumWindow], interval=5)])
-        QCoreApplication.setAttribute(Qt.AA_X11InitThreads)
+        # QCoreApplication.setAttribute(Qt.AA_X11InitThreads)
         if hasattr(Qt, "AA_ShareOpenGLContexts"):
             QCoreApplication.setAttribute(Qt.AA_ShareOpenGLContexts)
         if hasattr(QGuiApplication, 'setDesktopFileName'):

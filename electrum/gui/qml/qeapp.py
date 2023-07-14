@@ -8,10 +8,10 @@ import threading
 import asyncio
 from typing import TYPE_CHECKING, Set
 
-from PyQt5.QtCore import (pyqtSlot, pyqtSignal, pyqtProperty, QObject, QUrl, QLocale,
+from PyQt6.QtCore import (pyqtSlot, pyqtSignal, pyqtProperty, QObject, QUrl, QLocale,
                           qInstallMessageHandler, QTimer, QSortFilterProxyModel)
-from PyQt5.QtGui import QGuiApplication, QFontDatabase
-from PyQt5.QtQml import qmlRegisterType, qmlRegisterUncreatableType, QQmlApplicationEngine
+from PyQt6.QtGui import QGuiApplication, QFontDatabase
+from PyQt6.QtQml import qmlRegisterType, qmlRegisterUncreatableType, QQmlApplicationEngine
 
 from electrum import version, constants
 from electrum.i18n import _
@@ -342,11 +342,12 @@ class ElectrumQmlApplication(QGuiApplication):
         qmlRegisterType(QETxCanceller, 'org.electrum', 1, 0, 'TxCanceller')
         qmlRegisterType(QEBip39RecoveryListModel, 'org.electrum', 1, 0, 'Bip39RecoveryListModel')
 
-        qmlRegisterUncreatableType(QEAmount, 'org.electrum', 1, 0, 'Amount', 'Amount can only be used as property')
-        qmlRegisterUncreatableType(QENewWalletWizard, 'org.electrum', 1, 0, 'QNewWalletWizard', 'QNewWalletWizard can only be used as property')
-        qmlRegisterUncreatableType(QEServerConnectWizard, 'org.electrum', 1, 0, 'QServerConnectWizard', 'QServerConnectWizard can only be used as property')
-        qmlRegisterUncreatableType(QEFilterProxyModel, 'org.electrum', 1, 0, 'FilterProxyModel', 'FilterProxyModel can only be used as property')
-        qmlRegisterUncreatableType(QSortFilterProxyModel, 'org.electrum', 1, 0, 'QSortFilterProxyModel', 'QSortFilterProxyModel can only be used as property')
+        # TODO QT6
+        # qmlRegisterUncreatableType(QEAmount, 'org.electrum', 1, 0, 'Amount', 'Amount can only be used as property')
+        # qmlRegisterUncreatableType(QENewWalletWizard, 'org.electrum', 1, 0, 'QNewWalletWizard', 'QNewWalletWizard can only be used as property')
+        # qmlRegisterUncreatableType(QEServerConnectWizard, 'org.electrum', 1, 0, 'QServerConnectWizard', 'QServerConnectWizard can only be used as property')
+        # qmlRegisterUncreatableType(QEFilterProxyModel, 'org.electrum', 1, 0, 'FilterProxyModel', 'FilterProxyModel can only be used as property')
+        # qmlRegisterUncreatableType(QSortFilterProxyModel, 'org.electrum', 1, 0, 'QSortFilterProxyModel', 'QSortFilterProxyModel can only be used as property')
 
         self.engine = QQmlApplicationEngine(parent=self)
 

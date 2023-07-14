@@ -7,14 +7,15 @@ import urllib
 
 from PIL import Image, ImageQt
 
-from PyQt5.QtCore import pyqtProperty, pyqtSignal, pyqtSlot, QObject, QRect, QPoint
-from PyQt5.QtGui import QImage, QColor
-from PyQt5.QtQuick import QQuickImageProvider
+from PyQt6.QtCore import pyqtProperty, pyqtSignal, pyqtSlot, QObject, QRect, QPoint
+from PyQt6.QtGui import QImage, QColor
+from PyQt6.QtQuick import QQuickImageProvider
 
 from electrum.logging import get_logger
 from electrum.qrreader import get_qr_reader
 from electrum.i18n import _
 from electrum.util import profiler, get_asyncio_loop
+
 
 class QEQRParser(QObject):
     _logger = get_logger(__name__)
@@ -118,9 +119,10 @@ class QEQRParser(QObject):
             result.append(QPoint(x+self.scan_pos_x, y+self.scan_pos_y))
         return result
 
+
 class QEQRImageProvider(QQuickImageProvider):
     def __init__(self, max_size, parent=None):
-        super().__init__(QQuickImageProvider.Image)
+        super().__init__(QQuickImageProvider.ImageType.Image)
         self._max_size = max_size
 
     _logger = get_logger(__name__)

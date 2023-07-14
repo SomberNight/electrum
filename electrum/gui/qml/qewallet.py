@@ -5,7 +5,7 @@ import time
 from typing import TYPE_CHECKING, Optional, Tuple, Callable
 from functools import partial
 
-from PyQt5.QtCore import pyqtProperty, pyqtSignal, pyqtSlot, QObject, QTimer, QMetaObject, Qt
+from PyQt6.QtCore import pyqtProperty, pyqtSignal, pyqtSlot, QObject, QTimer, QMetaObject, Qt
 
 from electrum import bitcoin
 from electrum.i18n import _

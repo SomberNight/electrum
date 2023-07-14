@@ -1,7 +1,7 @@
-import asyncio
 import threading
+from enum import Enum
 
-from PyQt5.QtCore import pyqtProperty, pyqtSignal, pyqtSlot, QObject, Q_ENUMS
+from PyQt6.QtCore import pyqtProperty, pyqtSignal, pyqtSlot, QObject, pyqtEnum
 
 from electrum.i18n import _
 from electrum.gui import messages
@@ -13,14 +13,14 @@ from .qewallet import QEWallet
 from .qetypes import QEAmount
 from .util import QtEventListener, qt_event_listener, event_listener
 
+
 class QEChannelDetails(QObject, QtEventListener):
     _logger = get_logger(__name__)
 
-    class State: # subset, only ones we currently need in UI
+    @pyqtEnum
+    class State(Enum): # subset, only ones we currently need in UI
         Closed = ChannelState.CLOSED
         Redeemed = ChannelState.REDEEMED
-
-    Q_ENUMS(State)
 
     channelChanged = pyqtSignal()
     channelCloseSuccess = pyqtSignal()

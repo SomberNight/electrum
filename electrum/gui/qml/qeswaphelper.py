@@ -1,9 +1,9 @@
 import asyncio
 import threading
-import math
+from enum import Enum
 from typing import Union
 
-from PyQt5.QtCore import pyqtProperty, pyqtSignal, pyqtSlot, QObject, QTimer, Q_ENUMS
+from PyQt6.QtCore import pyqtProperty, pyqtSignal, pyqtSlot, QObject, QTimer, pyqtEnum
 
 from electrum.i18n import _
 from electrum.lnutil import ln_dummy_address
@@ -16,17 +16,17 @@ from .qetypes import QEAmount
 from .qewallet import QEWallet
 from .util import QtEventListener, qt_event_listener
 
+
 class QESwapHelper(AuthMixin, QObject, QtEventListener):
     _logger = get_logger(__name__)
 
-    class State:
+    @pyqtEnum
+    class State(Enum):
         Initialized = 0
         ServiceReady = 1
         Started = 2
         Failed = 3
         Success = 4
-
-    Q_ENUMS(State)
 
     confirm = pyqtSignal([str], arguments=['message'])
     error = pyqtSignal([str], arguments=['message'])
