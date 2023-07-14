@@ -1,6 +1,6 @@
 import asyncio
 import concurrent
-from enum import Enum
+from enum import IntEnum
 
 from PyQt6.QtCore import pyqtProperty, pyqtSignal, pyqtSlot, pyqtEnum
 from PyQt6.QtCore import Qt, QAbstractListModel, QModelIndex
@@ -17,7 +17,7 @@ class QEBip39RecoveryListModel(QAbstractListModel):
     _logger = get_logger(__name__)
 
     @pyqtEnum
-    class State(Enum):
+    class State(IntEnum):
         Idle = -1
         Scanning = 0
         Success = 1

@@ -1,4 +1,4 @@
-from enum import Enum
+from enum import IntEnum
 from typing import Optional
 
 from PyQt6.QtCore import pyqtProperty, pyqtSignal, pyqtSlot, QObject, QTimer, pyqtEnum
@@ -15,7 +15,7 @@ from .util import QtEventListener, event_listener, status_update_timer_interval
 class QERequestDetails(QObject, QtEventListener):
 
     @pyqtEnum
-    class Status(Enum):
+    class Status(IntEnum):
         Unpaid = PR_UNPAID
         Expired = PR_EXPIRED
         Unknown = PR_UNKNOWN

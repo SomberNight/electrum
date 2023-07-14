@@ -1,6 +1,6 @@
 import asyncio
 import threading
-from enum import Enum
+from enum import IntEnum
 from typing import Union
 
 from PyQt6.QtCore import pyqtProperty, pyqtSignal, pyqtSlot, QObject, QTimer, pyqtEnum
@@ -21,7 +21,7 @@ class QESwapHelper(AuthMixin, QObject, QtEventListener):
     _logger = get_logger(__name__)
 
     @pyqtEnum
-    class State(Enum):
+    class State(IntEnum):
         Initialized = 0
         ServiceReady = 1
         Started = 2

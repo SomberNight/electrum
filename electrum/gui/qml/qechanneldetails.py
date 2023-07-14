@@ -1,5 +1,5 @@
 import threading
-from enum import Enum
+from enum import IntEnum
 
 from PyQt6.QtCore import pyqtProperty, pyqtSignal, pyqtSlot, QObject, pyqtEnum
 
@@ -18,7 +18,7 @@ class QEChannelDetails(QObject, QtEventListener):
     _logger = get_logger(__name__)
 
     @pyqtEnum
-    class State(Enum): # subset, only ones we currently need in UI
+    class State(IntEnum): # subset, only ones we currently need in UI
         Closed = ChannelState.CLOSED
         Redeemed = ChannelState.REDEEMED
 

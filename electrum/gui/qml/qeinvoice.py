@@ -1,5 +1,5 @@
 import threading
-from enum import Enum
+from enum import IntEnum
 from typing import TYPE_CHECKING, Optional, Dict, Any
 import asyncio
 from urllib.parse import urlparse
@@ -29,14 +29,14 @@ from .util import status_update_timer_interval, QtEventListener, event_listener
 
 class QEInvoice(QObject, QtEventListener):
     @pyqtEnum
-    class Type(Enum):
+    class Type(IntEnum):
         Invalid = -1
         OnchainInvoice = 0
         LightningInvoice = 1
         LNURLPayRequest = 2
 
     @pyqtEnum
-    class Status(Enum):
+    class Status(IntEnum):
         Unpaid = PR_UNPAID
         Expired = PR_EXPIRED
         Unknown = PR_UNKNOWN
