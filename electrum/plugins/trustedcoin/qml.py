@@ -3,7 +3,7 @@ import socket
 import base64
 from typing import TYPE_CHECKING
 
-from PyQt5.QtCore import QObject, pyqtSignal, pyqtProperty, pyqtSlot
+from PyQt6.QtCore import QObject, pyqtSignal, pyqtProperty, pyqtSlot
 
 from electrum.i18n import _
 from electrum.plugin import hook
@@ -21,6 +21,7 @@ from .trustedcoin import (TrustedCoinPlugin, server, ErrorConnectingServer,
 if TYPE_CHECKING:
     from electrum.gui.qml import ElectrumGui
     from electrum.wallet import Abstract_Wallet
+
 
 class Plugin(TrustedCoinPlugin):
 

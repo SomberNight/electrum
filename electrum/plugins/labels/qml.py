@@ -1,6 +1,6 @@
 import threading
 
-from PyQt5.QtCore import QObject, pyqtSignal, pyqtProperty, pyqtSlot
+from PyQt6.QtCore import QObject, pyqtSignal, pyqtProperty, pyqtSlot
 
 from electrum.i18n import _
 from electrum.plugin import hook
@@ -9,6 +9,7 @@ from electrum.gui.qml.qewallet import QEWallet
 from electrum.gui.qml.plugins import PluginQObject
 
 from .labels import LabelsPlugin
+
 
 class Plugin(LabelsPlugin):
 
