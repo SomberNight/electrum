@@ -35,7 +35,6 @@ ApplicationWindow
 
     property variant activeDialogs: []
 
-    property bool _wantClose: false
     property var _exceptionDialog
 
     property QtObject appMenu: Menu {
@@ -106,7 +105,8 @@ ApplicationWindow
 
         ColumnLayout {
             spacing: 0
-            width: parent.width
+            anchors.left: parent.left
+            anchors.right: parent.right
             height: toolbar.height
 
             RowLayout {
@@ -170,7 +170,6 @@ ApplicationWindow
                     RowLayout {
                         id: statusIconsLayout
                         anchors.verticalCenter: parent.verticalCenter
-
                         Item {
                             Layout.preferredWidth: constants.paddingLarge
                             Layout.preferredHeight: 1
@@ -201,6 +200,7 @@ ApplicationWindow
                         }
 
                         Image {
+                            id: watchOnlyIndicator
                             Layout.preferredWidth: constants.iconSizeSmall
                             Layout.preferredHeight: constants.iconSizeSmall
                             visible: Daemon.currentWallet && Daemon.currentWallet.isWatchOnly
@@ -214,9 +214,12 @@ ApplicationWindow
                 }
             }
 
-            WalletSummary {
-                id: walletSummary
-                Layout.preferredWidth: app.width
+            // hack to force relayout of toolbar
+            // since qt6 watchOnlyIndicator.visible doesn't trigger relayout(?)
+            Item {
+                Layout.preferredHeight: 1
+                Layout.topMargin: -1
+                Layout.preferredWidth: watchOnlyIndicator.visible ? app.width : 1
             }
         }
     }
@@ -456,7 +459,7 @@ ApplicationWindow
     }
 
     onClosing: (close) => {
-        if (app._wantClose) {
+        if (AppController.wantClose) {
             // destroy most GUI components so that we don't dump so many null reference warnings on exit
             app.header.visible = false
             mainStackView.clear()
@@ -481,7 +484,7 @@ ApplicationWindow
                 yesno: true
             })
             dialog.accepted.connect(function() {
-                app._wantClose = true
+                AppController.wantClose = true
                 app.close()
             })
             dialog.open()

@@ -60,6 +60,7 @@ if 'ANDROID_DATA' in os.environ:
 
 notification = None
 
+
 class QEAppController(BaseCrashReporter, QObject):
     _dummy = pyqtSignal()
     userNotify = pyqtSignal(str, str)
@@ -69,6 +70,7 @@ class QEAppController(BaseCrashReporter, QObject):
     sendingBugreportSuccess = pyqtSignal(str)
     sendingBugreportFailure = pyqtSignal(str)
     secureWindowChanged = pyqtSignal()
+    wantCloseChanged = pyqtSignal()
 
     def __init__(self, qedaemon: 'QEDaemon', plugins: 'Plugins', parent=None):
         BaseCrashReporter.__init__(self, None, None, None)
@@ -98,6 +100,8 @@ class QEAppController(BaseCrashReporter, QObject):
 
         if self.isAndroid():
             self.bindIntent()
+
+        self._want_close = False
 
     def on_wallet_loaded(self):
         qewallet = self._qedaemon.currentWallet
@@ -177,6 +181,16 @@ class QEAppController(BaseCrashReporter, QObject):
         self._app_started = True
         if self._intent:
             self.on_new_intent(self._intent)
+
+    @pyqtProperty(bool, notify=wantCloseChanged)
+    def wantClose(self):
+        return self._want_close
+
+    @wantClose.setter
+    def wantClose(self, want_close):
+        if want_close != self._want_close:
+            self._want_close = want_close
+            self.wantCloseChanged.emit()
 
     @pyqtSlot(str, str)
     def doShare(self, data, title):
@@ -395,7 +409,7 @@ class ElectrumQmlApplication(QGuiApplication):
 
         self.plugins.load_plugin('trustedcoin')
 
-        # qInstallMessageHandler(self.message_handler)
+        qInstallMessageHandler(self.message_handler)
 
         # get notified whether root QML document loads or not
         self.engine.objectCreated.connect(self.objectCreated)

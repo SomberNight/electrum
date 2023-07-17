@@ -2,7 +2,6 @@ import os
 import signal
 import sys
 import threading
-import traceback
 from typing import TYPE_CHECKING
 
 try:
@@ -15,11 +14,10 @@ try:
 except Exception:
     sys.exit("Error: Could not import PyQt6.QtQml on Linux systems, you may try 'sudo apt-get install python3-pyqt5.qtquick'")
 
-from PyQt6.QtCore import (Qt, QCoreApplication, QObject, QLocale, QTranslator, QTimer, pyqtSignal,
-                          QT_VERSION_STR, PYQT_VERSION_STR)
+from PyQt6.QtCore import (Qt, QCoreApplication, QLocale, QTranslator, QTimer, QT_VERSION_STR, PYQT_VERSION_STR)
 from PyQt6.QtGui import QGuiApplication
 
-from electrum.i18n import _, set_language, languages
+from electrum.i18n import _
 from electrum.plugin import run_hook
 from electrum.util import profiler
 from electrum.logging import Logger
@@ -29,7 +27,6 @@ if TYPE_CHECKING:
     from electrum.daemon import Daemon
     from electrum.simple_config import SimpleConfig
     from electrum.plugin import Plugins
-    from electrum.wallet import Abstract_Wallet
 
 from .qeapp import ElectrumQmlApplication, Exception_Hook
 
@@ -65,7 +62,7 @@ class ElectrumGui(BaseElectrumGui, Logger):
         # GC-ed when windows are closed
         #network.add_jobs([DebugMem([Abstract_Wallet, SPV, Synchronizer,
         #                            ElectrumWindow], interval=5)])
-        # QCoreApplication.setAttribute(Qt.AA_X11InitThreads)
+
         if hasattr(Qt, "AA_ShareOpenGLContexts"):
             QCoreApplication.setAttribute(Qt.AA_ShareOpenGLContexts)
         if hasattr(QGuiApplication, 'setDesktopFileName'):
@@ -102,10 +99,14 @@ class ElectrumGui(BaseElectrumGui, Logger):
             return
 
         self.timer.start()
-        signal.signal(signal.SIGINT, lambda *args: self.stop())
+        signal.signal(signal.SIGINT, lambda *args: self._handle_sigint())
 
         self.logger.info('Entering main loop')
         self.app.exec()
+
+    def _handle_sigint(self):
+        self.app.appController.wantClose = True
+        self.stop()
 
     def stop(self):
         self.logger.info('closing GUI')
