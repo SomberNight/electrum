@@ -311,6 +311,7 @@ class QEAppController(BaseCrashReporter, QObject):
             self._secureWindow = secure
             self.secureWindowChanged.emit()
 
+
 class ElectrumQmlApplication(QGuiApplication):
 
     _valid = True
@@ -412,6 +413,7 @@ class ElectrumQmlApplication(QGuiApplication):
         if re.search('file:///.*TypeError: Cannot read property.*null$', file):
             return
         self.logger.warning(file)
+
 
 class Exception_Hook(QObject, Logger):
     _report_exception = pyqtSignal(object, object, object, object)

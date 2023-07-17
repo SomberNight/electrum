@@ -41,8 +41,8 @@ class ElectrumTranslator(QTranslator):
     def translate(self, context, source_text, disambiguation, n):
         return _(source_text, context=context)
 
-class ElectrumGui(BaseElectrumGui, Logger):
 
+class ElectrumGui(BaseElectrumGui, Logger):
     @profiler
     def __init__(self, config: 'SimpleConfig', daemon: 'Daemon', plugins: 'Plugins'):
         BaseElectrumGui.__init__(self, config=config, daemon=daemon, plugins=plugins)

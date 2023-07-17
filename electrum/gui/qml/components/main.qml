@@ -1,12 +1,13 @@
-import QtQuick 2.6
-import QtQuick.Layouts 1.0
-import QtQuick.Controls 2.3
-import QtQuick.Controls.Material 2.0
-import QtQuick.Controls.Material.impl 2.12
-import QtQuick.Window 2.15
+import QtQuick
+import QtQuick.Layouts
+import QtQuick.Controls
+import QtQuick.Controls.Basic
+import QtQuick.Controls.Material
+import QtQuick.Controls.Material.impl
+import QtQuick.Window
 
-import QtQml 2.6
-import QtMultimedia 5.6
+import QtQml
+import QtMultimedia
 
 import org.electrum 1.0
 
@@ -27,7 +28,7 @@ ApplicationWindow
     Material.accent: Material.LightBlue
     font.pixelSize: constants.fontSizeMedium
 
-    property Item constants: appconstants
+    property QtObject constants: appconstants
     Constants { id: appconstants }
 
     property alias stack: mainStackView
@@ -455,6 +456,12 @@ ApplicationWindow
     }
 
     onClosing: (close) => {
+        if (app._wantClose) {
+            // destroy most GUI components so that we don't dump so many null reference warnings on exit
+            app.header.visible = false
+            mainStackView.clear()
+            return
+        }
         if (activeDialogs.length > 0) {
             var activeDialog = activeDialogs[activeDialogs.length - 1]
             if (activeDialog.allowClose) {
@@ -469,22 +476,16 @@ ApplicationWindow
             close.accepted = false
             stack.pop()
         } else {
-            // destroy most GUI components so that we don't dump so many null reference warnings on exit
-            if (app._wantClose) {
-                app.header.visible = false
-                mainStackView.clear()
-            } else {
-                var dialog = app.messageDialog.createObject(app, {
-                    title: qsTr('Close Electrum?'),
-                    yesno: true
-                })
-                dialog.accepted.connect(function() {
-                    app._wantClose = true
-                    app.close()
-                })
-                dialog.open()
-                close.accepted = false
-            }
+            var dialog = app.messageDialog.createObject(app, {
+                title: qsTr('Close Electrum?'),
+                yesno: true
+            })
+            dialog.accepted.connect(function() {
+                app._wantClose = true
+                app.close()
+            })
+            dialog.open()
+            close.accepted = false
         }
     }
 
