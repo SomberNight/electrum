@@ -1,5 +1,5 @@
-import QtQuick.Layouts 1.0
-import QtQuick.Controls 2.1
+import QtQuick.Layouts
+import QtQuick.Controls
 
 WizardComponent {
     valid: wallettypegroup.checkedButton !== null
