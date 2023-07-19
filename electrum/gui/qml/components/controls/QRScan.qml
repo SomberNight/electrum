@@ -18,14 +18,14 @@ Item {
 
     function restart() {
         still.source = ''
-        _pointsVisible = false
-        active = true
+        _pointsVisible = false // TODO: delete old points
+        scanner.active = true
     }
 
     VideoOutput {
         id: vo
         anchors.fill: parent
-        // source: camera
+
         fillMode: VideoOutput.PreserveAspectCrop
 
         Rectangle {
@@ -56,6 +56,21 @@ Item {
             }
             text: scanner.hint
         }
+
+        Connections {
+            target: vo.videoSink
+            function onVideoFrameChanged() {
+                if (scanner.active) {
+                    var scanning = qr.scanSink(vo.videoSink)
+                    if (scanning)
+                        vo.grabToImage(function(result) {
+                            if (result.image !== undefined) {
+                                scanner.url = result.url
+                            }
+                        })
+                }
+            }
+        }
     }
 
     Image {
@@ -66,13 +81,13 @@ Item {
     SequentialAnimation {
         id: foundAnimation
         PropertyAction { target: scanner; property: '_pointsVisible'; value: true}
-        PauseAnimation { duration: 80 }
+        PauseAnimation { duration: 280 }
         PropertyAction { target: scanner; property: '_pointsVisible'; value: false}
-        PauseAnimation { duration: 80 }
+        PauseAnimation { duration: 280 }
         PropertyAction { target: scanner; property: '_pointsVisible'; value: true}
-        PauseAnimation { duration: 80 }
+        PauseAnimation { duration: 280 }
         PropertyAction { target: scanner; property: '_pointsVisible'; value: false}
-        PauseAnimation { duration: 80 }
+        PauseAnimation { duration: 280 }
         PropertyAction { target: scanner; property: '_pointsVisible'; value: true}
         PauseAnimation { duration: 80 }
         PropertyAction { target: scanner; property: '_pointsVisible'; value: false}
@@ -103,8 +118,11 @@ Item {
             scanner.scanData = qr.data
             still.source = scanner.url
 
+            // TODO: transform of qr points to rootitem/screen space is wrong
             var sx = still.width/still.sourceSize.width
             var sy = still.height/still.sourceSize.height
+            var sx = still.width/qr.size
+            var sy = still.height/qr.size
             r.createObject(scanner, {cx: qr.points[0].x * sx, cy: qr.points[0].y * sy, color: 'yellow'})
             r.createObject(scanner, {cx: qr.points[1].x * sx, cy: qr.points[1].y * sy, color: 'yellow'})
             r.createObject(scanner, {cx: qr.points[2].x * sx, cy: qr.points[2].y * sy, color: 'yellow'})
@@ -118,57 +136,40 @@ Item {
         id: mediaDevices
     }
 
-    CaptureSession {
-        videoOutput: VideoOutput
+    Camera {
+        id: camera
+        cameraDevice: mediaDevices.defaultVideoInput
+        active: scanner.active
+        focusMode: Camera.FocusModeAutoNear
+        customFocusPoint: Qt.point(0.5, 0.5)
 
-        camera: Camera {
-            id: camera
-            // deviceId: QtMultimedia.defaultCamera.deviceId
-            cameraDevice: mediaDevices.defaultVideoInput
-            // TODO QT6
-            // viewfinder.resolution: "640x480"
-
-            // focus {
-            //     focusMode: Camera.FocusContinuous
-            //     focusPointMode: Camera.FocusPointCustom
-            //     customFocusPoint: Qt.point(0.5, 0.5)
-            // }
-
-            function dumpstats() {
-                console.log(camera.viewfinder.resolution)
-                console.log(camera.viewfinder.minimumFrameRate)
-                console.log(camera.viewfinder.maximumFrameRate)
-                var resolutions = camera.supportedViewfinderResolutions()
-                resolutions.forEach(function(item, i) {
-                    console.log('' + item.width + 'x' + item.height)
-                })
-                // TODO
-                // pick a suitable resolution from the available resolutions
-                // problem: some cameras have no supportedViewfinderResolutions
-                // but still error out when an invalid resolution is set.
-                // 640x480 seems to be universally available, but this needs to
-                // be checked across a range of phone models.
-            }
-        }
+        // function dumpstats() {
+        //     var camformats = cameraDevice.videoFormats
+        //     var selected = null
+        //     camformats.forEach(function(item, i) {
+        //         if (item.pixelFormat == 0)
+        //             return
+        //         console.log('fps=' + item.maxFrameRate + ', res=' + item.resolution)
+        //         console.log('pf=' + item.pixelFormat)
+        //         if (item.maxFrameRate == 30 && item.resolution.width==640 && (item.pixelFormat == 17 || item.pixelFormat == 15)) {
+        //             console.log('selecting format')
+        //             selected = item
+        //         }
+        //     })
+        //     camera.cameraFormat = selected
+        //
+        //     // TODO
+        //     // pick a suitable resolution from the available resolutions
+        //     // problem: some cameras have no supportedViewfinderResolutions
+        //     // but still error out when an invalid resolution is set.
+        //     // 640x480 seems to be universally available, but this needs to
+        //     // be checked across a range of phone models.
+        // }
     }
 
-    Timer {
-        id: scanTimer
-        interval: 200
-        repeat: true
-        running: scanner.active
-        onTriggered: {
-            if (qr.busy)
-                return
-            vo.grabToImage(function(result) {
-                if (result.image !== undefined) {
-                    scanner.url = result.url
-                    qr.scanImage(result.image)
-                } else {
-                    console.log('image grab returned null')
-                }
-            })
-        }
+    CaptureSession {
+        videoOutput: vo
+        camera: camera
     }
 
     QRParser {
@@ -176,17 +177,23 @@ Item {
     }
 
     Component.onCompleted: {
-        console.log('enumerating cameras')
-        QtMultimedia.availableCameras.forEach(function(item) {
-            console.log('cam found, id=' + item.deviceId + ' name=' + item.displayName)
-            console.log('pos=' + item.position + ' orientation=' + item.orientation)
-            if (QtMultimedia.defaultCamera.deviceId == item.deviceId) {
-                vo.orientation = item.orientation
-            }
+        // console.log('enumerating cameras')
+        // var cam = null
+        //
+        // mediaDevices.videoInputs.forEach(function(item) {
+        //     console.log('cam found, id=' + item.id + ' name=' + item.description)
+        //     console.log('pos=' + item.position)
+        //     if ((item.id == '0' || item.id == 'back')) { // && item.position == CameraDevice.BackFace) {
+        //         console.log('selecting camera')
+        //         cam = item
+        //     }
+        //
+        // })
+        // if (cam != null) {
+        //     camera.cameraDevice = cam
+        // }
+        // camera.dumpstats()
 
-            camera.dumpstats()
-        })
-
-        active = true
+        scanner.active = true
     }
 }

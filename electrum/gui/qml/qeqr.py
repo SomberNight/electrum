@@ -1,5 +1,6 @@
 import asyncio
 import qrcode
+from PyQt6.QtMultimedia import QVideoSink
 from qrcode.exceptions import DataOverflowError
 
 import math
@@ -23,6 +24,7 @@ class QEQRParser(QObject):
     busyChanged = pyqtSignal()
     dataChanged = pyqtSignal()
     imageChanged = pyqtSignal()
+    sizeChanged = pyqtSignal()
 
     def __init__(self, text=None, parent=None):
         super().__init__(parent)
@@ -35,8 +37,23 @@ class QEQRParser(QObject):
         if not self.qrreader:
             raise Exception(_("The platform QR detection library is not available."))
 
+    @pyqtSlot(QVideoSink, result=bool)
+    def scanSink(self, sink=None) -> bool:
+        if self._busy:
+            return False
+
+        frame = sink.videoFrame()
+        image = frame.toImage()
+
+        self._busy = True
+        self.busyChanged.emit()
+
+        self._parseQR(image)
+        return True
+
     @pyqtSlot('QImage')
     def scanImage(self, image=None):
+
         if self._busy:
             self._logger.warning("Already processing an image. Check 'busy' property before calling scanImage")
             return
@@ -55,21 +72,24 @@ class QEQRParser(QObject):
         self._logger.info(f'width: {image.width()} height: {image.height()} depth: {image.depth()} format: {image.format()}')
 
     def _parseQR(self, image):
-        self.w = image.width()
-        self.h = image.height()
-        img_crop_rect = self._get_crop(image, 360)
+        self._logger.debug('parsing qr image')
+        self._size = min(image.width(), image.height())
+        self.sizeChanged.emit()
+        img_crop_rect = self._get_crop(image, self._size)
         frame_cropped = image.copy(img_crop_rect)
+        # self._image = frame_cropped
+        # self.imageChanged.emit()
 
-        async def co_parse_qr(image):
+        async def co_parse_qr(frame):
             # Convert to Y800 / GREY FourCC (single 8-bit channel)
             # This creates a copy, so we don't need to keep the frame around anymore
-            frame_y800 = image.convertToFormat(QImage.Format_Grayscale8)
-
+            self._logger.debug('coinvert qr image')
+            frame_y800 = frame.convertToFormat(QImage.Format.Format_Grayscale8)
             self.frame_id = 0
             # Read the QR codes from the frame
             self.qrreader_res = self.qrreader.read_qr_code(
                 frame_y800.constBits().__int__(),
-                frame_y800.byteCount(),
+                frame_y800.sizeInBytes(),
                 frame_y800.bytesPerLine(),
                 frame_y800.width(),
                 frame_y800.height(),
@@ -83,6 +103,7 @@ class QEQRParser(QObject):
 
             self._busy = False
             self.busyChanged.emit()
+            self._logger.debug('parsing qr image done')
 
         asyncio.run_coroutine_threadsafe(co_parse_qr(frame_cropped), get_asyncio_loop())
 
@@ -102,20 +123,24 @@ class QEQRParser(QObject):
     def image(self):
         return self._image
 
+    @pyqtProperty(int, notify=sizeChanged)
+    def size(self):
+        return self._size
+
     @pyqtProperty(str, notify=dataChanged)
     def data(self):
         return self._data.data
 
     @pyqtProperty('QPoint', notify=dataChanged)
     def center(self):
-        (x,y) = self._data.center
+        (x, y) = self._data.center
         return QPoint(x+self.scan_pos_x, y+self.scan_pos_y)
 
     @pyqtProperty('QVariant', notify=dataChanged)
     def points(self):
         result = []
         for item in self._data.points:
-            (x,y) = item
+            (x, y) = item
             result.append(QPoint(x+self.scan_pos_x, y+self.scan_pos_y))
         return result
 
@@ -159,9 +184,10 @@ class QEQRImageProvider(QQuickImageProvider):
             # fake it
             modules = 17 + qr.border * 2
             box_size = math.floor(pixelsize/modules)
-            self.qimg = QImage(box_size * modules, box_size * modules, QImage.Format_RGB32)
+            self.qimg = QImage(box_size * modules, box_size * modules, QImage.Format.Format_RGB32)
             self.qimg.fill(QColor('gray'))
         return self.qimg, self.qimg.size()
+
 
 # helper for placing icon exactly where it should go on the QR code
 # pyqt5 is unwilling to accept slots on QEQRImageProvider, so we need to define
@@ -189,6 +215,11 @@ class QEQRImageProviderHelper(QObject):
         qr.box_size = math.floor(pixelsize/modules)
         # calculate icon width in modules
         icon_modules = int(modules / 5)
-        icon_modules += (icon_modules+1)%2 # force odd
+        icon_modules += (icon_modules+1) % 2  # force odd
 
-        return { 'modules': modules, 'box_size': qr.box_size, 'icon_modules': icon_modules, 'valid' : valid }
+        return {
+            'modules': modules,
+            'box_size': qr.box_size,
+            'icon_modules': icon_modules,
+            'valid': valid
+        }
