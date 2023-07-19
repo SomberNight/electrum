@@ -3,6 +3,7 @@ from PyQt6.QtCore import pyqtSignal, pyqtSlot, pyqtProperty, QObject
 from electrum.i18n import _
 from electrum.logging import get_logger
 
+
 class PluginQObject(QObject):
     logger = get_logger(__name__)
 
