@@ -69,6 +69,8 @@ class WalletStorage(Logger):
         except IOError as e:
             raise StorageReadWriteError(e) from e
         if self.file_exists():
+            #self._fd = os.open(self.path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+            self._fd = os.open(self.path, os.O_EXCL)
             with open(self.path, "r", encoding='utf-8') as f:
                 self.raw = f.read()
             self._encryption_version = self._init_encryption_version()
