@@ -177,6 +177,11 @@ RUN /opt/venv/bin/python3 -m pip install --no-build-isolation --no-dependencies 
 RUN /opt/venv/bin/python3 -m pip install --no-build-isolation --no-dependencies --no-binary :all: \
     -r /opt/deterministic-build/requirements-build-android.txt
 
+# prepare git
+# FIXME cherry-picks here are probably non-reproducible
+RUN git config --global user.name "John Doe" \
+    && git config --global user.email johndoe@example.com
+
 # install buildozer
 RUN cd /opt \
     && git clone https://github.com/kivy/buildozer \
@@ -186,6 +191,7 @@ RUN cd /opt \
     # commit: from branch master (note: careful with force-pushing! see #8162) \
     # no, this is master
     && git checkout "10f9c8b789f4f4cb020356bdb50607eceae10493^{commit}" \
+    && git cherry-pick 8791a52a02d1c6279504f402098bf6536824ea1c \
     && /opt/venv/bin/python3 -m pip install --no-build-isolation --no-dependencies -e .
 
 # install python-for-android
