@@ -365,7 +365,7 @@ Item {
         }
     }
 
-    Component {
+    Component {  //
         id: sendDialog
         SendDialog {
             width: parent.width
