@@ -25,6 +25,7 @@ from .qedaemon import QEDaemon
 from .qenetwork import QENetwork
 from .qewallet import QEWallet
 from .qeqr import QEQRParser, QEQRImageProvider, QEQRImageProviderHelper
+from .qeqrscanner import QEQRScanner
 from .qewalletdb import QEWalletDB
 from .qebitcoin import QEBitcoin
 from .qefx import QEFX
@@ -355,6 +356,7 @@ class ElectrumQmlApplication(QGuiApplication):
         qmlRegisterType(QEWalletDB, 'org.electrum', 1, 0, 'WalletDB')
         qmlRegisterType(QEBitcoin, 'org.electrum', 1, 0, 'Bitcoin')
         qmlRegisterType(QEQRParser, 'org.electrum', 1, 0, 'QRParser')
+        qmlRegisterType(QEQRScanner, 'org.electrum', 1, 0, 'QRScanner')
         qmlRegisterType(QEFX, 'org.electrum', 1, 0, 'FX')
         qmlRegisterType(QETxFinalizer, 'org.electrum', 1, 0, 'TxFinalizer')
         qmlRegisterType(QEInvoice, 'org.electrum', 1, 0, 'Invoice')
