@@ -25,7 +25,8 @@ ElDialog {
     }
 
     function restart() {
-        qrscan.restart()
+        //TODO
+
     }
 
     function dispatch(data) {
@@ -50,14 +51,14 @@ ElDialog {
         anchors.fill: parent
         spacing: 0
 
-        QRScan {
-            id: qrscan
-            Layout.fillWidth: true
-            Layout.fillHeight: true
-
-            hint: qsTr('Scan an Invoice, an Address, an LNURL-pay, a PSBT or a Channel backup')
-            onFound: dialog.dispatch(scanData)
-        }
+        //QRScan {
+        //    id: qrscan
+        //    Layout.fillWidth: true
+        //    Layout.fillHeight: true
+        //
+        //    hint: qsTr('Scan an Invoice, an Address, an LNURL-pay, a PSBT or a Channel backup')
+        //    onFound: dialog.dispatch(scanData)
+        //}
 
         ButtonContainer {
             Layout.fillWidth: true
@@ -74,6 +75,10 @@ ElDialog {
             }
         }
 
+    }
+
+    Component.onCompleted: {
+        dialog.restart()
     }
 
     Bitcoin {

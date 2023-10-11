@@ -23,6 +23,14 @@ public class SimpleScannerActivity extends Activity implements ZXingScannerView.
     final String TAG = "org.electrum.SimpleScannerActivity";
 
     @Override
+    public void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        Intent intent = getIntent();
+        String text = intent.getStringExtra(intent.EXTRA_TEXT);
+        Log.i(TAG, "heyheyhey. " + text);
+    }
+
+    @Override
     public void onResume() {
         super.onResume();
         if (this.hasPermission()) {
