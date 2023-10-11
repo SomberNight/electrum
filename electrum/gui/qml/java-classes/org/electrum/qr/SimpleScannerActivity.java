@@ -5,7 +5,15 @@ import android.os.Bundle;
 import android.util.Log;
 import android.content.Intent;
 import android.Manifest;
+import android.content.ClipData;
+import android.content.ClipDescription;
+import android.content.ClipboardManager;
+import android.content.Context;
 import android.content.pm.PackageManager;
+import android.view.View;
+import android.view.ViewGroup;
+import android.widget.Button;
+import android.widget.TextView;
 
 import androidx.core.app.ActivityCompat;
 
@@ -16,6 +24,8 @@ import me.dm7.barcodescanner.zxing.ZXingScannerView;
 import com.google.zxing.Result;
 import com.google.zxing.BarcodeFormat;
 
+import org.electrum.testnet.electrum.R;  // TODO
+
 public class SimpleScannerActivity extends Activity implements ZXingScannerView.ResultHandler {
     private static final int MY_PERMISSIONS_CAMERA = 1002;
 
@@ -25,9 +35,35 @@ public class SimpleScannerActivity extends Activity implements ZXingScannerView.
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        setContentView(R.layout.scanner_layout);
+
+        mScannerView = new ZXingScannerView(this);
+        mScannerView.setFormats(Arrays.asList(BarcodeFormat.QR_CODE));
+
+        ViewGroup contentFrame = (ViewGroup) findViewById(R.id.content_frame);
+        contentFrame.addView(mScannerView);
+
+        // change top text
         Intent intent = getIntent();
         String text = intent.getStringExtra(intent.EXTRA_TEXT);
-        Log.i(TAG, "heyheyhey. " + text);
+        TextView hintTextView = (TextView) findViewById(R.id.hint);
+        hintTextView.setText(text);
+
+        // bind "paste" button
+        Button btn = (Button) findViewById(R.id.paste_btn);
+        btn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+                if (clipboard.hasPrimaryClip()
+                        && (clipboard.getPrimaryClipDescription().hasMimeType(ClipDescription.MIMETYPE_TEXT_PLAIN)
+                            || clipboard.getPrimaryClipDescription().hasMimeType(ClipDescription.MIMETYPE_TEXT_HTML))) {
+                    ClipData.Item item = clipboard.getPrimaryClip().getItemAt(0);
+                    String clipboardText = item.getText().toString();
+                    SimpleScannerActivity.this.setResultAndClose(clipboardText);
+                }
+            }
+        });
     }
 
     @Override
@@ -49,18 +85,19 @@ public class SimpleScannerActivity extends Activity implements ZXingScannerView.
     }
 
     private void startCamera() {
-        mScannerView = new ZXingScannerView(this);   // Programmatically initialize the scanner view
-        mScannerView.setFormats(Arrays.asList(BarcodeFormat.QR_CODE));
-        setContentView(mScannerView);                // Set the scanner view as the content view
         mScannerView.setResultHandler(this);         // Register ourselves as a handler for scan results.
         mScannerView.startCamera();                  // Start camera on resume
     }
 
     @Override
     public void handleResult(Result rawResult) {
+        //resultIntent.putExtra("format", rawResult.getBarcodeFormat().toString());
+        this.setResultAndClose(rawResult.getText());
+    }
+
+    private void setResultAndClose(String resultText) {
         Intent resultIntent = new Intent();
-        resultIntent.putExtra("text", rawResult.getText());
-        resultIntent.putExtra("format", rawResult.getBarcodeFormat().toString());
+        resultIntent.putExtra("text", resultText);
         setResult(Activity.RESULT_OK, resultIntent);
         this.finish();
     }
