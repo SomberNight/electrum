@@ -73,6 +73,8 @@ class QEAppController(BaseCrashReporter, QObject):
     secureWindowChanged = pyqtSignal()
     wantCloseChanged = pyqtSignal()
 
+    qrScanned = pyqtSignal([str], arguments=['data'])
+
     def __init__(self, qeapp: 'ElectrumQmlApplication', qedaemon: 'QEDaemon', plugins: 'Plugins'):
         BaseCrashReporter.__init__(self, None, None, None)
         QObject.__init__(self)
@@ -198,8 +200,6 @@ class QEAppController(BaseCrashReporter, QObject):
     def doShare(self, data, title):  #
         if not self.isAndroid():
             return
-        self.scan_qr()
-        return
 
         sendIntent = jIntent()
         sendIntent.setAction(jIntent.ACTION_SEND)
@@ -335,13 +335,13 @@ class QEAppController(BaseCrashReporter, QObject):
             self._secureWindow = secure
             self.secureWindowChanged.emit()
 
-    #def scan_qr(self, on_complete):
-    def scan_qr(self):
+    @pyqtSlot(str)
+    def scan_qr(self, hint: str):
         if not self.isAndroid():
             return
         SimpleScannerActivity = autoclass("org.electrum.qr.SimpleScannerActivity")
         intent = jIntent(jpythonActivity, SimpleScannerActivity)
-        intent.putExtra(jIntent.EXTRA_TEXT, jString("kenobi"))
+        intent.putExtra(jIntent.EXTRA_TEXT, jString(hint))
 
         def on_qr_result(requestCode, resultCode, intent):
             try:
@@ -349,7 +349,8 @@ class QEAppController(BaseCrashReporter, QObject):
                     #  this doesn't work due to some bug in jnius:
                     # contents = intent.getStringExtra("text")
                     contents = intent.getStringExtra(jString("text"))
-                    self.logger.info(f"heyheyhey. {contents=!r}")
+                    self.logger.info(f"on_qr_result. {contents=!r}")
+                    self.qrScanned.emit(contents)
             except Exception as e:  # exc would otherwise get lost
                 send_exception_to_crash_reporter(e)
             finally:

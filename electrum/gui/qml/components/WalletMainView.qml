@@ -34,8 +34,9 @@ Item {
     }
 
     function openSendDialog() {
-        _sendDialog = sendDialog.createObject(mainView, {invoiceParser: invoiceParser})
-        _sendDialog.open()
+        //AppController.scan_qr()
+        //_sendDialog = sendDialog.createObject(mainView, {invoiceParser: invoiceParser})
+        //_sendDialog.open()
     }
 
     function closeSendDialog() {
@@ -246,7 +247,7 @@ Item {
                 Layout.preferredWidth: 1
                 icon.source: '../../icons/tab_send.png'
                 text: qsTr('Send')
-                onClicked: openSendDialog()
+                onClicked: AppController.scan_qr(qsTr('Scan an Invoice, an Address, an LNURL-pay, a PSBT or a Channel backup'))
                 onPressAndHold: {
                     Config.userKnowsPressAndHold = true
                     app.stack.push(Qt.resolvedUrl('Invoices.qml'))
@@ -314,6 +315,10 @@ Item {
         }
     }
 
+    Bitcoin {
+        id: bitcoin
+    }
+
     Connections {
         target: AppController
         function onUriReceived(uri) {
@@ -324,6 +329,31 @@ Item {
                 return
             }
             invoiceParser.recipient = uri
+        }
+        function onQrScanned(data) {
+            console.log('onQrScanned: ' + data)  // TODO rm, just for debug
+            data = data.trim()
+            if (bitcoin.isRawTx(data)) {
+                //txFound(data)
+                app.stack.push(Qt.resolvedUrl('TxDetails.qml'), { rawtx: data })
+                //close()
+            } else if (Daemon.currentWallet.isValidChannelBackup(data)) {
+                //channelBackupFound(data)
+                var dialog = app.messageDialog.createObject(app, {
+                    title: qsTr('Import Channel backup?'),
+                    yesno: true
+                })
+                dialog.accepted.connect(function() {
+                    Daemon.currentWallet.importChannelBackup(data)
+                    //close()
+                })
+                dialog.rejected.connect(function() {
+                    //close()
+                })
+                dialog.open()
+            } else {
+                invoiceParser.recipient = data
+            }
         }
     }
 
@@ -416,34 +446,6 @@ Item {
                     _invoiceDialog.close()
                 }
             }
-        }
-    }
-
-    Component {  //
-        id: sendDialog
-        SendDialog {
-            width: parent.width
-            height: parent.height
-
-            onTxFound: {
-                app.stack.push(Qt.resolvedUrl('TxDetails.qml'), { rawtx: data })
-                close()
-            }
-            onChannelBackupFound: {
-                var dialog = app.messageDialog.createObject(app, {
-                    title: qsTr('Import Channel backup?'),
-                    yesno: true
-                })
-                dialog.accepted.connect(function() {
-                    Daemon.currentWallet.importChannelBackup(data)
-                    close()
-                })
-                dialog.rejected.connect(function() {
-                    close()
-                })
-                dialog.open()
-            }
-            onClosed: destroy()
         }
     }
 
