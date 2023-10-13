@@ -34,9 +34,31 @@ Item {
     }
 
     function openSendDialog() {
-        //AppController.scan_qr()
-        //_sendDialog = sendDialog.createObject(mainView, {invoiceParser: invoiceParser})
-        //_sendDialog.open()
+        qrscanner = QRScanner.createObject(mainView)
+        qrscanner.onFound.connect(function(data) {
+            console.log('qrscanner.onFound: ' + data)  // TODO rm, just for debug
+            data = data.trim()
+            if (bitcoin.isRawTx(data)) {
+                app.stack.push(Qt.resolvedUrl('TxDetails.qml'), { rawtx: data })
+                //close()
+            } else if (Daemon.currentWallet.isValidChannelBackup(data)) {
+                var dialog = app.messageDialog.createObject(app, {
+                    title: qsTr('Import Channel backup?'),
+                    yesno: true
+                })
+                dialog.accepted.connect(function() {
+                    Daemon.currentWallet.importChannelBackup(data)
+                    //close()
+                })
+                dialog.rejected.connect(function() {
+                    //close()
+                })
+                dialog.open()
+            } else {
+                invoiceParser.recipient = data
+            }
+        })
+        qrscanner.scan_qr(qsTr('Scan an Invoice, an Address, an LNURL-pay, a PSBT or a Channel backup'))
     }
 
     function closeSendDialog() {
@@ -247,7 +269,7 @@ Item {
                 Layout.preferredWidth: 1
                 icon.source: '../../icons/tab_send.png'
                 text: qsTr('Send')
-                onClicked: AppController.scan_qr(qsTr('Scan an Invoice, an Address, an LNURL-pay, a PSBT or a Channel backup'))
+                onClicked: openSendDialog()
                 onPressAndHold: {
                     Config.userKnowsPressAndHold = true
                     app.stack.push(Qt.resolvedUrl('Invoices.qml'))
@@ -329,31 +351,6 @@ Item {
                 return
             }
             invoiceParser.recipient = uri
-        }
-        function onQrScanned(data) {
-            console.log('onQrScanned: ' + data)  // TODO rm, just for debug
-            data = data.trim()
-            if (bitcoin.isRawTx(data)) {
-                //txFound(data)
-                app.stack.push(Qt.resolvedUrl('TxDetails.qml'), { rawtx: data })
-                //close()
-            } else if (Daemon.currentWallet.isValidChannelBackup(data)) {
-                //channelBackupFound(data)
-                var dialog = app.messageDialog.createObject(app, {
-                    title: qsTr('Import Channel backup?'),
-                    yesno: true
-                })
-                dialog.accepted.connect(function() {
-                    Daemon.currentWallet.importChannelBackup(data)
-                    //close()
-                })
-                dialog.rejected.connect(function() {
-                    //close()
-                })
-                dialog.open()
-            } else {
-                invoiceParser.recipient = data
-            }
         }
     }
 

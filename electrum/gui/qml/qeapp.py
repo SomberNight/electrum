@@ -26,6 +26,7 @@ from .qedaemon import QEDaemon
 from .qenetwork import QENetwork
 from .qewallet import QEWallet
 from .qeqr import QEQRParser, QEQRImageProvider, QEQRImageProviderHelper
+from .qeqrscanner import QEQRScanner
 from .qewalletdb import QEWalletDB
 from .qebitcoin import QEBitcoin
 from .qefx import QEFX
@@ -72,8 +73,6 @@ class QEAppController(BaseCrashReporter, QObject):
     sendingBugreportFailure = pyqtSignal(str)
     secureWindowChanged = pyqtSignal()
     wantCloseChanged = pyqtSignal()
-
-    qrScanned = pyqtSignal([str], arguments=['data'])
 
     def __init__(self, qeapp: 'ElectrumQmlApplication', qedaemon: 'QEDaemon', plugins: 'Plugins'):
         BaseCrashReporter.__init__(self, None, None, None)
@@ -335,29 +334,6 @@ class QEAppController(BaseCrashReporter, QObject):
             self._secureWindow = secure
             self.secureWindowChanged.emit()
 
-    @pyqtSlot(str)
-    def scan_qr(self, hint: str):
-        if not self.isAndroid():
-            return
-        SimpleScannerActivity = autoclass("org.electrum.qr.SimpleScannerActivity")
-        intent = jIntent(jpythonActivity, SimpleScannerActivity)
-        intent.putExtra(jIntent.EXTRA_TEXT, jString(hint))
-
-        def on_qr_result(requestCode, resultCode, intent):
-            try:
-                if resultCode == -1:  # RESULT_OK:
-                    #  this doesn't work due to some bug in jnius:
-                    # contents = intent.getStringExtra("text")
-                    contents = intent.getStringExtra(jString("text"))
-                    self.logger.info(f"on_qr_result. {contents=!r}")
-                    self.qrScanned.emit(contents)
-            except Exception as e:  # exc would otherwise get lost
-                send_exception_to_crash_reporter(e)
-            finally:
-                activity.unbind(on_activity_result=on_qr_result)
-        activity.bind(on_activity_result=on_qr_result)
-        jpythonActivity.startActivityForResult(intent, 0)
-
 
 class ElectrumQmlApplication(QGuiApplication):
 
@@ -381,6 +357,7 @@ class ElectrumQmlApplication(QGuiApplication):
         qmlRegisterType(QEWalletDB, 'org.electrum', 1, 0, 'WalletDB')
         qmlRegisterType(QEBitcoin, 'org.electrum', 1, 0, 'Bitcoin')
         qmlRegisterType(QEQRParser, 'org.electrum', 1, 0, 'QRParser')
+        qmlRegisterType(QEQRScanner, 'org.electrum', 1, 0, 'QRScanner')
         qmlRegisterType(QEFX, 'org.electrum', 1, 0, 'FX')
         qmlRegisterType(QETxFinalizer, 'org.electrum', 1, 0, 'TxFinalizer')
         qmlRegisterType(QEInvoice, 'org.electrum', 1, 0, 'Invoice')
