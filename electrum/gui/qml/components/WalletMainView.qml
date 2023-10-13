@@ -33,17 +33,10 @@ Item {
         return dialog
     }
 
-    Component {
-        id: qrScanner
-        QRScanner {
-            //onClosed: destroy()
-        }
-    }
-
     function openSendDialog() {
-        var scanner = qrScanner.createObject(mainView)
+        var scanner = app.qrScanner.createObject(mainView)
         scanner.onFound.connect(function(data) {
-            console.log('scanner.onFound: ' + data)  // TODO rm, just for debug
+            console.log('WalletMainView.scanner.onFound: ' + data)  // TODO rm, just for debug
             data = data.trim()
             if (bitcoin.isRawTx(data)) {
                 app.stack.push(Qt.resolvedUrl('TxDetails.qml'), { rawtx: data })
@@ -64,9 +57,9 @@ Item {
             } else {
                 invoiceParser.recipient = data
             }
+            //scanner.destroy()  // TODO
         })
         scanner.scan_qr(qsTr('Scan an Invoice, an Address, an LNURL-pay, a PSBT or a Channel backup'))
-        // TODO destroy?
     }
 
     function closeSendDialog() {

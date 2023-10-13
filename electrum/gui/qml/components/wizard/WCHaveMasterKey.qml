@@ -147,19 +147,18 @@ WizardComponent {
                     icon.width: constants.iconSizeMedium
                     scale: 1.2
                     onClicked: {
-                        var dialog = app.scanDialog.createObject(app, {
-                            hint: cosigner
-                                ? qsTr('Scan a cosigner master public key')
-                                : qsTr('Scan a master key')
-                        })
-                        dialog.onFound.connect(function() {
-                            if (verifyMasterKey(dialog.scanData))
-                                masterkey_ta.text = dialog.scanData
+                        var scanner = app.qrScanner.createObject(app)
+                        var hint = (cosigner
+                                        ? qsTr('Scan a cosigner master public key')
+                                        : qsTr('Scan a master key'))
+                        scanner.onFound.connect(function(data) {
+                            console.log('WCHaveMasterKey.scanner.onFound: ' + data)  // TODO rm, just for debug
+                            if (verifyMasterKey(data))
+                                masterkey_ta.text = data
                             else
                                 masterkey_ta.text = ''
-                            dialog.close()
                         })
-                        dialog.open()
+                        scanner.scan_qr(hint)
                     }
                 }
             }
