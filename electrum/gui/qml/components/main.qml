@@ -386,19 +386,11 @@ ApplicationWindow
         }
     }
 
-    property alias qrScanner: _qrScanner
-    Component {
-        id: _qrScanner
-        QRScanner {
-            //onClosed: destroy()
-        }
-    }
-
     property alias scanDialog: _scanDialog
     Component {
         id: _scanDialog
-        ScanDialog {
-            onClosed: destroy()
+        QRScanner {
+            //onClosed: destroy()
         }
     }
 

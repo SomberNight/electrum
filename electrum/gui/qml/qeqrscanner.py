@@ -4,6 +4,7 @@ from PyQt6.QtCore import pyqtProperty, pyqtSignal, pyqtSlot, QObject
 
 from electrum.util import send_exception_to_crash_reporter
 from electrum.logging import get_logger
+from electrum.i18n import _
 
 
 if 'ANDROID_DATA' in os.environ:
@@ -18,15 +19,37 @@ if 'ANDROID_DATA' in os.environ:
 class QEQRScanner(QObject):
     _logger = get_logger(__name__)
 
-    found = pyqtSignal([str], arguments=['data'])
+    #found = pyqtSignal([str], arguments=['data'])
+    found = pyqtSignal()
 
-    @pyqtSlot(str)
-    def scan_qr(self, hint: str):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._hint = _("Scan a QR code.")
+        self._scan_data = ""  # decoded qr code result
+
+    @pyqtProperty(str)
+    def hint(self):
+        return self._hint
+
+    @hint.setter
+    def hint(self, v: str):
+        self._hint = v
+
+    @pyqtProperty(str)
+    def scanData(self):
+        return self._scan_data
+
+    @scanData.setter
+    def scanData(self, v: str):
+        self._scan_data = v
+
+    @pyqtSlot()
+    def open(self):
         if 'ANDROID_DATA' not in os.environ:
             return
         SimpleScannerActivity = autoclass("org.electrum.qr.SimpleScannerActivity")
         intent = jIntent(jpythonActivity, SimpleScannerActivity)
-        intent.putExtra(jIntent.EXTRA_TEXT, jString(hint))
+        intent.putExtra(jIntent.EXTRA_TEXT, jString(self._hint))
 
         def on_qr_result(requestCode, resultCode, intent):
             try:
@@ -35,10 +58,15 @@ class QEQRScanner(QObject):
                     # contents = intent.getStringExtra("text")
                     contents = intent.getStringExtra(jString("text"))
                     self._logger.info(f"on_qr_result. {contents=!r}")
-                    self.found.emit(contents)
+                    self.scanData = contents
+                    self.found.emit()
             except Exception as e:  # exc would otherwise get lost
                 send_exception_to_crash_reporter(e)
             finally:
                 activity.unbind(on_activity_result=on_qr_result)
         activity.bind(on_activity_result=on_qr_result)
         jpythonActivity.startActivityForResult(intent, 0)
+
+    @pyqtSlot()
+    def close(self):
+        pass

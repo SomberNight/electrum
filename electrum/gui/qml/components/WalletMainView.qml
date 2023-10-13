@@ -34,8 +34,11 @@ Item {
     }
 
     function openSendDialog() {
-        var scanner = app.qrScanner.createObject(mainView)
-        scanner.onFound.connect(function(data) {
+        var scanner = app.scanDialog.createObject(mainView, {
+            hint: qsTr('Scan an Invoice, an Address, an LNURL-pay, a PSBT or a Channel backup'),
+        })
+        scanner.onFound.connect(function() {
+            var data = scanner.scanData
             console.log('WalletMainView.scanner.onFound: ' + data)  // TODO rm, just for debug
             data = data.trim()
             if (bitcoin.isRawTx(data)) {
@@ -59,7 +62,7 @@ Item {
             }
             //scanner.destroy()  // TODO
         })
-        scanner.scan_qr(qsTr('Scan an Invoice, an Address, an LNURL-pay, a PSBT or a Channel backup'))
+        scanner.open()
     }
 
     function closeSendDialog() {
