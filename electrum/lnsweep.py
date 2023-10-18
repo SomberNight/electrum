@@ -33,7 +33,7 @@ _logger = get_logger(__name__)
 class SweepInfo(NamedTuple):
     name: str
     csv_delay: int
-    cltv_expiry: int
+    cltv_expiry: int  # FIXME xxxxx
     gen_tx: Callable[[], Optional[Transaction]]
 
 
@@ -400,9 +400,9 @@ def create_sweeptxs_for_their_ctx(
             remote_htlc_pubkey=our_htlc_privkey.get_public_key_bytes(compressed=True),
             local_htlc_pubkey=their_htlc_pubkey,
             payment_hash=htlc.payment_hash,
-            cltv_expiry=htlc.cltv_expiry)
+            cltv_expiry_abs=htlc.cltv_abs)
 
-        cltv_expiry = htlc.cltv_expiry if is_received_htlc and not is_revocation else 0
+        cltv_expiry = htlc.cltv_abs if is_received_htlc and not is_revocation else 0
         prevout = ctx.txid() + ':%d'%ctx_output_idx
         sweep_tx = lambda: create_sweeptx_their_ctx_htlc(
             ctx=ctx,
