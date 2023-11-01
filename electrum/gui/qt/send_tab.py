@@ -419,6 +419,7 @@ class SendTab(QWidget, MessageBoxMixin, Logger):
             self.lock_fields(lock_recipient=False, lock_amount=True, lock_max=True, lock_description=False)
             self.set_field_validated(self.payto_e, validated=pi.is_valid()) # TODO: validated used differently here than openalias
             self.save_button.setEnabled(pi.is_valid())
+            print(f"update_fields. cp1. {pi.is_valid()=}")
             self.send_button.setEnabled(pi.is_valid())
             self.payto_e.setToolTip(pi.get_error() if not pi.is_valid() else '')
             if pi.is_valid():
@@ -428,6 +429,7 @@ class SendTab(QWidget, MessageBoxMixin, Logger):
         if not pi.is_valid():
             self.lock_fields(lock_recipient=False, lock_amount=False, lock_max=True, lock_description=False)
             self.save_button.setEnabled(False)
+            print(f"update_fields. cp2. False")
             self.send_button.setEnabled(False)
             return
 
@@ -468,11 +470,16 @@ class SendTab(QWidget, MessageBoxMixin, Logger):
             self.spend_max()
 
         pi_unusable = pi.is_error() or (not self.wallet.has_lightning() and not pi.is_onchain())
+        print(f"update_fields. cp2.7. {pi.is_error()=}. {self.wallet.has_lightning()=}. {pi.is_onchain()=}")
+        print(f"update_fields. cp2.8. {pi._type=}")
         is_spk_script = pi.type == PaymentIdentifierType.SPK and not pi.spk_is_address
 
         amount_valid = is_spk_script or bool(self.amount_e.get_amount())
 
-        self.send_button.setEnabled(not pi_unusable and amount_valid and not pi.has_expired())
+        sb_enabled = not pi_unusable and amount_valid and not pi.has_expired()
+        print(f"update_fields. cp3. {sb_enabled=}")
+        print(f"update_fields. cp4. {pi_unusable=}. {amount_valid=}. {pi.has_expired()=}")
+        self.send_button.setEnabled(sb_enabled)
         self.save_button.setEnabled(not pi_unusable and not is_spk_script and \
                                     pi.type not in [PaymentIdentifierType.LNURLP, PaymentIdentifierType.LNADDR])
 
@@ -591,6 +598,7 @@ class SendTab(QWidget, MessageBoxMixin, Logger):
             else:
                 self.show_error(_('No amount'))
                 return
+        print("heyheyhey. do_pay_invoice. cp1")
         if invoice.is_lightning():
             self.pay_lightning_invoice(invoice)
         else:

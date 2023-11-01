@@ -4,7 +4,7 @@ import urllib
 import re
 from decimal import Decimal, InvalidOperation
 from enum import IntEnum
-from typing import NamedTuple, Optional, Callable, List, TYPE_CHECKING, Tuple
+from typing import NamedTuple, Optional, Callable, List, TYPE_CHECKING, Tuple, Union, Sequence
 
 from . import bitcoin
 from .contacts import AliasNotFoundException
@@ -167,12 +167,8 @@ class PaymentIdentifier(Logger):
     def is_lightning(self):
         return bool(self.lnurl) or bool(self.bolt11)
 
-    def is_onchain(self):
-        if self._type in [PaymentIdentifierType.SPK, PaymentIdentifierType.MULTILINE, PaymentIdentifierType.BIP70,
-                          PaymentIdentifierType.OPENALIAS]:
-            return True
-        if self._type in [PaymentIdentifierType.LNURLP, PaymentIdentifierType.BOLT11, PaymentIdentifierType.LNADDR]:
-            return bool(self.bolt11) and bool(self.bolt11.get_address())
+    def is_onchain(self) -> bool:
+        return not (self.get_onchain_outputs(0) is None)
 
     def is_multiline(self):
         return bool(self.multiline_outputs)
@@ -462,7 +458,7 @@ class PaymentIdentifier(Logger):
             if on_finished:
                 on_finished(self)
 
-    def get_onchain_outputs(self, amount):
+    def get_onchain_outputs(self, amount: Union[int, str]) -> Optional[Sequence[PartialTxOutput]]:
         if self.bip70:
             return self.bip70_data.get_outputs()
         elif self.multiline_outputs:
@@ -474,8 +470,9 @@ class PaymentIdentifier(Logger):
             scriptpubkey, is_address = self.parse_output(address)
             assert is_address  # unlikely, but make sure it is an address, not a script
             return [PartialTxOutput(scriptpubkey=scriptpubkey, value=amount)]
-        else:
-            raise Exception('not onchain')
+        elif self.bolt11 and (addr := self.bolt11.get_address()):
+            return [PartialTxOutput.from_address_and_value(address=addr, value=amount)]
+        return None
 
     def _parse_as_multiline(self, text: str):
         # filter out empty lines
