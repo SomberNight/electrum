@@ -197,10 +197,10 @@ RUN cd /opt \
     && git fetch --all \
     # commit: from branch accumulator/qt6-wip (note: careful with force-pushing! see #8162) \
     #
-    && git checkout "150a85aa4c2a11838a578ef2abbef042204d581f^{commit}" \
+    && git checkout "f696122ef9ba8a0cd0db19d701be575e1134737a^{commit}" \
     && /opt/venv/bin/python3 -m pip install --no-build-isolation --no-dependencies -e .
 
 # build env vars
 ENV USE_SDK_WRAPPER=1
 ENV GRADLE_OPTS="-Xmx1536M -Dorg.gradle.jvmargs='-Xmx1536M'"
-#ENV P4A_FULL_DEBUG=1
+ENV P4A_FULL_DEBUG=1
