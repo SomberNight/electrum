@@ -86,7 +86,7 @@ android.permissions = INTERNET, CAMERA, WRITE_EXTERNAL_STORAGE
 
 # (int) Android API to use  (compileSdkVersion)
 # note: when changing, Dockerfile also needs to be changed to install corresponding build tools
-android.api = 31
+android.api = 33
 
 # (int) Android targetSdkVersion
 android.target_sdk_version = 33
@@ -95,7 +95,7 @@ android.target_sdk_version = 33
 android.minapi = 21
 
 # (str) Android NDK version to use
-android.ndk = 23b
+android.ndk = 25c
 
 # (int) Android NDK API to use (optional). This is the minimum API your app will support.
 android.ndk_api = 21

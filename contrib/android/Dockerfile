@@ -31,8 +31,8 @@ RUN apt -y update -qq \
 
 
 ENV ANDROID_NDK_HOME="${ANDROID_HOME}/android-ndk"
-ENV ANDROID_NDK_VERSION="23b"
-ENV ANDROID_NDK_HASH="c6e97f9c8cfe5b7be0a9e6c15af8e7a179475b7ded23e2d1c1fa0945d6fb4382"
+ENV ANDROID_NDK_VERSION="25c"
+ENV ANDROID_NDK_HASH="769ee342ea75f80619d985c2da990c48b3d8eaf45f48783a2d48870d04b46108"
 ENV ANDROID_NDK_HOME_V="${ANDROID_NDK_HOME}-r${ANDROID_NDK_VERSION}"
 
 # get the latest version from https://developer.android.com/ndk/downloads/index.html
@@ -53,8 +53,8 @@ RUN curl --location --progress-bar \
 ENV ANDROID_SDK_HOME="${ANDROID_HOME}/android-sdk"
 
 # get the latest version from https://developer.android.com/studio/index.html
-ENV ANDROID_SDK_TOOLS_VERSION="9477386"
-ENV ANDROID_SDK_HASH="bd1aa17c7ef10066949c88dc6c9c8d536be27f992a1f3b5a584f9bd2ba5646a0"
+ENV ANDROID_SDK_TOOLS_VERSION="10406996"
+ENV ANDROID_SDK_HASH="8919e8752979db73d8321e9babe2caedcc393750817c1a5f56c128ec442fb540"
 ENV ANDROID_SDK_TOOLS_ARCHIVE="commandlinetools-linux-${ANDROID_SDK_TOOLS_VERSION}_latest.zip"
 ENV ANDROID_SDK_TOOLS_DL_URL="https://dl.google.com/android/repository/${ANDROID_SDK_TOOLS_ARCHIVE}"
 ENV ANDROID_SDK_MANAGER="${ANDROID_SDK_HOME}/cmdline-tools/bin/sdkmanager --sdk_root=${ANDROID_SDK_HOME}"
@@ -81,10 +81,10 @@ RUN apt -y update -qq \
 RUN yes | ${ANDROID_SDK_MANAGER} --licenses > /dev/null
 
 
-ENV ANDROID_SDK_BUILD_TOOLS_VERSION="31.0.0"
+ENV ANDROID_SDK_BUILD_TOOLS_VERSION="33.0.2"
 
 # download platforms, API, build tools
-RUN ${ANDROID_SDK_MANAGER} "platforms;android-31" > /dev/null && \
+RUN ${ANDROID_SDK_MANAGER} "platforms;android-33" > /dev/null && \
     ${ANDROID_SDK_MANAGER} "build-tools;${ANDROID_SDK_BUILD_TOOLS_VERSION}" > /dev/null && \
     ${ANDROID_SDK_MANAGER} "extras;android;m2repository" > /dev/null && \
     chmod +x "${ANDROID_SDK_HOME}/cmdline-tools/bin/avdmanager"
@@ -197,7 +197,7 @@ RUN cd /opt \
     && git fetch --all \
     # commit: from branch accumulator/qt6-wip (note: careful with force-pushing! see #8162) \
     #
-    && git checkout "eb4a3522373e0b4e2749b8a8bc965ff51355ea35^{commit}" \
+    && git checkout "20c15c95df7c45f339d6f04f57ee3df5469ee961^{commit}" \
     && /opt/venv/bin/python3 -m pip install --no-build-isolation --no-dependencies -e .
 
 # build env vars
