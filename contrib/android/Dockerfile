@@ -203,4 +203,4 @@ RUN cd /opt \
 # build env vars
 ENV USE_SDK_WRAPPER=1
 ENV GRADLE_OPTS="-Xmx1536M -Dorg.gradle.jvmargs='-Xmx1536M'"
-ENV P4A_FULL_DEBUG=1
+#ENV P4A_FULL_DEBUG=1
