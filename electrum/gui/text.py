@@ -5,9 +5,10 @@ import datetime
 import locale
 from decimal import Decimal
 import getpass
-import logging
-import pyperclip
 from typing import TYPE_CHECKING, Optional
+
+# 3rd-party dependency:
+import pyperclip
 
 import electrum
 from electrum.gui import BaseElectrumGui

@@ -34,6 +34,8 @@ RUN apt-get update -q && \
         libffi-dev \
         libncurses5-dev \
         libncurses5 \
+        python3-pyperclip \
+            # ^ for "text" GUI \
         libtinfo-dev \
         libtinfo5 \
         libsqlite3-dev \
