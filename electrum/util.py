@@ -1393,9 +1393,20 @@ async def wait_for2(fut: Awaitable, timeout: Union[int, float, None]):
      """
     if sys.version_info[:3] >= (3, 12):
         return await asyncio.wait_for(fut, timeout)
-    else:
+    elif sys.version_info[:3] >= (3, 11):
         async with async_timeout(timeout):
             return await asyncio.ensure_future(fut, loop=get_running_loop())
+    else:
+        # On python 3.10 and older, asyncio.ensure_future does not propagate subclasses of CancelledError.
+        # Instead, a new CancelledError is re-raised. This behaviour would break composability with aiorpcx timeouts...
+        async with async_timeout(timeout):
+            try:
+                return await asyncio.ensure_future(fut, loop=get_running_loop())
+            except asyncio.CancelledError as e:
+                cause = e.__cause__ or e.__context__
+                if isinstance(cause, asyncio.CancelledError):
+                    raise cause from e
+                raise
 
 
 if hasattr(asyncio, 'timeout'):  # python 3.11+
