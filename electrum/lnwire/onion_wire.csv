@@ -99,7 +99,7 @@ msgtype,mpp_timeout,23
 msgtype,invalid_onion_blinding,BADONION|PERM|24
 msgdata,invalid_onion_blinding,sha256_of_onion,sha256,
 tlvtype,onionmsg_tlv,message,1
-tlvdata,onionmsg_tlv,message,text,byte,...
+tlvdata,onionmsg_tlv,message,message,byte,...
 tlvtype,onionmsg_tlv,reply_path,2
 tlvdata,onionmsg_tlv,reply_path,path,blinded_path,
 tlvtype,onionmsg_tlv,encrypted_recipient_data,4

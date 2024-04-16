@@ -4,7 +4,7 @@ from electrum.bolt12 import is_offer, decode_offer
 from electrum.lnmsg import UnknownMandatoryTLVRecordType, decode_msg
 from electrum.lnonion import OnionHopsDataSingle, new_onion_packet2, OnionPacket
 from electrum.segwit_addr import INVALID_BECH32
-from electrum.util import bfh
+from electrum.util import bfh, ShortID
 
 from . import ElectrumTestCase
 
@@ -91,7 +91,7 @@ class TestBolt12(ElectrumTestCase):
         with self.assertRaises(UnknownMandatoryTLVRecordType):
             od = bolt12.decode_offer(offer)
 
-    def test_path_pubkeys_blinded_path_appended(self):
+    def test_path_pubkeys_blinded_path_appended(self):  #
         # test vectors https://github.com/lightning/bolts/pull/759/files
         payment_path_pubkeys = [
             (bfh('02eec7245d6b7d2ccb30380bfbe2a3648cd7a942653f5aa340edcea1f283686619'),   # Alice
@@ -99,7 +99,7 @@ class TestBolt12(ElectrumTestCase):
             (bfh('0324653eac434488002cc06bbfb7f10fe18991e35f9fe4302dbea6d2353dc0ab1c'),  # Bob w blinding secret override
              bfh('0101010101010101010101010101010101010101010101010101010101010101')),
             bfh('027f31ebc5462c1fdce1b737ecff52d37d75dea43ce11c74d25aa297165faa2007'),   # Carol
-            bfh('032c0b7cf95324a07d05398b240174dc0c2be444d96b159aa6c7f7b1e668680991')    # Dave
+            bfh('032c0b7cf95324a07d05398b240174dc0c2be444d96b159aa6c7f7b1e668680991'),    # Dave
         ]
         session_key = bfh('0303030303030303030303030303030303030303030303030303030303030303')
 
@@ -108,7 +108,7 @@ class TestBolt12(ElectrumTestCase):
                                 blind_fields={'next_node_id': {'node_id': bfh('0324653eac434488002cc06bbfb7f10fe18991e35f9fe4302dbea6d2353dc0ab1c')},
                                               'next_blinding_override': {'blinding': bfh('031b84c5567b126440995d3ed5aaba0565d71e1834604819ff9c17f5e9d5dd078f')},
                                               #'blinding_override_secret': {'data': bfh('0101010101010101010101010101010101010101010101010101010101010101')}}
-                                              # blinding_override_secret is not a member of encrypted_data_tlv
+                                              # blinding_override_secret is not a member of encrypted_data_tlv  # FIXME xxxxx
                                               }
                                 ),
             OnionHopsDataSingle(tlv_stream_name='onionmsg_tlv',
@@ -121,17 +121,121 @@ class TestBolt12(ElectrumTestCase):
                                               'next_node_id': {'node_id': bfh('032c0b7cf95324a07d05398b240174dc0c2be444d96b159aa6c7f7b1e668680991')}
                                               }
                                 ),
-            OnionHopsDataSingle(tlv_stream_name='onionmsg_tlv', payload={'message': {'text': b'hello'}},
+            OnionHopsDataSingle(tlv_stream_name='onionmsg_tlv', payload={'message': {'message': bfh('68656c6c6f')}},
                                 blind_fields={'padding': {'padding': b''},
                                               'path_id': {'data': bfh('deadbeefbadc0ffeedeadbeefbadc0ffeedeadbeefbadc0ffeedeadbeefbadc0')},
-                                              'unknown_tag_65535': {'data': b'\x06\xc1'}
+                                              'unknown_tag_65535': {'data': bfh('06c1')}
                                               }
                                 )
         ]
         packet = new_onion_packet2(payment_path_pubkeys, session_key, hops_data)
 
         expected = bfh('0002531fe6068134503d2723133227c867ac8fa6c83c537e9a44c3c5bdbdcb1fe33793b828776d70aabbd8cef1a5b52d5a397ae1a20f20435ff6057cd8be339d5aee226660ef73b64afa45dbf2e6e8e26eb96a259b2db5aeecda1ce2e768bbc35d389d7f320ca3d2bd14e2689bef2f5ac0307eaaabc1924eb972c1563d4646ae131accd39da766257ed35ea36e4222527d1db4fa7b2000aab9eafcceed45e28b5560312d4e2299bd8d1e7fe27d10925966c28d497aec400b4630485e82efbabc00550996bdad5d6a9a8c75952f126d14ad2cff91e16198691a7ef2937de83209285f1fb90944b4e46bca7c856a9ce3da10cdf2a7d00dc2bf4f114bc4d3ed67b91cbde558ce9af86dc81fbdc37f8e301b29e23c1466659c62bdbf8cff5d4c20f0fb0851ec72f5e9385dd40fdd2e3ed67ca4517117825665e50a3e26f73c66998daf18e418e8aef9ce2d20da33c3629db2933640e03e7b44c2edf49e9b482db7b475cfd4c617ae1d46d5c24d697846f9f08561eac2b065f9b382501f6eabf07343ed6c602f61eab99cdb52adf63fd44a8db2d3016387ea708fc1c08591e19b4d9984ebe31edbd684c2ea86526dd8c7732b1d8d9117511dc1b643976d356258fce8313b1cb92682f41ab72dedd766f06de375f9edacbcd0ca8c99b865ea2b7952318ea1fd20775a28028b5cf59dece5de14f615b8df254eee63493a5111ea987224bea006d8f1b60d565eef06ac0da194dba2a6d02e79b2f2f34e9ca6e1984a507319d86e9d4fcaeea41b4b9144e0b1826304d4cc1da61cfc5f8b9850697df8adc5e9d6f3acb3219b02764b4909f2b2b22e799fd66c383414a84a7d791b899d4aa663770009eb122f90282c8cb9cda16aba6897edcf9b32951d0080c0f52be3ca011fbec3fb16423deb47744645c3b05fdbd932edf54ba6efd26e65340a8e9b1d1216582e1b30d64524f8ca2d6c5ba63a38f7120a3ed71bed8960bcac2feee2dd41c90be48e3c11ec518eb3d872779e4765a6cc28c6b0fa71ab57ced73ae963cc630edae4258cba2bf25821a6ae049fec2fca28b5dd1bb004d92924b65701b06dcf37f0ccd147a13a03f9bc0f98b7d78fe9058089756931e2cd0e0ed92ec6759d07b248069526c67e9e6ce095118fd3501ba0f858ef030b76c6f6beb11a09317b5ad25343f4b31aef02bc555951bc7791c2c289ecf94d5544dcd6ad3021ed8e8e3db34b2a73e1eedb57b578b068a5401836d6e382110b73690a94328c404af25e85a8d6b808893d1b71af6a31fadd8a8cc6e31ecc0d9ff7e6b91fd03c274a5c1f1ccd25b61150220a3fddb04c91012f5f7a83a5c90deb2470089d6e38cd5914b9c946eca6e9d31bbf8667d36cf87effc3f3ff283c21dd4137bd569fe7cf758feac94053e4baf7338bb592c8b7c291667fadf4a9bf9a2a154a18f612cbc7f851b3f8f2070e0a9d180622ee4f8e81b0ab250d504cef24116a3ff188cc829fcd8610b56343569e8dc997629410d1967ca9dd1d27eec5e01e4375aad16c46faba268524b154850d0d6fe3a76af2c6aa3e97647c51036049ac565370028d6a439a2672b6face56e1b171496c0722cfa22d9da631be359661617c5d5a2d286c5e19db9452c1e21a0107b6400debda2decb0c838f342dd017cdb2dccdf1fe97e3df3f881856b546997a3fed9e279c720145101567dd56be21688fed66bf9759e432a9aa89cbbd225d13cdea4ca05f7a45cfb6a682a3d5b1e18f7e6cf934fae5098108bae9058d05c3387a01d8d02a656d2bfff67e9f46b2d8a6aac28129e52efddf6e552214c3f8a45bc7a912cca9a7fec1d7d06412c6972cb9e3dc518983f56530b8bffe7f92c4b6eb47d4aef59fb513c4653a42de61bc17ad7728e7fc7590ff05a9e991de03f023d0aaf8688ed6170def5091c66576a424ac1cb')
-        self.assertEqual(packet.to_bytes(), expected)
+        self.assertEqual(packet.to_bytes().hex(), expected.hex())
+
+    def test_route_blinding(self):
+        # test vectors https://raw.githubusercontent.com/lightning/bolts/08ce2f6f83619b777bebd86d6dff4a29096e35ae/bolt04/blinded-payment-onion-test.json
+        payment_path_pubkeys = [
+            bfh('02eec7245d6b7d2ccb30380bfbe2a3648cd7a942653f5aa340edcea1f283686619'),   # Alice
+            (bfh('0324653eac434488002cc06bbfb7f10fe18991e35f9fe4302dbea6d2353dc0ab1c'),  # Bob...
+             bfh('0202020202020202020202020202020202020202020202020202020202020202')),   # FIXME cheating here
+            bfh('02e466727716f044290abf91a14a6d90e87487da160c2a3cbd0d465d7a78eb83a7'),   # Carol
+            (bfh('036861b366f284f0a11738ffbf7eda46241a8977592878fe3175ae1d1e4754eccf'),    # Dave w blinding secret override
+             bfh('0101010101010101010101010101010101010101010101010101010101010101')),
+            bfh('021982a48086cb8984427d3727fe35a03d396b234f0701f5249daa12e8105c8dae'),    # Eve
+        ]
+        session_key = bfh('0303030303030303030303030303030303030303030303030303030303030303')
+
+        hops_data = [
+            OnionHopsDataSingle(  # Alice
+                payload={
+                    'amt_to_forward': {'amt_to_forward': 110125},
+                    'outgoing_cltv_value': {'outgoing_cltv_value': 749150},
+                    'short_channel_id': {'short_channel_id': bytes(ShortID.from_components(0, 0, 10))},
+                },
+            ),
+            OnionHopsDataSingle(  # Bob
+                payload={
+                    'current_blinding_point': {'blinding': bfh('024d4b6cd1361032ca9bd2aeb9d900aa4d45d9ead80ac9423374c451a7254d0766')}
+                },
+                blind_fields={
+                    'padding': {'padding': bfh('0000000000000000000000000000000000000000000000000000000000000000')},
+                    'short_channel_id': {'short_channel_id': bytes(ShortID.from_components(0, 0, 1))},
+                    'payment_relay': {
+                        'cltv_expiry_delta': 50,
+                        'fee_proportional_millionths': 0,
+                        'fee_base_msat': 10000,
+                    },
+                    'payment_constraints': {
+                        'max_cltv_expiry': 750150,
+                        'htlc_minimum_msat': 50,
+                    },
+                    'allowed_features': {
+                        'features': b"",
+                    },
+                },
+            ),
+            OnionHopsDataSingle(  # Carol
+                blind_fields={
+                    'short_channel_id': {'short_channel_id': bytes(ShortID.from_components(0, 0, 2))},
+                    'next_blinding_override': {'blinding': bfh('031b84c5567b126440995d3ed5aaba0565d71e1834604819ff9c17f5e9d5dd078f')},
+                    'payment_relay': {
+                        'cltv_expiry_delta': 75,
+                        'fee_proportional_millionths': 150,
+                        'fee_base_msat': 100,
+                    },
+                    'payment_constraints': {
+                        'max_cltv_expiry': 750100,
+                        'htlc_minimum_msat': 50,
+                    },
+                    'allowed_features': {
+                        'features': b"",
+                    },
+                },
+
+            ),
+            OnionHopsDataSingle(  # Dave
+                blind_fields={
+                    'padding': {'padding': bfh('00000000000000000000000000000000000000000000000000000000000000000000')},
+                    'short_channel_id': {'short_channel_id': bytes(ShortID.from_components(0, 0, 3))},
+                    'payment_relay': {
+                        'cltv_expiry_delta': 25,
+                        'fee_proportional_millionths': 100,
+                        'fee_base_msat': 0,  # FIXME xxxxx missing from test vector?!
+                    },
+                    'payment_constraints': {
+                        'max_cltv_expiry': 750025,
+                        'htlc_minimum_msat': 50,
+                    },
+                    'allowed_features': {
+                        'features': b"",
+                    },
+                },
+            ),
+            OnionHopsDataSingle(  # Eve
+                payload={
+                    'amt_to_forward': {'amt_to_forward': 100000},
+                    'total_amount_msat': {'total_msat': 150000},
+                    'outgoing_cltv_value': {'outgoing_cltv_value': 749000},
+
+                },
+                blind_fields={
+                    'padding': {'padding': bfh('00000000000000000000000000000000000000000000000000000000')},
+                    'path_id': {'data': bfh('c9cf92f45ade68345bc20ae672e2012f4af487ed4415')},
+                    'payment_constraints': {
+                        'max_cltv_expiry': 750000,
+                        'htlc_minimum_msat': 50,
+                    },
+                    'allowed_features': {
+                        'features': b"",
+                    },
+                },
+            ),
+        ]
+        packet = new_onion_packet2(payment_path_pubkeys, session_key, hops_data)
+
+        expected = bfh('0002531fe6068134503d2723133227c867ac8fa6c83c537e9a44c3c5bdbdcb1fe337dadf610256c6ab518495dce9cdedf9391e21a71dada75be905267ba82f326c0513dda706908cfee834996700f881b2aed106585d61a2690de4ebe5d56ad2013b520af2a3c49316bc590ee83e8c31b1eb11ff766dad27ca993326b1ed582fb451a2ad87fbf6601134c6341c4a2deb6850e25a355be68dbb6923dc89444fdd74a0f700433b667bda345926099f5547b07e97ad903e8a01566a78ae177366239e793dac719de805565b6d0a1d290e273f705cfc56873f8b5e28225f7ded7a1d4ceffae63f91e477be8c917c786435976102a924ba4ba3de6150c829ce01c25428f2f5d05ef023be7d590ecdf6603730db3948f80ca1ed3d85227e64ef77200b9b557f427b6e1073cfa0e63e4485441768b98ab11ba8104a6cee1d7af7bb5ee9c05cf9cf4718901e92e09dfe5cb3af336a953072391c1e91fc2f4b92e124b38e0c6d17ef6ba7bbe93f02046975bb01b7f766fcfc5a755af11a90cc7eb3505986b56e07a7855534d03b79f0dfbfe645b0d6d4185c038771fd25b800aa26b2ed2e30b1e713659468618a2fea04fcd0473284598f76b11b0d159d343bc9711d3bea8d561547bcc8fff12317c0e7b1ee75bcb8082d762b6417f99d0f71ff7c060f6b564ad6827edaffa72eefcc4ce633a8da8d41c19d8f6aebd8878869eb518ccc16dccae6a94c690957598ce0295c1c46af5d7a2f0955b5400526bfd1430f554562614b5d00feff3946427be520dee629b76b6a9c2b1da6701c8ca628a69d6d40e20dd69d6e879d7a052d9c16f544b49738c7ff3cdd0613e9ed00ead7707702d1a6a0b88de1927a50c36beb78f4ff81e3dd97b706307596eebb363d418a891e1cb4589ce86ce81cdc0e1473d7a7dd5f6bb6e147c1f7c46fa879b4512c25704da6cdbb3c123a72e3585dc07b3e5cbe7fecf3a08426eee8c70ddc46ebf98b0bcb14a08c469cb5cfb6702acc0befd17640fa60244eca491280a95fbbc5833d26e4be70fcf798b55e06eb9fcb156942dcf108236f32a5a6c605687ba4f037eddbb1834dcbcd5293a0b66c621346ca5d893d239c26619b24c71f25cecc275e1ab24436ac01c80c0006fab2d95e82e3a0c3ea02d08ec5b24eb39205c49f4b549dcab7a88962336c4624716902f4e08f2b23cfd324f18405d66e9da3627ac34a6873ba2238386313af20d5a13bbd507fdc73015a17e3bd38fae1145f7f70d7cb8c5e1cdf9cf06d1246592a25d56ec2ae44cd7f75aa7f5f4a2b2ee49a41a26be4fab3f3f2ceb7b08510c5e2b7255326e4c417325b333cafe96dde1314a15dd6779a7d5a8a40622260041e936247eec8ec39ca29a1e18161db37497bdd4447a7d5ef3b8d22a2acd7f486b152bb66d3a15afc41dc9245a8d75e1d33704d4471e417ccc8d31645fdd647a2c191692675cf97664951d6ce98237d78b0962ad1433b5a3e49ddddbf57a391b14dcce00b4d7efe5cbb1e78f30d5ef53d66c381a45e275d2dcf6be559acb3c42494a9a2156eb8dcf03dd92b2ebaa697ea628fa0f75f125e4a7daa10f8dcf56ebaf7814557708c75580fad2bbb33e66ad7a4788a7aaac792aaae76138d7ff09df6a1a1920ddcf22e5e7007b15171b51ff81799355232ce39f7d5ceeaf704255d790041d6390a69f42816cba641ec81faa3d7c0fdec59dfe4ca41f31a692eaffc66b083995d86c575aea4514a3e09e8b3a1fa4d1591a2505f253ad0b6bfd9d87f063d2be414d3a427c0506a88ac5bdbef9b50d73bce876f85c196dca435e210e1d6713695b529ddda3350fb5065a6a8288abd265380917bac8ebbc7d5ced564587471dddf90c22ce6dbadea7e7a6723438d4cf6ac6dae27d033a8cadd77ab262e8defb33445ddb2056ec364c7629c33745e2338')
+        self.assertEqual(packet.to_bytes().hex(), expected.hex())
 
     def test_decode_onion_message_packet(self):
         packet = '0002531fe6068134503d2723133227c867ac8fa6c83c537e9a44c3c5bdbdcb1fe33793b828776d70aabbd8cef1a5b52d5a397ae1a20f20435ff6057cd8be339d5aee226660ef73b64afa45dbf2e6e8e26eb96a259b2db5aeecda1ce2e768bbc35d389d7f320ca3d2bd14e2689bef2f5ac0307eaaabc1924eb972c1563d4646ae131accd39da766257ed35ea36e4222527d1db4fa7b2000aab9eafcceed45e28b5560312d4e2299bd8d1e7fe27d10925966c28d497aec400b4630485e82efbabc00550996bdad5d6a9a8c75952f126d14ad2cff91e16198691a7ef2937de83209285f1fb90944b4e46bca7c856a9ce3da10cdf2a7d00dc2bf4f114bc4d3ed67b91cbde558ce9af86dc81fbdc37f8e301b29e23c1466659c62bdbf8cff5d4c20f0fb0851ec72f5e9385dd40fdd2e3ed67ca4517117825665e50a3e26f73c66998daf18e418e8aef9ce2d20da33c3629db2933640e03e7b44c2edf49e9b482db7b475cfd4c617ae1d46d5c24d697846f9f08561eac2b065f9b382501f6eabf07343ed6c602f61eab99cdb52adf63fd44a8db2d3016387ea708fc1c08591e19b4d9984ebe31edbd684c2ea86526dd8c7732b1d8d9117511dc1b643976d356258fce8313b1cb92682f41ab72dedd766f06de375f9edacbcd0ca8c99b865ea2b7952318ea1fd20775a28028b5cf59dece5de14f615b8df254eee63493a5111ea987224bea006d8f1b60d565eef06ac0da194dba2a6d02e79b2f2f34e9ca6e1984a507319d86e9d4fcaeea41b4b9144e0b1826304d4cc1da61cfc5f8b9850697df8adc5e9d6f3acb3219b02764b4909f2b2b22e799fd66c383414a84a7d791b899d4aa663770009eb122f90282c8cb9cda16aba6897edcf9b32951d0080c0f52be3ca011fbec3fb16423deb47744645c3b05fdbd932edf54ba6efd26e65340a8e9b1d1216582e1b30d64524f8ca2d6c5ba63a38f7120a3ed71bed8960bcac2feee2dd41c90be48e3c11ec518eb3d872779e4765a6cc28c6b0fa71ab57ced73ae963cc630edae4258cba2bf25821a6ae049fec2fca28b5dd1bb004d92924b65701b06dcf37f0ccd147a13a03f9bc0f98b7d78fe9058089756931e2cd0e0ed92ec6759d07b248069526c67e9e6ce095118fd3501ba0f858ef030b76c6f6beb11a09317b5ad25343f4b31aef02bc555951bc7791c2c289ecf94d5544dcd6ad3021ed8e8e3db34b2a73e1eedb57b578b068a5401836d6e382110b73690a94328c404af25e85a8d6b808893d1b71af6a31fadd8a8cc6e31ecc0d9ff7e6b91fd03c274a5c1f1ccd25b61150220a3fddb04c91012f5f7a83a5c90deb2470089d6e38cd5914b9c946eca6e9d31bbf8667d36cf87effc3f3ff283c21dd4137bd569fe7cf758feac94053e4baf7338bb592c8b7c291667fadf4a9bf9a2a154a18f612cbc7f851b3f8f2070e0a9d180622ee4f8e81b0ab250d504cef24116a3ff188cc829fcd8610b56343569e8dc997629410d1967ca9dd1d27eec5e01e4375aad16c46faba268524b154850d0d6fe3a76af2c6aa3e97647c51036049ac565370028d6a439a2672b6face56e1b171496c0722cfa22d9da631be359661617c5d5a2d286c5e19db9452c1e21a0107b6400debda2decb0c838f342dd017cdb2dccdf1fe97e3df3f881856b546997a3fed9e279c720145101567dd56be21688fed66bf9759e432a9aa89cbbd225d13cdea4ca05f7a45cfb6a682a3d5b1e18f7e6cf934fae5098108bae9058d05c3387a01d8d02a656d2bfff67e9f46b2d8a6aac28129e52efddf6e552214c3f8a45bc7a912cca9a7fec1d7d06412c6972cb9e3dc518983f56530b8bffe7f92c4b6eb47d4aef59fb513c4653a42de61bc17ad7728e7fc7590ff05a9e991de03f023d0aaf8688ed6170def5091c66576a424ac1cb'

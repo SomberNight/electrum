@@ -371,7 +371,10 @@ class LNSerializer:
                         field_count = _resolve_field_count(field_count_str,
                                                            vars_dict=kwargs[tlv_record_name],
                                                            allow_any=True)
-                        field_value = kwargs[tlv_record_name][field_name]
+                        try:
+                            field_value = kwargs[tlv_record_name][field_name]
+                        except KeyError as e:
+                            raise Exception(f"{tlv_record_name=}, {field_name=}.  {kwargs=!r}") from e
                         _write_field(fd=tlv_record_fd,
                                      field_type=field_type,
                                      count=field_count,
