@@ -7,12 +7,13 @@ import socket
 import concurrent
 from concurrent import futures
 import ipaddress
-from typing import Optional
+from typing import Optional, Callable
 
 import dns
 import dns.resolver
 
 from .logging import get_logger
+from . import util
 
 
 _logger = get_logger(__name__)
@@ -33,7 +34,27 @@ def configure_dns_resolver() -> None:
         except Exception as e:
             _logger.exception('failed to apply windows dns hack.')
         else:
-            socket.getaddrinfo = _fast_getaddrinfo
+            socket.getaddrinfo = _monkeypatch_dns_lookup_to_warn_if_proxy_leaks(_fast_getaddrinfo)
+    else:
+        socket.getaddrinfo = _monkeypatch_dns_lookup_to_warn_if_proxy_leaks(socket._getaddrinfo)
+
+
+def _monkeypatch_dns_lookup_to_warn_if_proxy_leaks(f: Callable):
+    def _warn_if_proxy_leaking_dns(host: str) -> None:
+        from electrum.network import Network
+        network = Network.get_instance()
+        if not network or not network.proxy:
+            return
+        if util.is_private_netaddress(host):
+            return
+        if util.is_ip_address(host):
+            return
+        _logger.warning(f"detected possible DNS-leak around proxy. trying to resolve: {host!r}")
+
+    def wrapper(*args, **kwargs):
+        _warn_if_proxy_leaking_dns(args[0])
+        return f(*args, **kwargs)
+    return wrapper
 
 
 def _prepare_windows_dns_hack():
