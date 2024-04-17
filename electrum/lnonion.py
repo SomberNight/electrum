@@ -223,6 +223,7 @@ def new_onion_packet(
     num_hops = len(payment_path_pubkeys)
     assert num_hops == len(hops_data)
     hop_shared_secrets = get_shared_secrets_along_route(payment_path_pubkeys, session_key)
+    _logger.info(f"hop_shared_secrets1: {[hss.hex() for hss in hop_shared_secrets]}")
 
     data_size = TRAMPOLINE_HOPS_DATA_SIZE if trampoline else HOPS_DATA_SIZE
     filler = _generate_filler(b'rho', hops_data, hop_shared_secrets, data_size)
@@ -290,6 +291,16 @@ def new_onion_packet2(
             # onionmsg_tlv_bytes = onionmsg_tlv_fd.getvalue()
             # _logger.info(f"onionmsg_tlv_bytes for hop {i}: {onionmsg_tlv_bytes.hex()}")
             # hops_data[i]._raw_bytes_payload = onionmsg_tlv_bytes
+
+    # return new_onion_packet(
+    #     payment_path_pubkeys=blindings,
+    #     session_key=session_key,
+    #     hops_data=hops_data,
+    #     associated_data=associated_data,
+    #     trampoline=trampoline,
+    # )
+
+    hop_shared_secrets, blindings = get_shared_secrets_along_route2(blindings, session_key)
 
     # data_size = TRAMPOLINE_HOPS_DATA_SIZE if trampoline else HOPS_DATA_SIZE
     data_size = HOPS_DATA_SIZE  # TODO: bigger alt size dep on data amount
