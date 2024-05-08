@@ -24,6 +24,8 @@ TRAMPOLINE_NODES_MAINNET = {
 TRAMPOLINE_NODES_TESTNET = {
     'endurance': LNPeerAddr(host='34.250.234.192', port=9735, pubkey=bytes.fromhex('03933884aaf1d6b108397e5efe5c86bcf2d8ca8d2f700eda99db9214fc2712b134')),
     'Electrum trampoline': LNPeerAddr(host='lightning.electrum.org', port=9739, pubkey=bytes.fromhex('02bf82e22f99dcd7ac1de4aad5152ce48f0694c46ec582567f379e0adbf81e2d0f')),
+    'Electrum lnd':        LNPeerAddr(host='195.201.207.61',         port=9736, pubkey=bytes.fromhex('034cc6216fa9c95baf29f0f511d6fd2db0b145bafc45d7be91edf342f9c81db154')),
+    'aranguren.org':       LNPeerAddr(host='203.132.94.196',         port=9735, pubkey=bytes.fromhex('038863cf8ab91046230f561cd5b386cbff8309fa02e3f0c3ed161a3aeb64a643b9')),
 }
 
 TRAMPOLINE_NODES_SIGNET = {
@@ -48,7 +50,7 @@ def hardcoded_trampoline_nodes() -> Mapping[str, LNPeerAddr]:
 def trampolines_by_id():
     return dict([(x.pubkey, x) for x in hardcoded_trampoline_nodes().values()])
 
-def is_hardcoded_trampoline(node_id: bytes) -> bool:
+def is_hardcoded_trampoline(node_id: bytes) -> bool:  #
     return node_id in trampolines_by_id()
 
 def encode_routing_info(r_tags: Sequence[Sequence[Sequence[Any]]]) -> bytes:

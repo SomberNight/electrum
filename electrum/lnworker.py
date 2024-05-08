@@ -1645,7 +1645,7 @@ class LNWallet(LNWorker):
                 code, data = failure_msg.code, failure_msg.data
                 self.logger.info(f"UPDATE_FAIL_HTLC. code={repr(code)}. "
                                  f"decoded_data={failure_msg.decode_data()}. data={data.hex()!r}")
-                self.logger.info(f"error reported by {erring_node_id.hex()}")
+                self.logger.info(f"error reported by {erring_node_id.hex()}")  #
                 if code == OnionFailureCode.MPP_TIMEOUT:
                     raise PaymentFailure(failure_msg.code_name())
                 # errors returned by the next trampoline.
@@ -1655,8 +1655,14 @@ class LNWallet(LNWorker):
                     raise failure_msg
                 # trampoline
                 if self.uses_trampoline():
-                    paysession.handle_failed_trampoline_htlc(
-                        htlc_log=htlc_log, failure_msg=failure_msg)
+                    from .trampoline import TRAMPOLINE_NODES_TESTNET
+                    for key, peer_addr in list(TRAMPOLINE_NODES_TESTNET.items()):
+                        if peer_addr.pubkey == erring_node_id and code == OnionFailureCode.INCORRECT_OR_UNKNOWN_PAYMENT_DETAILS:
+                            TRAMPOLINE_NODES_TESTNET.pop(key)
+                            break
+                    else:
+                        paysession.handle_failed_trampoline_htlc(
+                            htlc_log=htlc_log, failure_msg=failure_msg)
                 else:
                     self.handle_error_code_from_failed_htlc(
                         route=route, sender_idx=sender_idx, failure_msg=failure_msg, amount=htlc_log.amount_msat)
@@ -1860,6 +1866,7 @@ class LNWallet(LNWorker):
         return addr
 
     def is_trampoline_peer(self, node_id: bytes) -> bool:
+        #return True
         # until trampoline is advertised in lnfeatures, check against hardcoded list
         if is_hardcoded_trampoline(node_id):
             return True
