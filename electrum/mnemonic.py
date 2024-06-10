@@ -270,11 +270,17 @@ def calc_seed_type(x: str) -> str:
         return 'standard'
     elif is_new_seed(x, version.SEED_PREFIX_SW):
         return 'segwit'
-    elif is_new_seed(x, version.SEED_PREFIX_2FA) and (num_words == 12 or num_words >= 20):
+    elif is_new_seed(x, version.SEED_PREFIX_2FA):
         # Note: in Electrum 2.7, there was a breaking change in key derivation
         #       for this seed type. Unfortunately the seed version/prefix was reused,
         #       and now we can only distinguish them based on number of words. :(
-        return '2fa'
+        #       pre-2.7 2fa seeds were typically 24-25 words, however they
+        #       could probabilistically be arbitrarily shorter due to a bug. (see #3611)
+        #       the probability of it being < 20 words is about 2^(-(256+12-19*11)) = 2^(-59)
+        if num_words >= 20:  # old scheme
+            return '2fa_type1'
+        elif num_words == 12:  # new scheme
+            return '2fa_type2'
     elif is_new_seed(x, version.SEED_PREFIX_2FA_SW):
         return '2fa_segwit'
     return ''
@@ -286,13 +292,8 @@ def can_seed_have_passphrase(seed: str) -> bool:
         raise Exception(f'unexpected seed type: {stype!r}')
     if stype == 'old':
         return False
-    if stype == '2fa':
-        # post-version-2.7 2fa seeds can have passphrase, but older ones cannot
-        num_words = len(seed.split())
-        if num_words == 12:
-            return True
-        else:
-            return False
+    if stype == '2fa_type1':
+        return False
     # all other types can have a seed extension/passphrase
     return True
 
@@ -302,4 +303,4 @@ def is_seed(x: str) -> bool:
 
 
 def is_any_2fa_seed_type(seed_type: str) -> bool:
-    return seed_type in ['2fa', '2fa_segwit']
+    return seed_type in ['2fa_type1', '2fa_type2', '2fa_segwit']

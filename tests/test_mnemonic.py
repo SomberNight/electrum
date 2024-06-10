@@ -185,14 +185,14 @@ class Test_seeds(ElectrumTestCase):
         ('ostrich security deer aunt climb inner alpha arm mutual marble solid task', 'standard'),
         ('OSTRICH SECURITY DEER AUNT CLIMB INNER ALPHA ARM MUTUAL MARBLE SOLID TASK', 'standard'),
         ('   oStRiCh sEcUrItY DeEr aUnT ClImB       InNeR AlPhA ArM MuTuAl mArBlE   SoLiD TaSk  ', 'standard'),
-        ('science dawn member doll dutch real can brick knife deny drive list', '2fa'),
+        ('science dawn member doll dutch real can brick knife deny drive list', '2fa_type2'),
         ('science dawn member doll dutch real ca brick knife deny drive list', ''),
-        (' sCience dawn   member doll Dutch rEAl can brick knife deny drive  lisT', '2fa'),
+        (' sCience dawn   member doll Dutch rEAl can brick knife deny drive  lisT', '2fa_type2'),
         # pre-version-2.7 2fa seed with 25 words:
-        ('bind clever room kidney crucial sausage spy edit canvas soul liquid ribbon slam open alpha suffer gate relax voice carpet law hill woman tonight abstract', '2fa'),
-        ('  bInd cLEveR    room kidney crucial sausage spy edit canvas soul liquid ribbon SLAM open alpha suffer gate relax voice carpet law hill woman tonight abstract ', '2fa'),
+        ('bind clever room kidney crucial sausage spy edit canvas soul liquid ribbon slam open alpha suffer gate relax voice carpet law hill woman tonight abstract', '2fa_type1'),
+        ('  bInd cLEveR    room kidney crucial sausage spy edit canvas soul liquid ribbon SLAM open alpha suffer gate relax voice carpet law hill woman tonight abstract ', '2fa_type1'),
         # pre-version-2.7 2fa seed with 24 words:
-        ('sibling leg cable timber patient foot occur plate travel finger chef scale radio citizen promote immune must chef fluid sea sphere common acid lab', '2fa'),
+        ('sibling leg cable timber patient foot occur plate travel finger chef scale radio citizen promote immune must chef fluid sea sphere common acid lab', '2fa_type1'),
         ('frost pig brisk excite novel report camera enlist axis nation novel desert', 'segwit'),
         ('  fRoSt pig brisk excIte novel rePort CamEra enlist axis nation nOVeL dEsert ', 'segwit'),
         # short seed cheat sheet:

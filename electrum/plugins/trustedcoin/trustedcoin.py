@@ -542,7 +542,7 @@ class TrustedCoinPlugin(BasePlugin):
     @classmethod
     def get_xkeys(self, seed, t, passphrase, derivation):
         assert is_any_2fa_seed_type(t)
-        xtype = 'standard' if t == '2fa' else 'p2wsh'
+        xtype = 'standard' if t in ['2fa_type1', '2fa_type2'] else 'p2wsh'
         bip32_seed = Mnemonic.mnemonic_to_seed(seed, passphrase=passphrase)
         rootnode = BIP32Node.from_rootseed(bip32_seed, xtype=xtype)
         child_node = rootnode.subkey_at_private_derivation(derivation)
@@ -554,21 +554,14 @@ class TrustedCoinPlugin(BasePlugin):
         if not is_any_2fa_seed_type(t):
             raise Exception(f'unexpected seed type: {t!r}')
         words = seed.split()
-        n = len(words)
-        if t == '2fa':
-            if n >= 20:  # old scheme
-                # note: pre-2.7 2fa seeds were typically 24-25 words, however they
-                # could probabilistically be arbitrarily shorter due to a bug. (see #3611)
-                # the probability of it being < 20 words is about 2^(-(256+12-19*11)) = 2^(-59)
-                if passphrase:
-                    raise Exception("old '2fa'-type electrum seed cannot have passphrase")
-                xprv1, xpub1 = self.get_xkeys(' '.join(words[0:12]), t, '', "m/")
-                xprv2, xpub2 = self.get_xkeys(' '.join(words[12:]), t, '', "m/")
-            elif n == 12:  # new scheme
-                xprv1, xpub1 = self.get_xkeys(seed, t, passphrase, "m/0'/")
-                xprv2, xpub2 = self.get_xkeys(seed, t, passphrase, "m/1'/")
-            else:
-                raise Exception(f'unrecognized seed length for "2fa" seed: {n}')
+        if t == '2fa_type1':
+            if passphrase:
+                raise Exception("old '2fa_type1'-type electrum seed cannot have passphrase")
+            xprv1, xpub1 = self.get_xkeys(' '.join(words[0:12]), t, '', "m/")
+            xprv2, xpub2 = self.get_xkeys(' '.join(words[12:]), t, '', "m/")
+        elif t == '2fa_type2':
+            xprv1, xpub1 = self.get_xkeys(seed, t, passphrase, "m/0'/")
+            xprv2, xpub2 = self.get_xkeys(seed, t, passphrase, "m/1'/")
         elif t == '2fa_segwit':
             xprv1, xpub1 = self.get_xkeys(seed, t, passphrase, "m/0'/")
             xprv2, xpub2 = self.get_xkeys(seed, t, passphrase, "m/1'/")

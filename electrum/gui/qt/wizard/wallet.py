@@ -1010,7 +1010,7 @@ class WCWalletPassword(WalletWizardComponent):
 
 
 class SeedExtensionEdit(QWidget):
-    def __init__(self, parent, *, message: str = None, warning: str = None, warn_issue4566: bool = False):
+    def __init__(self, parent, *, message: str = None, warning: str = None, warn_issue4566: bool = False): #
         super().__init__(parent)
 
         self.warn_issue4566 = warn_issue4566

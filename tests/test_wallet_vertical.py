@@ -174,9 +174,9 @@ class TestWalletKeystoreAddressIntegrityForMainnet(ElectrumTestCase):
         # pre-version-2.7 2fa seed, containing 25 words
         seed_words = 'bind clever room kidney crucial sausage spy edit canvas soul liquid ribbon slam open alpha suffer gate relax voice carpet law hill woman tonight abstract'
         assert len(seed_words.split()) == 25
-        self.assertEqual(calc_seed_type(seed_words), '2fa')
+        self.assertEqual(calc_seed_type(seed_words), '2fa_type1')
 
-        xprv1, xpub1, xprv2, xpub2 = trustedcoin.TrustedCoinPlugin.xkeys_from_seed(seed_words, '')
+        xprv1, xpub1, xprv2, xpub2 = trustedcoin.TrustedCoinPlugin.xkeys_from_seed(seed_words, '')  # TODO add case with passphrase
 
         ks1 = keystore.from_xprv(xprv1)
         self.assertTrue(isinstance(ks1, keystore.BIP32_KeyStore))
@@ -210,7 +210,7 @@ class TestWalletKeystoreAddressIntegrityForMainnet(ElectrumTestCase):
         # pre-version-2.7 2fa seed, containing 24 words
         seed_words = 'sibling leg cable timber patient foot occur plate travel finger chef scale radio citizen promote immune must chef fluid sea sphere common acid lab'
         assert len(seed_words.split()) == 24
-        self.assertEqual(calc_seed_type(seed_words), '2fa')
+        self.assertEqual(calc_seed_type(seed_words), '2fa_type1')
 
         xprv1, xpub1, xprv2, xpub2 = trustedcoin.TrustedCoinPlugin.xkeys_from_seed(seed_words, '')
 
@@ -245,9 +245,9 @@ class TestWalletKeystoreAddressIntegrityForMainnet(ElectrumTestCase):
     async def test_electrum_seed_2fa_legacy_post27(self, mock_save_db):
         # post-version-2.7 2fa seed
         seed_words = 'kiss live scene rude gate step hip quarter bunker oxygen motor glove'
-        self.assertEqual(calc_seed_type(seed_words), '2fa')
+        self.assertEqual(calc_seed_type(seed_words), '2fa_type2')
 
-        xprv1, xpub1, xprv2, xpub2 = trustedcoin.TrustedCoinPlugin.xkeys_from_seed(seed_words, '')
+        xprv1, xpub1, xprv2, xpub2 = trustedcoin.TrustedCoinPlugin.xkeys_from_seed(seed_words, '')  # TODO add case with passphrase
 
         ks1 = keystore.from_xprv(xprv1)
         self.assertTrue(isinstance(ks1, keystore.BIP32_KeyStore))
@@ -281,7 +281,7 @@ class TestWalletKeystoreAddressIntegrityForMainnet(ElectrumTestCase):
         seed_words = 'universe topic remind silver february ranch shine worth innocent cattle enhance wise'
         self.assertEqual(calc_seed_type(seed_words), '2fa_segwit')
 
-        xprv1, xpub1, xprv2, xpub2 = trustedcoin.TrustedCoinPlugin.xkeys_from_seed(seed_words, '')
+        xprv1, xpub1, xprv2, xpub2 = trustedcoin.TrustedCoinPlugin.xkeys_from_seed(seed_words, '')  # TODO add case with passphrase
 
         ks1 = keystore.from_xprv(xprv1)
         self.assertTrue(isinstance(ks1, keystore.BIP32_KeyStore))

@@ -355,6 +355,7 @@ class Commands:
         """Create a seed"""
         from .mnemonic import Mnemonic
         s = Mnemonic(language).make_seed(seed_type=seed_type, num_bits=nbits)
+        # ahhh. nbits
         return s
 
     @command('n')
