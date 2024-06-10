@@ -277,7 +277,7 @@ def calc_seed_type(x: str) -> str:
         #       pre-2.7 2fa seeds were typically 24-25 words, however they
         #       could probabilistically be arbitrarily shorter due to a bug. (see #3611)
         #       the probability of it being < 20 words is about 2^(-(256+12-19*11)) = 2^(-59)
-        if num_words >= 20:  # old scheme
+        if num_words in (24, 25):  # old scheme
             return '2fa_type1'
         elif num_words == 12:  # new scheme
             return '2fa_type2'
