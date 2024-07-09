@@ -920,6 +920,7 @@ class SimpleConfig(Logger):
         return CVLookupHelper()
 
     def _default_swapserver_url(self) -> str:
+        return 'https://swaps.electrum.org/api'
         if constants.net == constants.BitcoinMainnet:
             default = 'https://swaps.electrum.org/api'
         elif constants.net == constants.BitcoinTestnet:

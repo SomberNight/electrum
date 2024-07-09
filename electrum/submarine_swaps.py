@@ -1160,6 +1160,8 @@ class SwapManager(Logger):
 
 class HttpSwapManager(SwapManager):
     async def send_request_to_server(self, method, request_data):
+        if "swap" in method:
+            raise aiohttp.ClientError("heyheyhey")
         response = await self.network.async_send_http_on_proxy(
             'post' if request_data else 'get',
             self.api_url + '/' + method,

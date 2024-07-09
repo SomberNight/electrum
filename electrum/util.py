@@ -2087,6 +2087,8 @@ def get_running_loop() -> Optional[asyncio.AbstractEventLoop]:
         return None
 
 
+# TODO parameterise "DO NOT TRUST THIS MESSAGE"
+
 def error_text_str_to_safe_str(err: str, *, max_len: Optional[int] = 500) -> str:
     """Converts an untrusted error string to a sane printable ascii str.
     Never raises.

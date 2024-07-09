@@ -96,7 +96,6 @@ async def get_payment_request(url: str) -> 'PaymentRequest':
                 error += f"\nGot HTTP status code {e.status}."
                 if resp_content:
                     error_text_received = error_text_bytes_to_safe_str(resp_content)
-                    error_text_received = error_text_received[:400]
                     error_oneline = ' -- '.join(error.split('\n'))
                     _logger.info(f"{error_oneline} -- [DO NOT TRUST THIS MESSAGE] "
                                  f"{repr(e)} text: {error_text_received}")
@@ -315,7 +314,6 @@ class PaymentRequest:
                 error += f"\nGot HTTP status code {e.status}."
                 if resp_content:
                     error_text_received = error_text_bytes_to_safe_str(resp_content)
-                    error_text_received = error_text_received[:400]
                     error_oneline = ' -- '.join(error.split('\n'))
                     _logger.info(f"{error_oneline} -- [DO NOT TRUST THIS MESSAGE] "
                                  f"{repr(e)} text: {error_text_received}")

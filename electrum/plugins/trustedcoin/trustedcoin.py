@@ -102,7 +102,7 @@ MOBILE_DISCLAIMER = [
 RESTORE_MSG = _("Enter the seed for your 2-factor wallet:")
 
 
-class TrustedCoinException(Exception):
+class TrustedCoinException(Exception):  #
     def __init__(self, message, *, status_code=0):
         # note: 'message' is arbitrary text coming from the server
         safer_message = (

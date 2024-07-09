@@ -16,6 +16,7 @@ from electrum.segwit_addr import bech32_decode, Encoding, convertbits, bech32_en
 from electrum.lnaddr import LnDecodeException, LnEncodeException
 from electrum.network import Network
 from electrum.logging import get_logger
+from electrum.util import error_text_str_to_safe_str
 
 if TYPE_CHECKING:
     from collections.abc import Coroutine
@@ -82,17 +83,29 @@ async def _request_lnurl(url: str) -> dict:
     if not _is_url_safe_enough_for_lnurl(url):
         raise LNURLError(f"This lnurl looks unsafe. It must use 'https://' or '.onion' (found: {url[:10]}...)")
     try:
+        msg = "heyheyhey11"
+        msg = f"{msg} {msg} {msg} {msg} {msg}"
+        msg = f"{msg} {msg} {msg} {msg} {msg}"
+        msg = f"{msg} {msg} {msg} {msg} {msg}"
+        msg = f"{msg} {msg} {msg} {msg} {msg}"
+        raise aiohttp.ClientResponseError(request_info=None, history=None, message=msg, status=403)
         response_raw = await Network.async_send_http_on_proxy("get", url, timeout=10)
     except asyncio.TimeoutError as e:
         raise LNURLError("LNURL server did not reply in time.") from e
     except aiohttp.client_exceptions.ClientError as e:
-        raise LNURLError(f"Client error: {e}") from e
+        error = f"HTTP error while contacting LNURL server: {url}.\nerror type: {type(e)}"
+        if isinstance(e, aiohttp.ClientResponseError):
+            error += (
+                f"\n[DO NOT TRUST THIS MESSAGE]:\n\n"
+                f"status_code={e.status}\n\n"
+                f"{error_text_str_to_safe_str(e.message)}")
+        raise LNURLError(error) from None
     try:
         response = json.loads(response_raw)
     except json.JSONDecodeError:
         raise LNURLError(f"Invalid response from LNURL server")
 
-    status = response.get("status")
+    status = response.get("status")  #
     if status and status == "ERROR":
         raise LNURLError(f"LNURL request encountered an error: {response.get('reason', '<missing reason>')}")
     return response
@@ -146,6 +159,7 @@ async def callback_lnurl(url: str, params: dict) -> dict:
     if not _is_url_safe_enough_for_lnurl(url):
         raise LNURLError(f"This lnurl looks unsafe. It must use 'https://' or '.onion' (found: {url[:10]}...)")
     try:
+        raise aiohttp.ClientError("heyheyhey22")
         response_raw = await Network.async_send_http_on_proxy("get", url, params=params)
     except asyncio.TimeoutError as e:
         raise LNURLError("LNURL server did not reply in time.") from e
