@@ -109,6 +109,9 @@ class MockWallet:
     receive_requests = {}
     adb = MockADB()
 
+    def __init__(self, *, name: str):
+        self.name = name
+
     def get_request(self, key):
         pass
 
@@ -130,6 +133,11 @@ class MockWallet:
     def get_fingerprint(self):
         return ''
 
+    def get_new_sweep_address_for_channel(self):
+        privkey = sha256("sweep_addr:" + self.name)
+        pubkey = lnutil.privkey_to_pubkey(privkey)
+        return bitcoin.pubkey_to_address('p2wpkh', pubkey.hex())
+
 
 class MockLNGossip:
     def get_sync_progress_estimate(self):
@@ -148,7 +156,7 @@ class MockLNWallet(Logger, EventListener, NetworkRetryManager[LNPeerAddr]):
         Logger.__init__(self)
         NetworkRetryManager.__init__(self, max_retry_delay_normal=1, init_retry_delay_normal=1)
         self.node_keypair = local_keypair
-        self.payment_secret_key = os.urandom(256) # does not need to be deterministic in tests
+        self.payment_secret_key = os.urandom(32)  # does not need to be deterministic in tests
         self._user_dir = tempfile.mkdtemp(prefix="electrum-lnpeer-test-")
         self.config = SimpleConfig({}, read_user_dir_function=lambda: self._user_dir)
         self.network = MockNetwork(tx_queue, config=self.config)
@@ -159,7 +167,7 @@ class MockLNWallet(Logger, EventListener, NetworkRetryManager[LNPeerAddr]):
         self._channels = {chan.channel_id: chan for chan in chans}
         self.payment_info = {}
         self.logs = defaultdict(list)
-        self.wallet = MockWallet()
+        self.wallet = MockWallet(name=self.name)
         self.features = LnFeatures(0)
         self.features |= LnFeatures.OPTION_DATA_LOSS_PROTECT_OPT
         self.features |= LnFeatures.OPTION_UPFRONT_SHUTDOWN_SCRIPT_OPT

@@ -283,10 +283,10 @@ class AbstractChannel(Logger, ABC):
         self.storage.pop('closing_height', None)
 
     def create_sweeptxs_for_our_ctx(self, ctx):
-        return create_sweeptxs_for_our_ctx(chan=self, ctx=ctx, sweep_address=self.get_sweep_address())
+        return create_sweeptxs_for_our_ctx(chan=self, ctx=ctx, sweep_address=self.get_new_sweep_address())
 
     def create_sweeptxs_for_their_ctx(self, ctx):
-        return create_sweeptxs_for_their_ctx(chan=self, ctx=ctx, sweep_address=self.get_sweep_address())
+        return create_sweeptxs_for_their_ctx(chan=self, ctx=ctx, sweep_address=self.get_new_sweep_address())
 
     def is_backup(self):
         return False
@@ -415,13 +415,11 @@ class AbstractChannel(Logger, ABC):
     def get_funding_address(self) -> str:
         pass
 
-    @abstractmethod
-    def get_sweep_address(self) -> str:
-        """Returns a wallet address we can use to sweep coins to.
-        It could be something static to the channel (fixed for its lifecycle),
-        or it might just ask the wallet now for an unused address.
-        """
-        pass
+    def get_new_sweep_address(self) -> str:
+        """Returns a wallet address we can use to sweep coins to."""
+        # note: subsequent calls generate the same address, unless the wallet sees the previous one as "used"
+        # TODO: in case of unilateral close with pending HTLCs, this address will be reused
+        return self.lnworker.wallet.get_new_sweep_address_for_channel()
 
     def get_state_for_GUI(self) -> str:
         cs = self.get_state()
@@ -590,7 +588,7 @@ class ChannelBackup(AbstractChannel):
 
     def create_sweeptxs_for_our_ctx(self, ctx):
         if self.is_imported:
-            return create_sweeptxs_for_our_ctx(chan=self, ctx=ctx, sweep_address=self.get_sweep_address())
+            return create_sweeptxs_for_our_ctx(chan=self, ctx=ctx, sweep_address=self.get_new_sweep_address())
         else:
             # backup from op_return
             return {}
@@ -627,9 +625,6 @@ class ChannelBackup(AbstractChannel):
 
     def is_frozen_for_receiving(self) -> bool:
         return False
-
-    def get_sweep_address(self) -> str:
-        return self.lnworker.wallet.get_new_sweep_address_for_channel()
 
     def get_local_pubkey(self) -> bytes:
         cb = self.cb
@@ -872,15 +867,6 @@ class Channel(AbstractChannel):
     def is_zeroconf(self) -> bool:
         channel_type = ChannelType(self.storage.get('channel_type'))
         return bool(channel_type & ChannelType.OPTION_ZEROCONF)
-
-    def get_sweep_address(self) -> str:
-        # TODO: in case of unilateral close with pending HTLCs, this address will be reused
-        assert self.is_static_remotekey_enabled()
-        our_payment_pubkey = self.config[LOCAL].payment_basepoint.pubkey
-        addr = make_commitment_output_to_remote_address(our_payment_pubkey)
-        if self.lnworker:
-            assert self.lnworker.wallet.is_mine(addr)
-        return addr
 
     def get_wallet_addresses_channel_might_want_reserved(self) -> Sequence[str]:
         assert self.is_static_remotekey_enabled()
@@ -1440,10 +1426,27 @@ class Channel(AbstractChannel):
         ctn = self.get_oldest_unrevoked_ctn(subject)
         return self.get_commitment(subject, ctn=ctn)
 
+    def get_static_sweep_address_for_watchtower(self) -> str:
+        """Unlike get_new_sweep_address(),
+        1. the address depends on the channel
+           - calling chan1.get_new_sweep_address() and chan2.get_new_sweep_address() in succession
+             would return the same address for both, resulting in address-reuse across channels.
+        2. the address returned by this method never changes
+           - if the remote broadcasts a revoked state, the watchtower will sweep to the same address
+             regardless of ctn
+        """
+        assert self.is_static_remotekey_enabled()
+        our_payment_pubkey = self.config[LOCAL].payment_basepoint.pubkey
+        addr = make_commitment_output_to_remote_address(our_payment_pubkey)
+        if self.lnworker:
+            assert self.lnworker.wallet.is_mine(addr)
+        return addr
+
     def create_sweeptxs_for_watchtower(self, ctn: int) -> List[Transaction]:
         from .lnsweep import create_sweeptxs_for_watchtower
         secret, ctx = self.get_secret_and_commitment(REMOTE, ctn=ctn)
-        return create_sweeptxs_for_watchtower(self, ctx, secret, self.get_sweep_address())
+        sweep_address = self.get_static_sweep_address_for_watchtower()
+        return create_sweeptxs_for_watchtower(self, ctx, secret, sweep_address=sweep_address)
 
     def get_oldest_unrevoked_ctn(self, subject: HTLCOwner) -> int:
         return self.hm.ctn_oldest_unrevoked(subject)
@@ -1670,7 +1673,7 @@ class Channel(AbstractChannel):
 
     def maybe_sweep_revoked_htlc(self, ctx: Transaction, htlc_tx: Transaction) -> Optional[SweepInfo]:
         # look at the output address, check if it matches
-        return create_sweeptx_for_their_revoked_htlc(self, ctx, htlc_tx, self.get_sweep_address())
+        return create_sweeptx_for_their_revoked_htlc(self, ctx, htlc_tx, self.get_new_sweep_address())
 
     def has_pending_changes(self, subject: HTLCOwner) -> bool:
         next_htlcs = self.hm.get_htlcs_in_next_ctx(subject)
