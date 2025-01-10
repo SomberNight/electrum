@@ -5,20 +5,77 @@ set -e
 PROJECT_ROOT="$(dirname "$(readlink -e "$0")")/../../.."
 CONTRIB="$PROJECT_ROOT/contrib"
 CONTRIB_SDIST="$CONTRIB/build-linux/sdist"
+CONTRIB_APPIMAGE="$CONTRIB/build-linux/appimage"
+# ^ FIXME rm
 DISTDIR="$PROJECT_ROOT/dist"
 LOCALE="$PROJECT_ROOT/electrum/locale"
+BUILDDIR="$CONTRIB_SDIST/build"
+CACHEDIR="$CONTRIB_SDIST/.cache"
 
 . "$CONTRIB"/build_tools_util.sh
 
 git -C "$PROJECT_ROOT" rev-parse 2>/dev/null || fail "Building outside a git clone is not supported."
 
-python3 --version || fail "python interpreter not found"
+
+
+PYTHON_VERSION=3.11.9
+PY_VER_MAJOR="3.11"  # as it appears in fs paths
+
+rm -rf "$BUILDDIR"
+mkdir -p "$BUILDDIR" "$CACHEDIR"
+
+download_if_not_exist "$CACHEDIR/Python-$PYTHON_VERSION.tar.xz" "https://www.python.org/ftp/python/$PYTHON_VERSION/Python-$PYTHON_VERSION.tar.xz"
+verify_hash "$CACHEDIR/Python-$PYTHON_VERSION.tar.xz" "9b1e896523fc510691126c864406d9360a3d1e986acbda59cda57b5abda45b87"
+
+info "building python."
+tar xf "$CACHEDIR/Python-$PYTHON_VERSION.tar.xz" -C "$CACHEDIR"
+(
+    if [ -f "$CACHEDIR/Python-$PYTHON_VERSION/python" ]; then
+        info "python already built, skipping"
+        exit 0
+    fi
+    cd "$CACHEDIR/Python-$PYTHON_VERSION"
+    LC_ALL=C export BUILD_DATE=$(date -u -d "@$SOURCE_DATE_EPOCH" "+%b %d %Y")
+    LC_ALL=C export BUILD_TIME=$(date -u -d "@$SOURCE_DATE_EPOCH" "+%H:%M:%S")
+    # Patches taken from Ubuntu http://archive.ubuntu.com/ubuntu/pool/main/p/python3.11/python3.11_3.11.6-3.debian.tar.xz
+    patch -p1 < "$CONTRIB_APPIMAGE/patches/python-3.11-reproducible-buildinfo.diff"
+    ./configure \
+        --cache-file="$CACHEDIR/python.config.cache" \
+        --prefix="$BUILDDIR/usr" \
+        --enable-ipv6 \
+        --enable-shared \
+        -q
+    make "-j$CPU_COUNT" -s || fail "Could not build Python"
+)
+info "installing python."
+(
+    cd "$CACHEDIR/Python-$PYTHON_VERSION"
+    make -s install > /dev/null || fail "Could not install Python"
+)
+
+
+function built_python() {
+    env \
+        PYTHONNOUSERSITE=1 \
+        LD_LIBRARY_PATH="$BUILDDIR/usr/lib:$BUILDDIR/usr/lib/x86_64-linux-gnu${LD_LIBRARY_PATH+:$LD_LIBRARY_PATH}" \
+        "$BUILDDIR/usr/bin/python${PY_VER_MAJOR}" "$@"
+}
+
+python='built_python'
+
+
+
+
+
+
+
+"$python" --version || fail "python interpreter not found"
 
 break_legacy_easy_install
 
-python3 -m pip install --upgrade --break-system-packages pip build
+"$python" -m pip install --upgrade --break-system-packages pip build
 
-python3 -m pip install --break-system-packages --no-build-isolation --no-dependencies --no-warn-script-location \
+"$python" -m pip install --break-system-packages --no-build-isolation --no-dependencies --no-warn-script-location \
     --cache-dir "$PIP_CACHE_DIR" -r "$CONTRIB/deterministic-build/requirements-build-base.txt"
 
 rm -rf "$PROJECT_ROOT/packages/"
@@ -45,6 +102,7 @@ if ([ "$OMIT_UNCLEAN_FILES" = 1 ]); then
 fi
 
 (
+    set -x
     cd "$PROJECT_ROOT"
 
     find -exec touch -h -d '2000-11-11T11:11:11+00:00' {} +
@@ -55,10 +113,22 @@ fi
     else
         PY_DISTDIR="dist"
     fi
-    #TZ=UTC faketime -f '2000-11-11 11:11:11' python3 setup.py --quiet sdist --format=gztar --dist-dir="$PY_DISTDIR"
-    TZ=UTC faketime -f '2000-11-11 11:11:11' python3 -m build --sdist . --no-isolation --outdir="$PY_DISTDIR"
+
+    "$python" --version || fail "python interpreter not found 1"
+    TZ=UTC \
+        PYTHONNOUSERSITE=1 \
+        LD_LIBRARY_PATH="$BUILDDIR/usr/lib:$BUILDDIR/usr/lib/x86_64-linux-gnu${LD_LIBRARY_PATH+:$LD_LIBRARY_PATH}" \
+        faketime -f '2000-11-11 11:11:11' \
+        "$BUILDDIR/usr/bin/python${PY_VER_MAJOR}" --version || fail "python interpreter not found 2"
+
+    #TZ=UTC faketime -f '2000-11-11 11:11:11' "$python" setup.py --quiet sdist --format=gztar --dist-dir="$PY_DISTDIR"
+    TZ=UTC \
+        PYTHONNOUSERSITE=1 \
+        LD_LIBRARY_PATH="$BUILDDIR/usr/lib:$BUILDDIR/usr/lib/x86_64-linux-gnu${LD_LIBRARY_PATH+:$LD_LIBRARY_PATH}" \
+        faketime -f '2000-11-11 11:11:11' \
+        "$BUILDDIR/usr/bin/python${PY_VER_MAJOR}" -m build --sdist . --no-isolation --outdir="$PY_DISTDIR"
     if ([ "$OMIT_UNCLEAN_FILES" = 1 ]); then
-        python3 <<EOF
+        "$python" <<EOF
 import importlib.util
 import os
 
