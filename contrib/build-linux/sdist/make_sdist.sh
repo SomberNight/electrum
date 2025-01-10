@@ -16,6 +16,11 @@ python3 --version || fail "python interpreter not found"
 
 break_legacy_easy_install
 
+python3 -m pip install --upgrade --break-system-packages pip build
+
+python3 -m pip install --break-system-packages --no-build-isolation --no-dependencies --no-warn-script-location \
+    --cache-dir "$PIP_CACHE_DIR" -r "$CONTRIB/deterministic-build/requirements-build-base.txt"
+
 rm -rf "$PROJECT_ROOT/packages/"
 if ([ "$OMIT_UNCLEAN_FILES" != 1 ]); then
     "$CONTRIB"/make_packages.sh || fail "make_packages failed"
@@ -50,7 +55,8 @@ fi
     else
         PY_DISTDIR="dist"
     fi
-    TZ=UTC faketime -f '2000-11-11 11:11:11' python3 setup.py --quiet sdist --format=gztar --dist-dir="$PY_DISTDIR"
+    #TZ=UTC faketime -f '2000-11-11 11:11:11' python3 setup.py --quiet sdist --format=gztar --dist-dir="$PY_DISTDIR"
+    TZ=UTC faketime -f '2000-11-11 11:11:11' python3 -m build --sdist . --no-isolation --outdir="$PY_DISTDIR"
     if ([ "$OMIT_UNCLEAN_FILES" = 1 ]); then
         python3 <<EOF
 import importlib.util
