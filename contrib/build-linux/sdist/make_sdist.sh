@@ -18,14 +18,14 @@ git -C "$PROJECT_ROOT" rev-parse 2>/dev/null || fail "Building outside a git clo
 
 
 
-PYTHON_VERSION=3.11.9
-PY_VER_MAJOR="3.11"  # as it appears in fs paths
+PYTHON_VERSION=3.10.16
+PY_VER_MAJOR="3.10"  # as it appears in fs paths
 
 rm -rf "$BUILDDIR"
 mkdir -p "$BUILDDIR" "$CACHEDIR"
 
 download_if_not_exist "$CACHEDIR/Python-$PYTHON_VERSION.tar.xz" "https://www.python.org/ftp/python/$PYTHON_VERSION/Python-$PYTHON_VERSION.tar.xz"
-verify_hash "$CACHEDIR/Python-$PYTHON_VERSION.tar.xz" "9b1e896523fc510691126c864406d9360a3d1e986acbda59cda57b5abda45b87"
+verify_hash "$CACHEDIR/Python-$PYTHON_VERSION.tar.xz" "bfb249609990220491a1b92850a07135ed0831e41738cf681d63cf01b2a8fbd1"
 
 info "building python."
 tar xf "$CACHEDIR/Python-$PYTHON_VERSION.tar.xz" -C "$CACHEDIR"
@@ -126,7 +126,12 @@ fi
         PYTHONNOUSERSITE=1 \
         LD_LIBRARY_PATH="$BUILDDIR/usr/lib:$BUILDDIR/usr/lib/x86_64-linux-gnu${LD_LIBRARY_PATH+:$LD_LIBRARY_PATH}" \
         faketime -f '2000-11-11 11:11:11' \
-        "$BUILDDIR/usr/bin/python${PY_VER_MAJOR}" -m build --sdist . --no-isolation --outdir="$PY_DISTDIR"
+        "$BUILDDIR/usr/bin/python${PY_VER_MAJOR}" setup.py --quiet sdist --format=gztar --dist-dir="$PY_DISTDIR"
+#    TZ=UTC \
+#        PYTHONNOUSERSITE=1 \
+#        LD_LIBRARY_PATH="$BUILDDIR/usr/lib:$BUILDDIR/usr/lib/x86_64-linux-gnu${LD_LIBRARY_PATH+:$LD_LIBRARY_PATH}" \
+#        faketime -f '2000-11-11 11:11:11' \
+#        "$BUILDDIR/usr/bin/python${PY_VER_MAJOR}" -m build --sdist . --no-isolation --outdir="$PY_DISTDIR"
     if ([ "$OMIT_UNCLEAN_FILES" = 1 ]); then
         "$python" <<EOF
 import importlib.util

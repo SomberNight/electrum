@@ -17,6 +17,7 @@ RUN apt-get update -q && \
         openssl \
         zlib1g-dev \
         libffi-dev \
+        pkg-config \
         && \
     rm -rf /var/lib/apt/lists/* && \
     apt-get autoremove -y && \
