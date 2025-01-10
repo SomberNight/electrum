@@ -12,14 +12,9 @@ LOCALE="$PROJECT_ROOT/electrum/locale"
 
 git -C "$PROJECT_ROOT" rev-parse 2>/dev/null || fail "Building outside a git clone is not supported."
 
-# note that at least py3.7 is needed, to have https://bugs.python.org/issue30693
 python3 --version || fail "python interpreter not found"
 
 break_legacy_easy_install
-
-# upgrade to modern pip so that it knows the flags we need.
-# (make_packages.sh will later install a pinned version of pip in a venv)
-python3 -m pip install --upgrade pip
 
 rm -rf "$PROJECT_ROOT/packages/"
 if ([ "$OMIT_UNCLEAN_FILES" != 1 ]); then
