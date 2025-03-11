@@ -13,6 +13,7 @@ from electrum.util import format_satoshis, EventListener, event_listener
 from electrum.bitcoin import is_address, COIN
 from electrum.transaction import PartialTxOutput
 from electrum.network import TxBroadcastError, BestEffortRequestFailed
+from electrum.fee_policy import FixedFeePolicy
 
 _ = lambda x:x  # i18n
 
@@ -214,7 +215,7 @@ class ElectrumGui(BaseElectrumGui, EventListener):
             tx = self.wallet.create_transaction(
                 outputs=[PartialTxOutput.from_address_and_value(self.str_recipient, amount)],
                 password=password,
-                fee=fee,
+                fee_policy=FixedFeePolicy(fee),
             )
         except Exception as e:
             print(repr(e))
