@@ -366,7 +366,7 @@ class PaddedRSTransport(RSTransport):
         else:
             # This a short-lived "fetch_certificate"-type session.
             # No polling here, we always force-empty the buffer.
-            self._low_watermark = 0
+            self._low_watermark = 0  # FIXME not sufficient, due to (1) vs (2) choice. maybe add "force send" field instead
 
 
 class ServerAddr:
