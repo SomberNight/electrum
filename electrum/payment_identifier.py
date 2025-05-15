@@ -656,7 +656,8 @@ class PaymentIdentifier(Logger):
         if parts and len(parts) > 0 and bitcoin.is_address(parts[0]):
             return None
         try:
-            data = self.contacts.resolve(key)  # TODO: don't use contacts as delegate to resolve openalias, separate.
+            # TODO: don't use contacts as delegate to resolve openalias, separate.
+            data = await self.contacts.resolve(key)
             return data
         except AliasNotFoundException as e:
             self.logger.info(f'OpenAlias not found: {repr(e)}')

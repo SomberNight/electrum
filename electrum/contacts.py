@@ -22,10 +22,12 @@
 # SOFTWARE.
 import re
 from typing import Optional, Tuple, Dict, Any, TYPE_CHECKING
+from functools import partial
 
 import dns
 import threading
 from dns.exception import DNSException
+from aiorpcx import run_in_thread
 
 from . import bitcoin
 from . import dnssec
@@ -84,7 +86,7 @@ class Contacts(dict, Logger):
             self.save()
             return res
 
-    def resolve(self, k):
+    async def resolve(self, k):  # TODO fix callers
         if bitcoin.is_address(k):
             return {
                 'address': k,
@@ -97,7 +99,8 @@ class Contacts(dict, Logger):
                     'address': addr,
                     'type': 'contact'
                 }
-        if openalias := self.resolve_openalias(k):
+        openalias = await run_in_thread(partial(self.resolve_openalias, k))
+        if openalias:
             return openalias
         raise AliasNotFoundException("Invalid Bitcoin address or alias", k)
 
