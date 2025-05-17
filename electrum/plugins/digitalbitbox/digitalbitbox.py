@@ -568,7 +568,7 @@ class DigitalBitbox_KeyStore(Hardware_KeyStore):
                 def input_script(self, txin: PartialTxInput, *, estimate_size=False):
                     desc = txin.script_descriptor
                     if isinstance(desc, descriptor.PKHDescriptor):
-                        return Transaction.get_preimage_script(txin)
+                        return Transaction.get_preimage_script(txin)  # FIXME
                     raise Exception(f"unsupported txin type. only p2pkh is supported. got: {desc.to_string()[:10]}")
                 tx_copy.input_script = input_script.__get__(tx_copy, PartialTransaction)
                 tx_dbb_serialized = tx_copy.serialize_to_network()

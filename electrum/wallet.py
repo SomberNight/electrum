@@ -64,7 +64,8 @@ from .fee_policy import FeePolicy, FixedFeePolicy, FEE_RATIO_HIGH_WARNING, FEERA
 from .storage import StorageEncryptionVersion, WalletStorage
 from .wallet_db import WalletDB
 from .transaction import (
-    Transaction, TxInput, TxOutput, PartialTransaction, PartialTxInput, PartialTxOutput, TxOutpoint, Sighash
+    Transaction, TxInput, TxOutput, PartialTransaction, PartialTxInput, PartialTxOutput, TxOutpoint, Sighash,
+    tx_from_any,
 )
 from .plugin import run_hook
 from .address_synchronizer import (
@@ -2695,6 +2696,7 @@ class Abstract_Wallet(ABC, Logger, EventListener):
                 txin.script_sig = b''
                 txin.witness = txin.make_witness(sig)
                 assert txin.is_complete()
+                assert tx.verify_sig_for_txin(txin_index=i, pubkey_bytes=ecc.ECPrivkey(privkey).get_public_key_bytes(), sig=sig)
 
         # add info to a temporary tx copy; including xpubs
         # and full derivation paths as hw keystores might want them
@@ -2710,6 +2712,19 @@ class Abstract_Wallet(ABC, Logger, EventListener):
                     k.sign_transaction(tmp_tx, password)
             except UserCancelled:
                 continue
+
+        def tx_verify_sigs_we_just_created(tx: PartialTransaction) -> None:  # FIXME maybe just move to tests
+            partial_tx = copy.deepcopy(tx)  # no side-effects
+            del tx
+            tx2 = tx_from_any(str(copy.deepcopy(partial_tx)))  # type: Union[Transaction, PartialTransaction]
+            for txin_index, txin in enumerate(partial_tx.inputs()):
+                tx2.inputs()[txin_index].utxo = txin.utxo
+                assert len(txin.sigs_ecdsa) > 0
+                for pubkey, sig in txin.sigs_ecdsa.items():
+                    assert tx2.verify_sig_for_txin(txin_index=txin_index, pubkey_bytes=pubkey, sig=sig)
+
+        tx_verify_sigs_we_just_created(tmp_tx)
+
         # remove sensitive info; then copy back details from temporary tx
         tmp_tx.remove_xpubs_and_bip32_paths()
         tx.combine_with_other_psbt(tmp_tx)

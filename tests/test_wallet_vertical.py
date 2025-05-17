@@ -2,7 +2,7 @@ import unittest
 from unittest import mock
 import shutil
 import tempfile
-from typing import Sequence
+from typing import Sequence, Union
 import asyncio
 import copy
 
@@ -16,7 +16,7 @@ from electrum.wallet import (sweep, Multisig_Wallet, Standard_Wallet, Imported_W
                              TxSighashRiskLevel)
 from electrum.util import bfh, NotEnoughFunds, UnrelatedTransactionException, UserFacingException, TxMinedInfo
 from electrum.fee_policy import FixedFeePolicy
-from electrum.transaction import Transaction, PartialTxOutput, tx_from_any, Sighash
+from electrum.transaction import Transaction, PartialTxOutput, tx_from_any, Sighash, PartialTransaction
 from electrum.mnemonic import calc_seed_type
 from electrum.network import Network
 
