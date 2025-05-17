@@ -393,8 +393,11 @@ def sweep_our_ctx(
                 txin=htlc_tx.inputs()[0],
                 txout=htlc_tx.outputs()[0],
                 can_be_batched=False, # both parties can spend
-                # actually, we might want to batch depending on the context
-                # f(amount in htlc, remaining_time, number of available utxos for anchors)
+                # - actually, we might want to batch depending on the context
+                #   f(amount in htlc, remaining_time, number of available utxos for anchors)
+                #   - in particular, it would be safe to batch htlcs where
+                #        htlc_direction, htlc.payment_hash, htlc.cltv_abs
+                #     all match. That is, MPP htlcs for the same payment.
             )
         else:
             # second-stage

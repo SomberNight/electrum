@@ -703,6 +703,14 @@ class AddressSynchronizer(Logger, EventListener):
     def get_tx_height(self, tx_hash: str) -> TxMinedInfo:
         if tx_hash is None:  # ugly backwards compat...
             return TxMinedInfo(height=TX_HEIGHT_LOCAL, conf=0)
+        tx = self.db.get_transaction(tx_hash)
+        if tx is None or isinstance(tx, PartialTransaction):
+            # It can happen for a txid in any state (unconf/unverified/verified) that we
+            # don't have the raw tx yet, simply due to network timing.
+            # Having only a partial tx is another variant of this.
+            # FIXME in fact even if we have a complete tx saved, the server might have
+            #       a different tx if only the witness differs. We should compare wtxids.
+            return TxMinedInfo(height=TX_HEIGHT_LOCAL, conf=0)
         with self.lock:
             verified_tx_mined_info = self.db.get_verified_tx(tx_hash)
             if verified_tx_mined_info:
