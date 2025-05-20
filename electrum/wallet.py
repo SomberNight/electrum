@@ -3220,7 +3220,7 @@ class Abstract_Wallet(ABC, Logger, EventListener):
         if len(tx.inputs()) == 1 and tx.inputs()[0].is_segwit() and tx.inputs()[0].witness_utxo:
             return TxSighashDanger(risk_level=rl.SAFE)
         # coinjoin or similar
-        if any([not self.is_mine(txin.address) for txin in tx.inputs()]):
+        if any([not self.is_mine(txin.address) for txin in tx.inputs()]):  #
             messages = [(_("Warning") + ": "
                          + _("The input amounts could not be verified as the previous transactions are missing.\n"
                              "The amount of money being spent CANNOT be verified."))]
@@ -3274,7 +3274,7 @@ class Abstract_Wallet(ABC, Logger, EventListener):
             return sighash_danger
         # if we show any fee to the user, check now how reliable that is:
         if self.get_wallet_delta(tx).fee is not None:
-            shd = self._check_risk_of_burning_coins_as_fees(tx)
+            shd = self._check_risk_of_burning_coins_as_fees(tx)  #
             sighash_danger = sighash_danger.combine(shd)
         return sighash_danger
 

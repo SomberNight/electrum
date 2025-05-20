@@ -259,7 +259,7 @@ if [[ $1 == "swapserver_forceclose" ]]; then
         output_index=1
     fi
     # wait until Bob finds preimage onchain and uses it to create an htlc_success tx
-    wait_until_spent $ctx_id $output_index  # alice's to_local gets punished
+    wait_until_spent $ctx_id $output_index
     new_blocks 144
     wait_for_balance bob 0.999
 fi
@@ -304,6 +304,8 @@ if [[ $1 == "extract_preimage" ]]; then
     $alice enable_htlc_settle false
     $bob enable_htlc_settle false
     wait_for_balance alice 1
+    # bob splits his large utxos into two smaller ones, to help with sweeping channel outputs later
+    $bob broadcast $($bob payto $($bob getunusedaddress) 0.5)
     echo "alice opens channel"
     bob_node=$($bob nodeid)
     $alice open_channel $bob_node 0.15 --password='' --push_amount=0.075
@@ -329,21 +331,28 @@ if [[ $1 == "extract_preimage" ]]; then
         exit 1
     fi
     # bob force closes
-    $bob close_channel $chan_id --force
-    new_blocks 1
+    ctx_id=$($bob close_channel --force $chan_id)
+    #sleep 5  ## adding this makes the test fail?!
+    new_blocks 1  # to transition channel state from FORCE_CLOSING to CLOSED
     wait_until_channel_closed bob
     wait_until_channel_closed alice
-    sleep 5
+    if [ $TEST_ANCHOR_CHANNELS = True ] ; then
+        output_index=2  # received_htlc_output in bob's ctx. FIXME assumes a particular MPP-split
+    else
+        output_index=0
+    fi
+    wait_until_spent $ctx_id $output_index
+    sleep 7
     # check logs
     alice_log_found=$(grep -rnw "/tmp/alice/regtest/logs/" -e "found preimage in witness of length 5" | wc -l)
     bob_log_found=$(grep -rnw "/tmp/bob/regtest/logs/" -e "found preimage in witness of length 3" | wc -l)
-    if [[ "$alice_log_found" != "1" ]]; then exit 1; fi
-    if [[ "$bob_log_found" != "1" ]]; then exit 1; fi
+    if [[ "$alice_log_found" != "1" ]]; then echo "alice logline missing";  exit 1; fi
+    if [[ "$bob_log_found" != "1" ]]; then echo "bob logline missing"; exit 1; fi
     # check both "lnpay" commands succeeded
     success=$(cat /tmp/alice/screen1.log | jq -r ".success")
-    if [[ "$success" != "true" ]]; then exit 1; fi
+    if [[ "$success" != "true" ]]; then echo "alice payment failed"; exit 1; fi
     success=$(cat /tmp/bob/screen2.log | jq -r ".success")
-    if [[ "$success" != "true" ]]; then exit 1; fi
+    if [[ "$success" != "true" ]]; then echo "bob payment failed"; exit 1; fi
     cat /tmp/alice/screen1.log
     cat /tmp/bob/screen2.log
 fi

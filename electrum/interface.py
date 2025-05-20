@@ -1096,6 +1096,7 @@ class Interface(Logger):
         return res
 
     async def get_transaction(self, tx_hash: str, *, timeout=None) -> str:
+        await asyncio.sleep(3)
         if not is_hash256_str(tx_hash):
             raise Exception(f"{repr(tx_hash)} is not a txid")
         raw = await self.session.send_request('blockchain.transaction.get', [tx_hash], timeout=timeout)

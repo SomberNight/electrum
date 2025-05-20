@@ -1302,7 +1302,7 @@ class Channel(AbstractChannel):
         with self.db_lock:
             self.hm.recv_ctx()
             self.config[LOCAL].current_commitment_signature=sig
-            self.config[LOCAL].current_htlc_signatures=htlc_sigs_string
+            self.config[LOCAL].current_htlc_signatures=htlc_sigs_string  #
 
     def _verify_htlc_sig(self, *, htlc: UpdateAddHtlc, htlc_sig: bytes, htlc_direction: Direction,
                          pcp: bytes, ctx: Transaction, ctx_output_idx: int, ctn: int) -> None:
@@ -1320,6 +1320,17 @@ class Channel(AbstractChannel):
         pre_hash = htlc_tx.serialize_preimage(0)
         msg_hash = sha256d(pre_hash)
         remote_htlc_pubkey = derive_pubkey(self.config[REMOTE].htlc_basepoint.pubkey, pcp)
+        self.logger.info(
+            f"receive_new_commitment. verifying htlc sig now... "
+            f'{htlc=}, {htlc_direction=}. '
+            f'htlc_tx={htlc_tx.serialize()}. '
+            f'htlc_sig={htlc_sig.hex()}. '
+            f'remote_htlc_pubkey={remote_htlc_pubkey.hex()}. '
+            f'msg_hash={msg_hash.hex()}. '
+            f'ctx={ctx.serialize()}. '
+            f'ctx_output_idx={ctx_output_idx}. '
+            f'ctn={ctn}. '
+        )
         if not ECPubkey(remote_htlc_pubkey).ecdsa_verify(htlc_sig, msg_hash):
             raise LNProtocolWarning(
                 f'failed verifying HTLC signatures: {htlc=}, {htlc_direction=}. '
@@ -1852,7 +1863,7 @@ class Channel(AbstractChannel):
         res = ECPubkey(self.config[REMOTE].multisig_key.pubkey).ecdsa_verify(remote_sig, msg_hash)
         return res
 
-    def force_close_tx(self) -> PartialTransaction:
+    def force_close_tx(self) -> PartialTransaction:  #
         tx = self.get_latest_commitment(LOCAL)
         assert self.signature_fits(tx)
         tx.sign({self.config[LOCAL].multisig_key.pubkey: self.config[LOCAL].multisig_key.privkey})

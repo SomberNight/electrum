@@ -1127,7 +1127,12 @@ class Transaction:
                 scriptCode = var_int(len(preimage_script)) + preimage_script
                 amount = int.to_bytes(txin.value_sats(), length=8, byteorder="little", signed=False)
                 nSequence = int.to_bytes(txin.nsequence, length=4, byteorder="little", signed=False)
-                nHashType = int.to_bytes(sighash, length=4, byteorder="little", signed=False)
+                nHashType = int.to_bytes(sighash, length=4, byteorder="little", signed=False)  #
+                _logger.info(
+                    f"heyheyhey. txid={self.txid()}. serialize_preimage(). "
+                    f"{nVersion.hex()=}. {hashPrevouts.hex()=}. {hashSequence.hex()=}. {outpoint.hex()=}. "
+                    f"{scriptCode.hex()=}. {amount.hex()=}. {nSequence.hex()=}. {hashOutputs.hex()=}. "
+                    f"{nLocktime.hex()=}. {nHashType.hex()=}")
                 preimage = nVersion + hashPrevouts + hashSequence + outpoint + scriptCode + amount + nSequence + hashOutputs + nLocktime + nHashType
                 return preimage
         else:  # legacy sighash (pre-segwit)

@@ -393,8 +393,11 @@ def sweep_our_ctx(
                 txin=htlc_tx.inputs()[0],
                 txout=htlc_tx.outputs()[0],
                 can_be_batched=False, # both parties can spend
-                # actually, we might want to batch depending on the context
-                # f(amount in htlc, remaining_time, number of available utxos for anchors)
+                # - actually, we might want to batch depending on the context
+                #   f(amount in htlc, remaining_time, number of available utxos for anchors)
+                #   - in particular, it would be safe to batch htlcs where
+                #        htlc_direction, htlc.payment_hash, htlc.cltv_abs
+                #     all match. That is, MPP htlcs for the same payment.
             )
         else:
             # second-stage
@@ -753,6 +756,7 @@ def tx_our_ctx_htlctx(
     assert (htlc_direction == RECEIVED) == bool(preimage), 'preimage is required iff htlc is received'
     preimage = preimage or b''
     ctn = extract_ctn_from_tx_and_chan(ctx, chan)
+    _logger.info(f"heyheyhey. tx_our_ctx_htlctx. {ctn=}")
     witness_script_out, maybe_zero_fee_htlc_tx = make_htlc_tx_with_open_channel(
         chan=chan,
         pcp=our_pcp,

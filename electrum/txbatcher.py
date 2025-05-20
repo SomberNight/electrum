@@ -223,7 +223,7 @@ class TxBatcher(Logger):
 
 class TxBatch(Logger):
 
-    def __init__(self, wallet, storage: StoredDict):
+    def __init__(self, wallet: 'Abstract_Wallet', storage: StoredDict):
         Logger.__init__(self)
         self.wallet = wallet
         self.storage = storage
@@ -398,13 +398,19 @@ class TxBatch(Logger):
             # nothing to do
             return
 
+        self.logger.debug(f"run_iteration. {str(tx)=}")
         # add tx to wallet, in order to reserve utxos
+        # note: This save the tx as local *unsigned*.
+        #       It will transition to local and signed, after we broadcast
+        #       the signed tx and get it back via the Synchronizer dance.
         self.wallet.adb.add_transaction(tx)
         # await password
+        #await asyncio.sleep(3)
         if not await self.sign_transaction(tx):
             self.wallet.adb.remove_transaction(tx.txid())
             return
 
+        #self.wallet.adb.add_transaction(tx)
         if await self.wallet.network.try_broadcasting(tx, 'batch'):
             self._new_base_tx(tx)
         else:
@@ -480,7 +486,7 @@ class TxBatch(Logger):
         outputs += to_pay
         inputs += self._create_inputs_from_tx_change(self._parent_tx) if self._parent_tx else []
         # create tx
-        coins = self.wallet.get_spendable_coins(nonlocal_only=True)
+        coins = self.wallet.get_spendable_coins(nonlocal_only=True)  #
         tx = self.wallet.make_unsigned_transaction(
             coins=coins,
             fee_policy=self.fee_policy,
@@ -504,6 +510,7 @@ class TxBatch(Logger):
 
     @locked
     def _start_new_batch(self, tx):
+        self.logger.debug(f'_start_new_batch() entered')
         use_change = tx and tx.has_change() and any([txout in self.batch_payments for txout in tx.outputs()])
         self.batch_payments = self._to_pay_after(tx)
         self.batch_inputs = self._to_sweep_after(tx)
