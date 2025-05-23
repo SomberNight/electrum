@@ -2778,7 +2778,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, Logger, QtEventListener):
             return
         self._cleaned_up = True
         if self.thread:
-            self.thread.stop()
+            self.thread.stop()  #
             self.thread = None
         with self._coroutines_scheduled_lock:
             coro_keys = list(self._coroutines_scheduled.keys())

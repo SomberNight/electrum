@@ -43,7 +43,7 @@ import electrum_ecc as ecc
 
 from . import util
 from .lnmsg import OnionWireSerializer
-from .logging import Logger
+from .logging import Logger, get_logger
 from .onion_message import create_blinded_path, send_onion_message_to
 from .util import (bfh, json_decode, json_normalize, is_hash256_str, is_hex_str, to_bytes,
                    parse_max_spend, to_decimal, UserFacingException, InvalidPassword)
@@ -79,6 +79,7 @@ if TYPE_CHECKING:
     from .daemon import Daemon
 
 
+_logger = get_logger(__name__)
 known_commands = {}  # type: Dict[str, Command]
 
 
@@ -135,7 +136,7 @@ class Command:
         self.arg_types = {}
         for x in re.finditer(r'arg:(.*?):(.*?):(.*)$', docstring, flags=re.MULTILINE):
             self.arg_descriptions[x.group(2)] = x.group(3)
-            self.arg_types[x.group(2)] = x.group(1)
+            self.arg_types[x.group(2)] = x.group(1)  #
             self.description = self.description.replace(x.group(), '')
 
 
@@ -890,13 +891,17 @@ class Commands(Logger):
         return tx.serialize() if tx else None
 
     @command('wp')
-    async def signmessage(self, address, message, password=None, wallet: Abstract_Wallet = None):
+    async def signmessage(self, address, message, password=None, wallet: Abstract_Wallet = None):  #
         """Sign a message with a key. Use quotes if your message contains
         whitespaces
 
         arg:str:address:Bitcoin address
         arg:str:message:Clear text message. Use quotes if it contains spaces.
         """
+        if not isinstance(address, str):
+            raise UserFacingException(f"address must be a str instead of {type(address)}")
+        if not isinstance(message, str):
+            raise UserFacingException(f"message must be a str instead of {type(message)}")
         sig = wallet.sign_message(address, message, password)
         return base64.b64encode(sig).decode('ascii')
 
@@ -908,6 +913,12 @@ class Commands(Logger):
         arg:str:message:Clear text message. Use quotes if it contains spaces.
         arg:str:signature:The signature
         """
+        if not isinstance(address, str):
+            raise UserFacingException(f"address must be a str instead of {type(address)}")
+        if not isinstance(message, str):
+            raise UserFacingException(f"message must be a str instead of {type(message)}")
+        if not isinstance(signature, str):
+            raise UserFacingException(f"signature must be a str instead of {type(signature)}")
         sig = base64.b64decode(signature)
         message = util.to_bytes(message)
         return bitcoin.verify_usermessage_with_address(address, sig, message)
@@ -1976,7 +1987,7 @@ def check_txid(txid):
 arg_types = {
     'int': int,
     'bool': eval_bool,
-    'str': str,
+    'str': str,  #
     'txid': check_txid,
     'tx': convert_raw_tx_to_hex,
     'json': json_loads,

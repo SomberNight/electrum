@@ -491,7 +491,7 @@ def profiler(func=None, *, min_threshold: Union[int, float, None] = None):
     def timer_done():
         t = time.time() - t0
         if min_threshold is None or t > min_threshold:
-            _profiler_logger.debug(f"{func.__qualname__} {t:,.4f} sec")
+            _profiler_logger.warning(f"{func.__qualname__} {t:,.4f} sec")
     if asyncio.iscoroutinefunction(func):
         async def do_profile(*args, **kw_args):
             timer_start()
@@ -2104,7 +2104,7 @@ class JsonRPCClient:
         self.url = url
         self._id = 0
 
-    async def request(self, endpoint, *args):
+    async def request(self, endpoint, *args):  #
         """Send request to server, parse and return result.
         note: parsing code is naive, the server is assumed to be well-behaved.
               Up to the caller to handle exceptions, including those arising from parsing errors.

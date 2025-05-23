@@ -215,7 +215,7 @@ def get_password_for_hw_device_encrypted_storage(plugins: 'Plugins') -> str:
         sys.exit(0)
 
 
-async def run_offline_command(config, config_options, plugins: 'Plugins'):
+async def run_offline_command(config: 'SimpleConfig', config_options, plugins: 'Plugins'):
     cmdname = config.get('cmd')
     cmd = known_commands[cmdname]
     password = config_options.get('password')
@@ -245,8 +245,12 @@ async def run_offline_command(config, config_options, plugins: 'Plugins'):
     # arguments passed to function
     args = [config.get(x) for x in cmd.params]
     # decode json arguments
-    if cmdname not in ('setconfig',):
-        args = list(map(json_decode, args))
+
+    # if cmdname not in ('setconfig',):  # FIXME
+    #     args = list(map(json_decode, args))  #######
+
+    # ^ note: not done for kwargs?!?!
+
     # options
     kwargs = {}
     for x in cmd.options:

@@ -3112,6 +3112,7 @@ class Abstract_Wallet(ABC, Logger, EventListener):
 
     def sign_message(self, address: str, message: str, password) -> bytes:
         index = self.get_address_index(address)
+        assert index is not None
         script_type = self.get_txin_type(address)
         assert script_type != "address"
         return self.keystore.sign_message(index, message, password, script_type=script_type)
@@ -4146,6 +4147,7 @@ def create_new_wallet(
     return {'seed': seed, 'wallet': wallet, 'msg': msg}
 
 
+@profiler
 def restore_wallet_from_text(
     text: str,
     *,
@@ -4164,7 +4166,7 @@ def restore_wallet_from_text(
     else:
         storage = WalletStorage(path)
         if storage.file_exists():
-            raise UserFacingException("Remove the existing wallet first!")
+            raise UserFacingException(f"Remove the existing wallet first! {path=}")
     if encrypt_file is None:
         encrypt_file = True
     db = WalletDB('', storage=storage, upgrade=True)

@@ -28,6 +28,7 @@ class ElectrumTestCase(unittest.IsolatedAsyncioTestCase, Logger):
     """Base class for our unit tests."""
 
     TESTNET = False
+    REGTEST = False
     TEST_ANCHOR_CHANNELS = False
     # maxDiff = None  # for debugging
 
@@ -41,19 +42,24 @@ class ElectrumTestCase(unittest.IsolatedAsyncioTestCase, Logger):
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
-        if cls.TESTNET:
+        assert not (cls.REGTEST and cls.TESTNET), "regtest and testnet are mutually exclusive"
+        if cls.REGTEST:
+            constants.BitcoinRegtest.set_as_network()
+        elif cls.TESTNET:
             constants.BitcoinTestnet.set_as_network()
 
     @classmethod
     def tearDownClass(cls):
         super().tearDownClass()
-        if cls.TESTNET:
+        if cls.TESTNET or cls.REGTEST:
             constants.BitcoinMainnet.set_as_network()
 
     def setUp(self):
-        self._test_lock.acquire()
+        have_lock = self._test_lock.acquire(timeout=1)  # TODO make longer? or rm?
+        if not have_lock:
+            raise Exception("timed out waiting for test_lock!")
         super().setUp()
-        self.electrum_path = tempfile.mkdtemp()
+        self.electrum_path = tempfile.mkdtemp(prefix="electrum-unittest-base-")
         assert util._asyncio_event_loop is None, "global event loop already set?!"
 
     async def asyncSetUp(self):

@@ -36,6 +36,7 @@ import json
 import socket
 
 import aiohttp
+import aiohttp.web
 from aiohttp import web, client_exceptions
 from aiorpcx import ignore_after
 
@@ -228,7 +229,7 @@ class AuthenticatedServer(Logger):
             await asyncio.sleep(0.050)
             raise AuthenticationCredentialsInvalid('Invalid Credentials')
 
-    async def handle(self, request):
+    async def handle(self, request: 'aiohttp.web.Request') -> 'aiohttp.web.Response':
         async with self.auth_lock:
             try:
                 await self.authenticate(request.headers)
@@ -358,7 +359,7 @@ class CommandsServer(AuthenticatedServer):
         # arguments passed to function
         args = [config_options.get(x) for x in cmd.params]
         # decode json arguments
-        args = [json_decode(i) for i in args]
+        #args = [json_decode(i) for i in args]  #
         # options
         kwargs = {}
         for x in cmd.options:
