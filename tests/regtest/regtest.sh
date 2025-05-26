@@ -316,6 +316,8 @@ if [[ $1 == "extract_preimage" ]]; then
     $alice enable_htlc_settle false
     $bob enable_htlc_settle false
     wait_for_balance alice 1
+    # bob splits his large utxos into two smaller ones, to help with sweeping channel outputs later
+    $bob broadcast $($bob payto $($bob getunusedaddress) 0.5)
     echo "alice opens channel"
     bob_node=$($bob nodeid)
     $alice open_channel $bob_node 0.15 --password='' --push_amount=0.075
