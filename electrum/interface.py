@@ -522,6 +522,8 @@ class Interface(Logger):
         self.tip_header = None  # type: Optional[dict]
         self.tip = 0
 
+        self._headers_cache = {}  # type: Dict[int, bytes]
+
         self.fee_estimates_eta = {}  # type: Dict[int, int]
 
         # Dump network messages (only for this interface).  Set at runtime from the console.
@@ -753,16 +755,24 @@ class Interface(Logger):
             raise ErrorSSLCertFingerprintMismatch('Refusing to connect to server due to cert fingerprint mismatch')
         self.logger.info("cert fingerprint verification passed")
 
-    async def get_block_header(self, height: int, *, mode: ChainResolutionMode) -> dict:
+    async def _get_block_header(self, height: int, *, mode: ChainResolutionMode) -> dict:
         if not is_non_negative_integer(height):
             raise Exception(f"{repr(height)} is not a block height")
         self.logger.info(f'requesting block header {height} in {mode=}')
         # use lower timeout as we usually have network.bhi_lock here
         timeout = self.network.get_network_timeout_seconds(NetworkTimeout.Urgent)
+        if height not in self._headers_cache:
+            start_height = height - 20
+            headers = await self.get_block_headers(start_height=start_height, count=40, timeout=timeout)
+            for idx, raw_header in enumerate(headers):
+                header_height = start_height + idx
+                self._headers_cache[header_height] = raw_header
+        if raw_header := self._headers_cache.get(height):
+            return blockchain.deserialize_header(raw_header, height)
         res = await self.session.send_request('blockchain.block.header', [height], timeout=timeout)
         return blockchain.deserialize_header(bytes.fromhex(res), height)
 
-    async def get_block_headers(self, *, start_height: int, count: int) -> Sequence[bytes]:
+    async def get_block_headers(self, *, start_height: int, count: int, timeout=None) -> Sequence[bytes]:
         """Request a number of consecutive block headers, starting at `start_height`.
         `count` is the num of requested headers, BUT note the server might return fewer than this
         (if range would extend beyond its tip).
@@ -773,7 +783,7 @@ class Interface(Logger):
         if not is_non_negative_integer(count) or not (0 < count <= 2016):
             raise Exception(f"{repr(count)} not an int in range ]0, 2016]")
         self.logger.info(f'requesting block headers: [{start_height}, {start_height+count-1}], {count=}')
-        res = await self.session.send_request('blockchain.block.headers', [start_height, count])
+        res = await self.session.send_request('blockchain.block.headers', [start_height, count], timeout=timeout)
         # check response
         assert_dict_contains_field(res, field_name='count')
         assert_dict_contains_field(res, field_name='hex')
@@ -959,6 +969,7 @@ class Interface(Logger):
         True - new header we didn't have, or reorg
         """
         height, header = self.tip, self.tip_header
+        self._headers_cache.clear()  # tip changed, so assume anything could have happened with chain
         async with self.network.bhi_lock:
             if self.blockchain.height() >= height and self.blockchain.check_header(header):
                 # another interface amended the blockchain
@@ -980,7 +991,7 @@ class Interface(Logger):
         last = None  # type: Optional[ChainResolutionMode]
         while last is None or height <= next_height:
             prev_last, prev_height = last, height
-            if next_height > height + 10:  # TODO make smarter. the protocol allows asking for n headers
+            if next_height > height + 1000:  # TODO make smarter. the protocol allows asking for n headers
                 could_connect, num_headers = await self.request_chunk(height, tip=next_height)
                 if not could_connect:
                     if height <= constants.net.max_checkpoint():
@@ -1005,7 +1016,7 @@ class Interface(Logger):
     ) -> Tuple[ChainResolutionMode, int]:
         assert 0 <= height <= self.tip, (height, self.tip)
         if header is None:
-            header = await self.get_block_header(height, mode=ChainResolutionMode.CATCHUP)
+            header = await self._get_block_header(height, mode=ChainResolutionMode.CATCHUP)
 
         chain = blockchain.check_header(header) if 'mock' not in header else header['mock']['check'](header)
         if chain:
@@ -1050,7 +1061,7 @@ class Interface(Logger):
             assert good < bad, (good, bad)
             height = (good + bad) // 2
             self.logger.info(f"binary step. good {good}, bad {bad}, height {height}")
-            header = await self.get_block_header(height, mode=ChainResolutionMode.BINARY)
+            header = await self._get_block_header(height, mode=ChainResolutionMode.BINARY)
             chain = blockchain.check_header(header) if 'mock' not in header else header['mock']['check'](header)
             if chain:
                 self.blockchain = chain if isinstance(chain, Blockchain) else self.blockchain
@@ -1110,7 +1121,7 @@ class Interface(Logger):
             if height <= constants.net.max_checkpoint():
                 height = constants.net.max_checkpoint()
                 checkp = True
-            header = await self.get_block_header(height, mode=ChainResolutionMode.BACKWARD)
+            header = await self._get_block_header(height, mode=ChainResolutionMode.BACKWARD)
             chain = blockchain.check_header(header) if 'mock' not in header else header['mock']['check'](header)
             can_connect = blockchain.can_connect(header) if 'mock' not in header else header['mock']['connect'](height)
             if chain or can_connect:
