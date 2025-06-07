@@ -35,7 +35,7 @@ class MockInterface(Interface):
         self.tip = 12
         self.blockchain._size = self.tip + 1
 
-    async def get_block_header(self, height: int, *, mode: ChainResolutionMode) -> dict:
+    async def _get_block_header(self, height: int, *, mode: ChainResolutionMode) -> dict:
         assert self.q.qsize() > 0, (height, mode)
         item = await self.q.get()
         print("step with height", height, item)
