@@ -55,7 +55,7 @@ datas += collect_data_files('bitbox02')
 # some deps rely on importlib metadata
 datas += copy_metadata('slip10')  # from trezor->slip10
 
-
+# Exclude parts of Qt that we never use. Reduces binary size by tens of MBs. see #4815
 excludes = [
     "PyQt6.QtBluetooth",
     "PyQt6.QtDesigner",
@@ -77,7 +77,6 @@ excludes = [
     "PyQt6.QtWebSockets",
     "PyQt6.QtXml",
 ]
-
 
 # We don't put these files in to actually include them in the script but to make the Analysis method scan them for imports
 a = Analysis([f"{PROJECT_ROOT}/{MAIN_SCRIPT}",
