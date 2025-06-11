@@ -80,6 +80,42 @@ for d in a.datas:
         a.datas.remove(d)
         break
 
+
+print("----------------------")
+print("----- heyheyhey1 -----")
+print("----------------------")
+for x in a.binaries.copy():
+    print(f"a.binaries: {x=}")
+
+print("----------------------")
+print("----- heyheyhey2 -----")
+print("----------------------")
+for x in a.datas.copy():
+    print(f"a.datas: {x=}")
+
+print("----------------------")
+print("----- heyheyhey3 -----")
+print("----------------------")
+for x in a.zipfiles.copy():
+    print(f"a.zipfiles: {x=}")
+
+print("----------------------")
+print("----- heyheyhey4 -----")
+print("----------------------")
+for x in a.zipped_data.copy():
+    print(f"a.zipped_data: {x=}")
+
+print("----------------------")
+print("----- heyheyhey5 -----")
+print("----------------------")
+for x in a.pure.copy():
+    print(f"a.pure: {x=}")
+
+print("----------------------")
+print("----- heyheyhey6 -----")
+print("----------------------")
+
+
 # Strip out parts of Qt that we never use. Reduces binary size by tens of MBs. see #4815
 qt_bins2remove=(
     'pyqt6/qt6/qml',
@@ -95,21 +131,31 @@ qt_bins2remove=(
     'pyqt6/qt6/lib/qttest',
 )
 print("Removing Qt binaries:", *qt_bins2remove)
-for x in a.binaries.copy():
-    for r in qt_bins2remove:
-        if x[0].lower().startswith(r):
-            a.binaries.remove(x)
-            print('----> Removed x =', x)
+for toc_entry in a.binaries.copy():
+    dest_name, src_name, typecode = toc_entry
+    if any(dest_name.lower().startswith(r) for r in qt_bins2remove):
+        a.binaries.remove(toc_entry)
+        print(f"----> Removed {toc_entry=}")
 
 qt_data2remove=(
     'pyqt6/qt6/qml',
 )
 print("Removing Qt datas:", *qt_data2remove)
-for x in a.datas.copy():
-    for r in qt_data2remove:
-        if x[0].lower().startswith(r):
-            a.datas.remove(x)
-            print('----> Removed x =', x)
+for toc_entry in a.datas.copy():
+    dest_name, src_name, typecode = toc_entry
+    if any(dest_name.lower().startswith(r) for r in qt_data2remove):
+        a.datas.remove(toc_entry)
+        print(f"----> Removed {toc_entry=}")
+        continue
+    # note: to rm symlinks we broke in the prev a.binaries loop, we also check against qt_bins2remove
+    if typecode == "SYMLINK":
+        if any(src_name.lower().startswith(r) for r in qt_bins2remove):
+            a.datas.remove(toc_entry)
+            print(f"----> Removed {toc_entry=}")
+        elif any(dest_name.lower().startswith(r) for r in qt_bins2remove):
+            a.datas.remove(toc_entry)
+            print(f"----> Removed {toc_entry=}")
+
 
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
