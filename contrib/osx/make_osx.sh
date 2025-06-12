@@ -3,8 +3,8 @@
 set -e
 
 # Parameterize
-PYTHON_VERSION=3.12.10
-PY_VER_MAJOR="3.12"  # as it appears in fs paths
+PYTHON_VERSION=3.10.11
+PY_VER_MAJOR="3.10"  # as it appears in fs paths
 PACKAGE=Electrum
 GIT_REPO=https://github.com/spesmilo/electrum
 
@@ -38,7 +38,7 @@ PKG_FILE="python-${PYTHON_VERSION}-macos11.pkg"
 if [ ! -f "$CACHEDIR/$PKG_FILE" ]; then
     curl -o "$CACHEDIR/$PKG_FILE" "https://www.python.org/ftp/python/${PYTHON_VERSION}/$PKG_FILE"
 fi
-echo "8373e58da4ea146b3eb1c1f9834f19a319440b6b679b06050b1f9ee3237aa8e4  $CACHEDIR/$PKG_FILE" | shasum -a 256 -c \
+echo "767ed35ad688d28ea4494081ae96408a0318d0d5bb9ca0139d74d6247b231cfc  $CACHEDIR/$PKG_FILE" | shasum -a 256 -c \
     || fail "python pkg checksum mismatched"
 sudo installer -pkg "$CACHEDIR/$PKG_FILE" -target / \
     || fail "failed to install python"
@@ -89,8 +89,8 @@ brew install autoconf automake libtool gettext coreutils pkgconfig
 
 info "Building PyInstaller."
 PYINSTALLER_REPO="https://github.com/pyinstaller/pyinstaller.git"
-PYINSTALLER_COMMIT="306d4d92580fea7be7ff2c89ba112cdc6f73fac1"
-# ^ tag "v6.13.0"
+PYINSTALLER_COMMIT="413cce49ff28d87fad4472f4953489226ec90c84"
+# ^ tag "v5.11.0"
 (
     if [ -f "$CACHEDIR/pyinstaller/PyInstaller/bootloader/Darwin-64bit/runw" ]; then
         info "pyinstaller already built, skipping"
