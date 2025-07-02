@@ -25,8 +25,10 @@
 import threading
 import copy
 import json
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Optional, Sequence, List
+
 import jsonpatch
+from jsonpointer import JsonPointer, JsonPointerException
 
 from . import util
 from .util import WalletFileException, profiler
@@ -81,7 +83,7 @@ def stored_in(name, _type=dict):
     return decorator
 
 
-def key_path(path, key):
+def key_path(path: Sequence[str], key: Optional[str]) -> str:
     def to_str(x):
         if isinstance(x, int):
             return str(int(x))
@@ -94,6 +96,15 @@ def key_path(path, key):
     return '/' + '/'.join(items)
 
 
+def foo_check(*, kpath: str, db: 'JsonDB', key: Optional[str], op: str) -> None:
+    return
+    if kpath == "/": return
+    try:
+        val = JsonPointer(kpath).resolve(db.data)
+    except JsonPointerException as e:
+        raise Exception(f"path={kpath} missing from db. {key=}. {op=}") from e
+
+
 class StoredObject:
 
     db = None
@@ -102,6 +113,7 @@ class StoredObject:
     def __setattr__(self, key, value):
         if self.db and key not in ['path', 'db'] and not key.startswith('_'):
             if value != getattr(self, key):
+                foo_check(kpath=key_path(self.path, key=None), db=self.db, key=key, op='replace')
                 self.db.add_patch({'op': 'replace', 'path': key_path(self.path, key), 'value': value})
         object.__setattr__(self, key, value)
 
@@ -126,7 +138,7 @@ class StoredDict(dict):
     def __init__(self, data, db, path):
         self.db = db
         self.lock = self.db.lock if self.db else threading.RLock()
-        self.path = path
+        self.path = path  # TODO should not be a field that is set. it's redundant. change to pointers.
         # recursively convert dicts to StoredDict
         for k, v in list(data.items()):
             self.__setitem__(k, v, patch=False)
@@ -169,6 +181,7 @@ class StoredDict(dict):
         dict.__setitem__(self, key, v)
         if self.db and patch:
             op = 'add' if is_new else 'replace'
+            foo_check(kpath=key_path(self.path, key=None), db=self.db, key=key, op=op)
             self.db.add_patch({'op': op, 'path': key_path(self.path, key), 'value': v})
 
     @locked
@@ -221,6 +234,7 @@ class StoredList(list):
     def clear(self):
         list.clear(self)
         if self.db:
+            foo_check(kpath=key_path(self.path, key=None), db=self.db, key=None, op='replace')
             self.db.add_patch({'op': 'replace', 'path': key_path(self.path, None), 'value':[]})
 
 
@@ -239,7 +253,7 @@ class JsonDB(Logger):
         self.lock = threading.RLock()
         self.storage = storage
         self.encoder = encoder
-        self.pending_changes = []
+        self.pending_changes = []  # type: List[str]
         self._modified = False
         # load data
         data = self.load_data(s)
@@ -271,7 +285,7 @@ class JsonDB(Logger):
             # apply patches
             self.logger.info('found %d patches'%len(patches))
             patch = jsonpatch.JsonPatch(patches)
-            data = patch.apply(data)
+            data = patch.apply(data)  #
             self.set_modified(True)
         return data
 
@@ -406,7 +420,7 @@ class JsonDB(Logger):
     def write(self):
         if (not self.storage.file_exists()
                 or self.storage.is_encrypted()
-                or self.storage.needs_consolidation()):
+                or self.storage.needs_consolidation()):  # TODO intro configvar guarding this
             self.write_and_force_consolidation()
         else:
             self._append_pending_changes()

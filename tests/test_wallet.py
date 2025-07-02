@@ -56,7 +56,7 @@ class WalletTestCase(ElectrumTestCase):
 
 class TestWalletStorage(WalletTestCase):
 
-    def test_read_dictionary_from_file(self):
+    def test_read_dictionary_from_file(self):  #
 
         some_dict = {"a":"b", "c":"d"}
         contents = json.dumps(some_dict)
