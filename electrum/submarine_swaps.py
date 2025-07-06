@@ -212,7 +212,7 @@ class SwapManager(Logger):
         self._swaps = self.wallet.db.get_dict('submarine_swaps')  # type: Dict[str, SwapData]
         self._swaps_by_funding_outpoint = {}  # type: Dict[TxOutpoint, SwapData]
         self._swaps_by_lockup_address = {}  # type: Dict[str, SwapData]
-        for payment_hash_hex, swap in self._swaps.items():
+        for payment_hash_hex, swap in self._swaps.items():  #
             payment_hash = bytes.fromhex(payment_hash_hex)
             swap._payment_hash = payment_hash
             self._add_or_reindex_swap(swap)
@@ -365,7 +365,7 @@ class SwapManager(Logger):
             self.lnworker.save_forwarding_failure(payment_key.hex(), failure_message=e)
         self.lnwatcher.remove_callback(swap.lockup_address)
         if not swap.is_funded():
-            with self.swaps_lock:
+            with self.swaps_lock:  #
                 if self._swaps.pop(swap.payment_hash.hex(), None) is None:
                     self.logger.debug(f"swap {swap.payment_hash.hex()} has already been deleted.")
                 # TODO clean-up other swaps dicts, i.e. undo _add_or_reindex_swap()
@@ -672,7 +672,7 @@ class SwapManager(Logger):
             self._prepayments[prepay_hash] = payment_hash
         swap._payment_hash = payment_hash
         self._add_or_reindex_swap(swap)
-        self.add_lnwatcher_callback(swap)
+        self.add_lnwatcher_callback(swap)  #
         return swap
 
     def server_add_swap_invoice(self, request):
