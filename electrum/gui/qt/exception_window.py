@@ -212,6 +212,7 @@ class ReportContentsDialog(QDialog):
 
         report_text = QLabel(text)
         report_text.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        report_text.setTextFormat(Qt.TextFormat.AutoText)  # likely rich text
 
         scroll_area.setWidget(report_text)
         vbox.addWidget(scroll_area)
