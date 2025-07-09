@@ -28,6 +28,8 @@ import json
 from typing import TYPE_CHECKING, Optional, Sequence, List, Union
 
 import jsonpatch
+from jsonpatch import JsonPatchException
+from jsonpointer import JsonPointerException
 
 from . import util
 from .util import WalletFileException, profiler
@@ -273,6 +275,12 @@ class JsonDB(Logger):
             self.logger.info('found %d patches'%len(patches))
             patch = jsonpatch.JsonPatch(patches)
             data = patch.apply(data)
+            # try:
+            #     patch = jsonpatch.JsonPatch(patches)
+            #     data = patch.apply(data)
+            # except (JsonPatchException, JsonPointerException) as e:
+            #     e.
+            #     raise WalletFileException("", should_report_crash=True) from e
             self.set_modified(True)
         return data
 

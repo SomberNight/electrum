@@ -381,7 +381,7 @@ class ElectrumGui(BaseElectrumGui, Logger):
         # (the wallet main window will appear directly).
         if not force_wizard:
             try:
-                wallet = self.daemon.load_wallet(path, None)
+                wallet = self.daemon.load_wallet(path, None)  #
             except FileNotFoundError:
                 pass  # open with wizard below
             except InvalidPassword:
@@ -399,7 +399,8 @@ class ElectrumGui(BaseElectrumGui, Logger):
                                    parent=None,
                                    title=_('Error'),
                                    text=_('Cannot load wallet') + ' (1):\n' + err_text)
-                if isinstance(e, WalletFileException) and e.should_report_crash:
+                if ((isinstance(e, WalletFileException) and e.should_report_crash)
+                        or not isinstance(e, WalletFileException)):
                     send_exception_to_crash_reporter(e)
                 # if app is starting, still let wizard appear
                 if not app_is_starting:
@@ -424,7 +425,8 @@ class ElectrumGui(BaseElectrumGui, Logger):
                                parent=None,
                                title=_('Error'),
                                text=_('Cannot load wallet') + '(2) :\n' + err_text)
-            if isinstance(e, WalletFileException) and e.should_report_crash:
+            if ((isinstance(e, WalletFileException) and e.should_report_crash)
+                    or not isinstance(e, WalletFileException)):
                 send_exception_to_crash_reporter(e)
             if app_is_starting:
                 # If we raise in this context, there are no more fallbacks, we will shut down.
@@ -585,8 +587,9 @@ class ElectrumGui(BaseElectrumGui, Logger):
             self.init_network()
         except UserCancelled:
             return
-        except Exception as e:
+        except Exception as e:  # FIXME why catch *everything* here?!
             self.logger.exception('')
+            send_exception_to_crash_reporter(e)
             return
         # start wizard to select/create wallet
         self.timer.start()
