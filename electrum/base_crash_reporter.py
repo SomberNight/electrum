@@ -152,9 +152,13 @@ class BaseCrashReporter(Logger):
         # overridden in Qt subclass
         return self.__get_traceback_str_to_send()
 
-    def get_report_string(self):
+    def get_report_string(self, *, raw: bool = False):
         info = self.get_additional_info()
-        info["traceback"] = self._get_traceback_str_to_display()
+        if raw:
+            tb_str = self.__get_traceback_str_to_send()
+        else:
+            tb_str = self._get_traceback_str_to_display()
+        info["traceback"] = tb_str
         return self.issue_template.format(**info)
 
     def get_user_description(self):

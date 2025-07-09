@@ -308,12 +308,14 @@ class MessageBoxMixin(object):
                            List[Union[QMessageBox.StandardButton, Tuple[QAbstractButton, QMessageBox.ButtonRole, int]]]] = QMessageBox.StandardButton.Ok,
             defaultButton: QMessageBox.StandardButton = QMessageBox.StandardButton.NoButton,
             rich_text: bool = False,
-            checkbox: Optional[bool] = None
+            checkbox: Optional[bool] = None,
+            detailed_text: Optional[str] = None,
     ):
         parent = parent or self.top_level_window()
         return custom_message_box(
             icon=icon, parent=parent, title=title, text=text, buttons=buttons, defaultButton=defaultButton,
-            rich_text=rich_text, checkbox=checkbox
+            rich_text=rich_text, checkbox=checkbox,
+            detailed_text=detailed_text,
         )
 
     def query_choice(
@@ -359,7 +361,8 @@ def custom_message_box(
                        List[Union[QMessageBox.StandardButton, Tuple[QAbstractButton, QMessageBox.ButtonRole, int]]]] = QMessageBox.StandardButton.Ok,
         defaultButton: QMessageBox.StandardButton = QMessageBox.StandardButton.NoButton,
         rich_text: bool = False,
-        checkbox: Optional[bool] = None
+        checkbox: Optional[bool] = None,
+        detailed_text: Optional[str] = None,  # adds extra plain text, hidden behind a "Show details" button
 ) -> int:
     custom_buttons = []
     standard_buttons = QMessageBox.StandardButton.NoButton
@@ -380,6 +383,8 @@ def custom_message_box(
         d.addButton(button, role)
     d.setWindowModality(Qt.WindowModality.WindowModal)
     d.setDefaultButton(defaultButton)
+    if detailed_text is not None:
+        d.setDetailedText(detailed_text)
     if rich_text:
         d.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse | Qt.TextInteractionFlag.LinksAccessibleByMouse)
         # set AutoText instead of RichText
