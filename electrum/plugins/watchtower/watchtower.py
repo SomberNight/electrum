@@ -66,9 +66,10 @@ class WatchTower(Logger, EventListener):
 
     def __init__(self, network: 'Network'):
         Logger.__init__(self)
-        self.adb = AddressSynchronizer(WalletDB('', storage=None, upgrade=True), network.config, name=self.diagnostic_name())
-        self.adb.start_network(network)
         self.config = network.config
+        wallet_db = WalletDB('', storage=None, upgrade=True, config=self.config)
+        self.adb = AddressSynchronizer(wallet_db, network.config, name=self.diagnostic_name())
+        self.adb.start_network(network)
         self.callbacks = {}  # address -> lambda function
         self.register_callbacks()
         # status gets populated when we run

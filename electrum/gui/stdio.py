@@ -34,7 +34,7 @@ class ElectrumGui(BaseElectrumGui, EventListener):
             password = getpass.getpass('Password:', stream=None)
             storage.decrypt(password)
 
-        db = WalletDB(storage.read(), storage=storage, upgrade=True)
+        db = WalletDB(storage.read(), storage=storage, upgrade=True, config=config)
 
         self.done = 0
         self.last_balance = ""
