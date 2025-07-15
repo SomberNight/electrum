@@ -4192,7 +4192,7 @@ def create_new_wallet(
     storage = WalletStorage(path)
     if storage.file_exists():
         raise UserFacingException("Remove the existing wallet first!")
-    db = WalletDB('', storage=storage, upgrade=True)
+    db = WalletDB('', storage=storage, upgrade=True, allow_partial_writes=config.WALLET_PARTIAL_WRITES)
 
     seed = Mnemonic('en').make_seed(seed_type=seed_type)
     k = keystore.from_seed(seed, passphrase=passphrase)
@@ -4231,7 +4231,7 @@ def restore_wallet_from_text(
             raise UserFacingException("Remove the existing wallet first!")
     if encrypt_file is None:
         encrypt_file = True
-    db = WalletDB('', storage=storage, upgrade=True)
+    db = WalletDB('', storage=storage, upgrade=True, allow_partial_writes=config.WALLET_PARTIAL_WRITES)
     text = text.strip()
     if keystore.is_address_list(text):
         wallet = Imported_Wallet(db, config=config)

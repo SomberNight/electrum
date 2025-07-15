@@ -52,6 +52,7 @@ from .version import ELECTRUM_VERSION
 
 if TYPE_CHECKING:
     from .storage import WalletStorage
+    from .simple_config import SimpleConfig
 
 
 class WalletRequiresUpgrade(WalletFileException):
@@ -1288,8 +1289,16 @@ class WalletDB(JsonDB):
         *,
         storage: Optional['WalletStorage'] = None,
         upgrade: bool = False,
+        allow_partial_writes: bool = False,
     ):
-        JsonDB.__init__(self, s, storage=storage, encoder=MyEncoder, upgrader=partial(upgrade_wallet_db, do_upgrade=upgrade))
+        JsonDB.__init__(
+            self,
+            s,
+            storage=storage,
+            encoder=MyEncoder,
+            upgrader=partial(upgrade_wallet_db, do_upgrade=upgrade),
+            allow_partial_writes=allow_partial_writes,
+        )
         # create pointers
         self.load_transactions()
         # load plugins that are conditional on wallet type
