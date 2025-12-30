@@ -3,8 +3,8 @@
 set -e
 
 # Parameterize
-PYTHON_VERSION=3.12.10
-PY_VER_MAJOR="3.12"  # as it appears in fs paths
+PYTHON_VERSION=3.13.11
+PY_VER_MAJOR="3.13"  # as it appears in fs paths
 PACKAGE=Electrum
 GIT_REPO=https://github.com/spesmilo/electrum
 
@@ -38,7 +38,7 @@ PKG_FILE="python-${PYTHON_VERSION}-macos11.pkg"
 if [ ! -f "$CACHEDIR/$PKG_FILE" ]; then
     curl -o "$CACHEDIR/$PKG_FILE" "https://www.python.org/ftp/python/${PYTHON_VERSION}/$PKG_FILE"
 fi
-echo "8373e58da4ea146b3eb1c1f9834f19a319440b6b679b06050b1f9ee3237aa8e4  $CACHEDIR/$PKG_FILE" | shasum -a 256 -c \
+echo "23fc42230cfe139346516402e395af381ed093032a43a1231c43bca864f006bd  $CACHEDIR/$PKG_FILE" | shasum -a 256 -c \
     || fail "python pkg checksum mismatched"
 sudo installer -pkg "$CACHEDIR/$PKG_FILE" -target / \
     || fail "failed to install python"

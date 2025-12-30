@@ -4,7 +4,7 @@ PYINSTALLER_REPO="https://github.com/pyinstaller/pyinstaller.git"
 PYINSTALLER_COMMIT="306d4d92580fea7be7ff2c89ba112cdc6f73fac1"
 # ^ tag "v6.13.0"
 
-PYTHON_VERSION=3.12.10
+PYTHON_VERSION=3.13.11
 
 
 # Let's begin!
