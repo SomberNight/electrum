@@ -759,7 +759,7 @@ class QETxRbfFeeBumper(TxFeeSlider, TxMonMixin):
         try:
             self._tx = self._wallet.wallet.bump_fee(
                 tx=self._orig_tx,
-                new_fee_rate=new_fee_rate,
+                new_fee_rate=new_fee_rate,  #
                 strategy=BumpFeeStrategy[self._bump_method],
             )
         except CannotBumpFee as e:
@@ -878,7 +878,7 @@ class QETxCanceller(TxFeeSlider, TxMonMixin):
         try:
             self._tx = self._wallet.wallet.dscancel(
                 tx=self._orig_tx,
-                new_fee_rate=new_fee_rate,
+                new_fee_rate=new_fee_rate,  #
             )
         except CannotDoubleSpendTx as e:
             self._valid = False
@@ -1061,7 +1061,7 @@ class QETxCpfpFeeBumper(TxFeeSlider, TxMonMixin):
         self._total_fee_rate = str(quantize_feerate(comb_feerate))
 
         try:
-            self._new_tx = self._wallet.wallet.cpfp(self._parent_tx, fee)
+            self._new_tx = self._wallet.wallet.cpfp(self._parent_tx, fee)  #
         except CannotCPFP as e:
             self._logger.error(str(e))
             self.warning = str(e)

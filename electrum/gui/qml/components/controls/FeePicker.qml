@@ -18,6 +18,8 @@ Item {
 
     property bool showTxInfo: true
     property bool showPicker: true
+    property bool allowPickerAbsFees: true
+    property bool allowPickerFeeRates: true
 
     property bool manualFeeEntry: finalizer.method == FeeSlider.FSMethod.MANUAL
 
@@ -126,7 +128,7 @@ Item {
             Layout.preferredWidth: 1
             text: qsTr('Rate')
             color: Material.accentColor
-            visible: showPicker && manualFeeEntry
+            visible: showPicker && manualFeeEntry && allowPickerFeeRates
         }
 
         GridLayout {
@@ -139,6 +141,7 @@ Item {
             TextField {
                 id: rate
                 Layout.fillWidth: true
+                visible: allowPickerFeeRates
                 text: finalizer.userFeerate
                 color: finalizer.isUserFeerateLast ? Material.foreground : Material.accentColor
                 inputMethodHints: Qt.ImhDigitsOnly
@@ -152,6 +155,7 @@ Item {
 
             Label {
                 Layout.fillWidth: true
+                visible: allowPickerFeeRates
                 color: Material.accentColor
                 text: UI_UNIT_NAME.FEERATE_SAT_PER_VBYTE
             }
@@ -159,6 +163,7 @@ Item {
             TextField {
                 id: absolute
                 Layout.fillWidth: true
+                visible: allowPickerAbsFees
                 text: finalizer.userFee
                 color: finalizer.isUserFeerateLast ? Material.accentColor : Material.foreground
                 inputMethodHints: Qt.ImhDigitsOnly
@@ -172,6 +177,7 @@ Item {
 
             Label {
                 Layout.fillWidth: true
+                visible: allowPickerAbsFees
                 color: Material.accentColor
                 text: UI_UNIT_NAME.FIXED_SAT
             }
@@ -180,7 +186,7 @@ Item {
         Label {
             Layout.fillWidth: true
             Layout.preferredWidth: 1
-            visible: showPicker && manualFeeEntry
+            visible: showPicker && manualFeeEntry && allowPickerAbsFees
             color: Material.accentColor
             text: qsTr('Total')
         }

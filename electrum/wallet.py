@@ -987,6 +987,14 @@ class Abstract_Wallet(ABC, Logger, EventListener):
                         status = _('Local (future: {})').format(_('in {} blocks').format(num_blocks_remainining))
                     can_broadcast = self.network is not None
                     can_bump = (is_any_input_ismine or is_swap) and self.can_rbf_tx(tx)
+                    # TODO xxxxx rm me: allow playing around with local txs more:
+                    can_dscancel = (is_any_input_ismine and self.can_rbf_tx(tx, is_dscancel=True)
+                                    and not all([self.is_mine(txout.address) for txout in tx.outputs()]))
+                    try:
+                        self.cpfp(tx, 0)
+                        can_cpfp = True
+                    except Exception:
+                        can_cpfp = False
             else:
                 status = _("Signed")
                 can_broadcast = self.network is not None
