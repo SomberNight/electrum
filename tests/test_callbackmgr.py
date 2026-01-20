@@ -2,6 +2,7 @@ import asyncio
 
 from electrum import util
 from electrum.util import EventListener, event_listener, trigger_callback
+from electrum.utils.memory_leak import count_objects_in_memory
 
 from . import ElectrumTestCase
 
@@ -84,3 +85,17 @@ class TestCallbackMgr(ElectrumTestCase):
         self.assertEqual(el2._satoshi_cnt, 4)
         self.assertEqual(el1._hal_cnt, 1)
         self.assertEqual(el2._hal_cnt, 2)
+
+    async def test_gc(self):
+        objmap = count_objects_in_memory([MyEventListener])
+        self.assertEqual(len(objmap[MyEventListener]), 0)
+        el1 = MyEventListener()
+        el1.start()
+        el2 = MyEventListener()
+        el2.start()
+        objmap = count_objects_in_memory([MyEventListener])
+        self.assertEqual(len(objmap[MyEventListener]), 2)
+        el1.stop()
+        del el1
+        objmap = count_objects_in_memory([MyEventListener])
+        self.assertEqual(len(objmap[MyEventListener]), 1)
