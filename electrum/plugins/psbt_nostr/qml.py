@@ -32,7 +32,7 @@ from electrum import util
 from electrum.plugin import hook
 from electrum.transaction import PartialTransaction, tx_from_any
 from electrum.wallet import Multisig_Wallet
-from electrum.util import EventListener, event_listener
+from electrum.callback_manager import EventListener, event_listener
 
 from electrum.gui.qml.qewallet import QEWallet
 

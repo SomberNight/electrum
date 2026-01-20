@@ -31,7 +31,7 @@ from electrum import simple_config, lnutil
 from electrum.lnaddr import lnencode, LnAddr, lndecode
 from electrum.bitcoin import COIN, sha256
 from electrum.transaction import Transaction
-from electrum.util import NetworkRetryManager, bfh, OldTaskGroup, EventListener, InvoiceError
+from electrum.util import NetworkRetryManager, bfh, OldTaskGroup, InvoiceError
 from electrum.lnpeer import Peer
 from electrum.lntransport import LNPeerAddr
 from electrum.crypto import privkey_to_pubkey
@@ -52,6 +52,7 @@ from electrum.simple_config import SimpleConfig
 from electrum.fee_policy import FeeTimeEstimates, FEE_ETA_TARGETS
 from electrum.mpp_split import split_amount_normal
 from electrum.wallet import Abstract_Wallet, Standard_Wallet
+from electrum.callback_manager import register_callback, unregister_callback
 
 from .test_lnchannel import create_test_channels
 from .test_bitcoin import needs_test_with_all_chacha20_implementations
@@ -1294,8 +1295,8 @@ class TestPeerDirect(TestPeer):
             htlc_resolved.clear()
             nonlocal nhtlc_failed
             nhtlc_failed += 1
-        util.register_callback(on_htlc_fulfilled, ["htlc_fulfilled"])
-        util.register_callback(on_htlc_failed, ["htlc_failed"])
+        register_callback(on_htlc_fulfilled, ["htlc_fulfilled"])
+        register_callback(on_htlc_failed, ["htlc_failed"])
 
         with self.assertRaises(SuccessfulTest):
             await f()
@@ -1366,8 +1367,8 @@ class TestPeerDirect(TestPeer):
             htlc_resolved.clear()
             nonlocal nhtlc_failed
             nhtlc_failed += 1
-        util.register_callback(on_htlc_fulfilled, ["htlc_fulfilled"])
-        util.register_callback(on_htlc_failed, ["htlc_failed"])
+        register_callback(on_htlc_fulfilled, ["htlc_fulfilled"])
+        register_callback(on_htlc_failed, ["htlc_failed"])
 
         with self.assertRaises(SuccessfulTest):
             await f()
@@ -1442,15 +1443,15 @@ class TestPeerDirect(TestPeer):
             htlc_resolved.clear()
             nonlocal nhtlc_failed
             nhtlc_failed += 1
-        util.register_callback(on_htlc_fulfilled, ["htlc_fulfilled"])
-        util.register_callback(on_htlc_failed, ["htlc_failed"])
+        register_callback(on_htlc_fulfilled, ["htlc_fulfilled"])
+        register_callback(on_htlc_failed, ["htlc_failed"])
 
         try:
             with self.assertRaises(SuccessfulTest):
                 await f()
         finally:
-            util.unregister_callback(on_htlc_fulfilled)
-            util.unregister_callback(on_htlc_failed)
+            unregister_callback(on_htlc_fulfilled)
+            unregister_callback(on_htlc_failed)
 
     async def test_mpp_cleanup_after_expiry(self):
         """
@@ -1540,15 +1541,15 @@ class TestPeerDirect(TestPeer):
                 alice_htlc_resolved.clear()
                 nonlocal nhtlc_failed
                 nhtlc_failed += 1
-            util.register_callback(on_sender_htlc_fulfilled, ["htlc_fulfilled"])
-            util.register_callback(on_sender_htlc_failed, ["htlc_failed"])
+            register_callback(on_sender_htlc_fulfilled, ["htlc_fulfilled"])
+            register_callback(on_sender_htlc_failed, ["htlc_failed"])
 
             try:
                 with self.assertRaises(SuccessfulTest):
                     await f()
             finally:
-                util.unregister_callback(on_sender_htlc_fulfilled)
-                util.unregister_callback(on_sender_htlc_failed)
+                unregister_callback(on_sender_htlc_fulfilled)
+                unregister_callback(on_sender_htlc_failed)
 
         for use_trampoline in [True, False]:
             self.logger.debug(f"test_mpp_cleanup_after_expiry: {use_trampoline=}")

@@ -6,7 +6,8 @@ from typing import TYPE_CHECKING, Optional, Dict, Callable, Awaitable
 
 from . import util
 from .util import TxMinedInfo, BelowDustLimit, NoDynamicFeeEstimates
-from .util import EventListener, event_listener, log_exceptions, ignore_exceptions
+from .util import log_exceptions, ignore_exceptions
+from .callback_manager import event_listener, EventListener
 from .transaction import Transaction, TxOutpoint
 from .logging import Logger
 from .address_synchronizer import TX_HEIGHT_LOCAL

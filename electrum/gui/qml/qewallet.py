@@ -13,8 +13,9 @@ from electrum.invoices import InvoiceError, PR_PAID, PR_BROADCASTING, PR_BROADCA
 from electrum.logging import get_logger
 from electrum.network import TxBroadcastError, BestEffortRequestFailed
 from electrum.transaction import PartialTransaction, Transaction
-from electrum.util import InvalidPassword, event_listener, AddTransactionException, get_asyncio_loop, NotEnoughFunds, \
+from electrum.util import InvalidPassword, AddTransactionException, get_asyncio_loop, NotEnoughFunds, \
     NoDynamicFeeEstimates
+from electrum.callback_manager import event_listener
 from electrum.lnutil import MIN_FUNDING_SAT
 from electrum.plugin import run_hook
 from electrum.wallet import Multisig_Wallet

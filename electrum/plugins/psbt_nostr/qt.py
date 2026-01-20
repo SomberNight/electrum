@@ -32,7 +32,8 @@ from PyQt6.QtWidgets import QPushButton, QMessageBox
 from electrum.plugin import hook
 from electrum.i18n import _
 from electrum.wallet import Multisig_Wallet, Abstract_Wallet
-from electrum.util import UserCancelled, event_listener, EventListener
+from electrum.util import UserCancelled
+from electrum.callback_manager import event_listener, EventListener
 from electrum.gui.qt.transaction_dialog import show_transaction, TxDialog
 from electrum.gui.qt.util import read_QIcon_from_bytes
 

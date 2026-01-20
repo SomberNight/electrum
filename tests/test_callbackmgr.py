@@ -1,7 +1,7 @@
 import asyncio
 
-from electrum import util
-from electrum.util import EventListener, event_listener, trigger_callback
+from electrum import callback_manager
+from electrum.callback_manager import EventListener, event_listener, trigger_callback
 from electrum.utils.memory_leak import count_objects_in_memory
 
 from . import ElectrumTestCase
@@ -28,7 +28,7 @@ class MyEventListener(EventListener):
 
 
 def _count_all_callbacks() -> int:
-    return sum(len(cbs) for cbs in util.callback_mgr.callbacks.values())
+    return sum(len(cbs) for cbs in callback_manager._INSTANCE.callbacks.values())
 
 
 async def fast_sleep():

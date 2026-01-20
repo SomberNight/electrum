@@ -26,7 +26,8 @@ from . import bitcoin, util
 from . import constants
 from .util import (log_exceptions, ignore_exceptions, chunks, OldTaskGroup,
                    UnrelatedTransactionException, error_text_bytes_to_safe_str, AsyncHangDetector,
-                   NoDynamicFeeEstimates, event_listener, EventListener)
+                   NoDynamicFeeEstimates,)
+from .callback_manager import event_listener, EventListener
 from . import transaction
 from .bitcoin import make_op_return, DummyAddress
 from .transaction import PartialTxOutput, match_script_against_template, Sighash

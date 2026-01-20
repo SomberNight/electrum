@@ -8,7 +8,7 @@ from typing import Tuple
 from PyQt6.QtCore import pyqtSignal
 
 from electrum.i18n import _
-from electrum.util import EventListener, event_listener
+from electrum.callback_manager import EventListener, event_listener
 
 
 class QtEventListener(EventListener):

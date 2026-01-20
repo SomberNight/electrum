@@ -33,7 +33,8 @@ from PyQt6.QtWidgets import (QComboBox,  QTabWidget, QDialog, QSpinBox,  QCheckB
 
 from electrum.i18n import _, languages
 from electrum import util
-from electrum.util import base_units_list, event_listener
+from electrum.util import base_units_list
+from electrum.callback_manager import event_listener
 
 from electrum.gui import messages
 

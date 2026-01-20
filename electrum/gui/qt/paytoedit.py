@@ -33,7 +33,7 @@ from PyQt6.QtWidgets import QTextEdit, QWidget, QLineEdit, QStackedLayout, QComp
 
 from electrum.payment_identifier import PaymentIdentifier
 from electrum.logging import Logger
-from electrum.util import EventListener, event_listener
+from electrum.callback_manager import EventListener, event_listener
 
 from . import util
 from .util import MONOSPACE_FONT, GenericInputHandler, ColorScheme, add_input_actions_to_context_menu

@@ -17,10 +17,11 @@ from . import util
 from .bitcoin import COIN
 from .i18n import _
 from .util import (
-    ThreadJob, make_dir, log_exceptions, OldTaskGroup, make_aiohttp_session, resource_path, EventListener,
-    event_listener, to_decimal, timestamp_to_datetime
+    ThreadJob, make_dir, log_exceptions, OldTaskGroup, make_aiohttp_session, resource_path,
+    to_decimal, timestamp_to_datetime
 )
 from .util import NetworkRetryManager
+from .callback_manager import EventListener, event_listener
 from .network import Network
 from .simple_config import SimpleConfig
 from .logging import Logger

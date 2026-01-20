@@ -38,11 +38,12 @@ from electrum.lnworker import PaymentDirection
 from electrum.plugin import BasePlugin, hook
 from electrum.logging import Logger
 from electrum.util import log_exceptions, ca_path, OldTaskGroup, get_asyncio_loop, InvoiceError, \
-    LightningHistoryItem, event_listener, EventListener, make_aiohttp_proxy_connector, \
+    LightningHistoryItem, make_aiohttp_proxy_connector, \
     get_running_loop
 from electrum.invoices import Invoice, Request, PR_UNKNOWN, PR_PAID, BaseInvoice, PR_INFLIGHT
 from electrum import constants
 from electrum.lnutil import RECEIVED
+from electrum.callback_manager import event_listener, EventListener
 
 if TYPE_CHECKING:
     from aiohttp_socks import ProxyConnector

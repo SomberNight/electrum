@@ -16,7 +16,7 @@ except ImportError:  # only use vendored lib as fallback, to allow Linux distros
 from electrum.gui import BaseElectrumGui
 from electrum.bip21 import parse_bip21_URI
 from electrum.util import format_time
-from electrum.util import EventListener, event_listener
+from electrum.callback_manager import EventListener, event_listener
 from electrum.bitcoin import is_address, address_to_script
 from electrum.transaction import PartialTxOutput
 from electrum.wallet import Wallet, Abstract_Wallet

@@ -12,6 +12,7 @@ import electrum
 import electrum.logging
 from electrum import constants
 from electrum import util
+from electrum import callback_manager
 from electrum.util import OldTaskGroup
 from electrum.logging import Logger
 from electrum.wallet import restore_wallet_from_text
@@ -92,7 +93,7 @@ class ElectrumTestCase(unittest.IsolatedAsyncioTestCase, Logger):
         await super().asyncTearDown()
 
     def tearDown(self):
-        util.callback_mgr.clear_all_callbacks()
+        callback_manager._INSTANCE.clear_all_callbacks()
         shutil.rmtree(self.unittest_base_path)
         super().tearDown()
         util._asyncio_event_loop = None  # cleared here, at the ~last possible moment. asyncTearDown is too early.

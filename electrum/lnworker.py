@@ -37,11 +37,12 @@ from .channel_db import UpdateStatus, ChannelDBNotLoaded, get_mychannel_info, ge
 from . import constants, util, lnutil
 from . import bitcoin
 from .util import (
-    profiler, OldTaskGroup, ESocksProxy, NetworkRetryManager, JsonRPCClient, NotEnoughFunds, EventListener,
-    event_listener, bfh, InvoiceError, resolve_dns_srv, is_ip_address, log_exceptions, ignore_exceptions,
+    profiler, OldTaskGroup, ESocksProxy, NetworkRetryManager, JsonRPCClient, NotEnoughFunds,
+    bfh, InvoiceError, resolve_dns_srv, is_ip_address, log_exceptions, ignore_exceptions,
     make_aiohttp_session, random_shuffled_copy, is_private_netaddress,
     UnrelatedTransactionException, LightningHistoryItem, get_asyncio_loop,
 )
+from .callback_manager import event_listener, EventListener
 from .fee_policy import (
     FeePolicy, FEERATE_FALLBACK_STATIC_FEE, FEE_LN_ETA_TARGET, FEE_LN_LOW_ETA_TARGET,
     FEERATE_PER_KW_MIN_RELAY_LIGHTNING, FEE_LN_MINIMUM_ETA_TARGET

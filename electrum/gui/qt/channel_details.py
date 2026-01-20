@@ -5,7 +5,7 @@ import PyQt6.QtWidgets as QtWidgets
 import PyQt6.QtCore as QtCore
 from PyQt6.QtWidgets import QLabel, QLineEdit, QHBoxLayout, QGridLayout
 
-from electrum.util import EventListener, ShortID
+from electrum.util import ShortID
 from electrum.i18n import _
 from electrum.util import format_time
 from electrum.lnutil import format_short_channel_id, LOCAL, REMOTE, UpdateAddHtlc, Direction

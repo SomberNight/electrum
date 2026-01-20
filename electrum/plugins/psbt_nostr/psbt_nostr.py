@@ -40,9 +40,10 @@ from electrum.logging import Logger
 from electrum.plugin import BasePlugin
 from electrum.transaction import PartialTransaction, tx_from_any
 from electrum.util import (
-    log_exceptions, OldTaskGroup, ca_path, trigger_callback, event_listener, json_decode,
+    log_exceptions, OldTaskGroup, ca_path, trigger_callback, json_decode,
     make_aiohttp_proxy_connector, run_sync_function_on_asyncio_thread,
 )
+from electrum.callback_manager import event_listener
 from electrum.wallet import Multisig_Wallet
 
 if TYPE_CHECKING:

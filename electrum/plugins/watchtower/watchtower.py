@@ -38,7 +38,7 @@ from electrum.address_synchronizer import AddressSynchronizer, TX_HEIGHT_LOCAL
 from electrum.wallet_db import WalletDB
 from electrum.lnutil import WITNESS_TEMPLATE_RECEIVED_HTLC, WITNESS_TEMPLATE_OFFERED_HTLC
 from electrum.logging import Logger
-from electrum.util import EventListener, event_listener
+from electrum.callback_manager import EventListener, event_listener
 
 from .server import WatchTowerServer
 

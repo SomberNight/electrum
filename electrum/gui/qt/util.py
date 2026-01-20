@@ -21,7 +21,8 @@ from PyQt6.QtWidgets import (QPushButton, QLabel, QMessageBox, QHBoxLayout, QVBo
                              QFrame, QAbstractButton)
 
 from electrum.i18n import _
-from electrum.util import (FileImportFailed, FileExportFailed, resource_path, EventListener, event_listener,
+from electrum.callback_manager import EventListener, event_listener
+from electrum.util import (FileImportFailed, FileExportFailed, resource_path,
                            get_logger, UserCancelled, UserFacingException, ChoiceItem)
 from electrum.invoices import (PR_UNPAID, PR_PAID, PR_EXPIRED, PR_INFLIGHT, PR_UNKNOWN, PR_FAILED, PR_ROUTING,
                                PR_UNCONFIRMED, PR_BROADCASTING, PR_BROADCAST)

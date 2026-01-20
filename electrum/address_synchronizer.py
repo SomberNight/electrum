@@ -39,7 +39,7 @@ from .verifier import SPV
 from .blockchain import hash_header, Blockchain
 from .i18n import _
 from .logging import Logger
-from .util import EventListener, event_listener
+from .callback_manager import EventListener, event_listener
 
 if TYPE_CHECKING:
     from .network import Network
