@@ -1466,7 +1466,6 @@ class Channel(AbstractChannel):
         if preimage:
             assert ripemd(sha256(preimage)) == ripemd_payment_hash
             payment_hash = sha256(preimage)
-            self.lnworker.mark_preimage_as_public(payment_hash)
             if self.lnworker.get_preimage(payment_hash) is not None:
                 return
             # ^ note: log message text grepped for in regtests

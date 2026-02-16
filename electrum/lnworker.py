@@ -1022,8 +1022,7 @@ class LNWallet(Logger):
         self.lnrater: LNRater = None
         # "RHASH:direction" -> amount_msat, status, min_final_cltv_delta, expiry_delay, creation_ts, invoice_features
         self.payment_info = self.db.get_dict('lightning_payments')  # type: dict[str, Tuple[Optional[int], int, int, int, int, int]]
-        self._preimages = self.db.get_dict('lightning_preimages')   # RHASH -> preimage
-        self._is_preimage_public_info = self.db.get_dict('lightning_preimage_is_public')  # RHASH -> bool  # FIXME xxxxx roll this into self._preimages dict
+        self._preimages = self.db.get_dict('lightning_preimages')   # RHASH -> (preimage, is_public)
         self._bolt11_cache = {}
         # note: this sweep_address is only used as fallback; as it might result in address-reuse
         self.logs = defaultdict(list)  # type: Dict[str, List[HtlcLog]]  # key is RHASH  # (not persisted)
@@ -2703,16 +2702,16 @@ class LNWallet(Logger):
     def save_preimage(self, payment_hash: bytes, preimage: bytes, *, write_to_disk: bool = True):
         if sha256(preimage) != payment_hash:
             raise Exception("tried to save incorrect preimage for payment_hash")
-        if self._preimages.get(payment_hash.hex()) is not None:
+        if self.get_preimage(payment_hash) is not None:
             return  # we already have this preimage
         self.logger.debug(f"saving preimage for {payment_hash.hex()}")
-        self._preimages[payment_hash.hex()] = preimage.hex()
+        self._preimages[payment_hash.hex()] = preimage.hex(), False
         if write_to_disk:
             self.wallet.save_db()
 
     def get_preimage(self, payment_hash: bytes) -> Optional[bytes]:
         assert isinstance(payment_hash, bytes), f"expected bytes, but got {type(payment_hash)}"
-        preimage_hex = self._preimages.get(payment_hash.hex())
+        preimage_hex, _ = self._preimages.get(payment_hash.hex(), (None, None))
         if preimage_hex is None:
             return None
         preimage_bytes = bytes.fromhex(preimage_hex)
@@ -2726,7 +2725,10 @@ class LNWallet(Logger):
 
     def mark_preimage_as_public(self, payment_hash: bytes) -> None:
         assert isinstance(payment_hash, bytes), f"expected bytes, but got {type(payment_hash)}"
-        self._is_preimage_public_info[payment_hash.hex()] = True
+        preimage_hex, is_public = self._preimages.get(payment_hash.hex(), (None, None))
+        if preimage_hex is not None:
+            # some unit tests remove the preimage..
+            self._preimages[payment_hash.hex()] = preimage_hex, True
 
     def is_preimage_public(self, payment_hash: bytes) -> bool:
         """If another LN node knows a preimage besides us, we consider it public.
@@ -2738,7 +2740,9 @@ class LNWallet(Logger):
         e.g. if we already revealed the preimage either offchain or onchain, it is fine to reveal it again.
         """
         assert isinstance(payment_hash, bytes), f"expected bytes, but got {type(payment_hash)}"
-        return bool(self._is_preimage_public_info.get(payment_hash.hex()))
+        preimage_hex, is_public = self._preimages.get(payment_hash.hex(), (None, None))
+        assert preimage_hex is not None
+        return is_public
 
     def get_payment_info(self, payment_hash: bytes, *, direction: lnutil.Direction) -> Optional[PaymentInfo]:
         """returns None if payment_hash is a payment we are forwarding"""
