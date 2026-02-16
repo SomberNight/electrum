@@ -203,18 +203,19 @@ def _get_catalog_sizes() -> tuple[dict[str, int], int]:
     if _catalog_sizes_tuple is not None:
         return _catalog_sizes_tuple
     catalog_size = {}  # type: dict[str, int]
-    src_strings_translated_in_any_lang = set()
+    max_catalog_size = 0
     for lang_code, lang_name in languages.items():
-        t = gettext.translation('electrum', LOCALE_DIR, fallback=True, languages=[lang_code])
+        catalog_size[lang_code] = 0
+        try:
+            t = gettext.translation('electrum', LOCALE_DIR, languages=[lang_code])
+        except OSError:
+            continue
         try:
             catalog_size[lang_code] = len(t._catalog)
-            src_strings_translated_in_any_lang |= set(t._catalog)
-        except Exception:
-            catalog_size[lang_code] = 0
-    # FIXME cheating re what 100% means! We would want to use the total count of source strings,
-    #  but we are missing that info. We approximate it by counting the source strings that are
-    #  translated into at least one language.
-    max_catalog_size = len(src_strings_translated_in_any_lang)
+            # same SourceStringCount header should be present in all .mo files, we just pick one:
+            max_catalog_size = int(t.info()["x-electrum-sourcestringcount"])
+        except Exception as e:
+            _logger.info(f"error reading .mo locale file for {lang_code}: {e!r}")
     max_catalog_size = max(max_catalog_size, 1)  # avoid div-by-zero
     _catalog_sizes_tuple = catalog_size, max_catalog_size
     return _catalog_sizes_tuple
