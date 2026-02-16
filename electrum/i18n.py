@@ -168,3 +168,53 @@ languages = {
     'zh_TW': 'Chinese Traditional',
 }
 assert '' in languages
+
+
+def get_gui_lang_names(*, show_completion_percent: bool = False) -> dict[str, str]:
+    """Returns a  lang_code -> lang_name  mapping, sorted.
+
+    If show_completion_percent is True, lang_name includes a % estimate for translation completeness.
+    The completion percentage calculation is cached, however the first call is still expensive:
+    on my decentish laptop it takes ~40 ms to calculate, so on an old phone, it might be noticeable.
+    """
+    # calc catalog sizes
+    if show_completion_percent:
+        catalog_size, max_catalog_size = _get_catalog_sizes()
+    # sort ("Default" first, then "English", then lexicographically sorted names)
+    languages_copy = languages.copy()
+    lang_pair_default = ("", languages_copy.pop("")) # pop "Default"
+    lang_pair_english = ("en_UK", languages_copy.pop("en_UK")) # pop "English"
+    lang_pairs_sorted = sorted(languages_copy.items(), key=lambda x: x[1])
+    # fancy names
+    gui_lang_names = {}  # type: dict[str, str]
+    gui_lang_names[lang_pair_default[0]] = lang_pair_default[1]
+    gui_lang_names[lang_pair_english[0]] = lang_pair_english[1]
+    for lang_code, lang_name in lang_pairs_sorted:
+        if show_completion_percent:
+            catalog_percent = round(100 * catalog_size[lang_code] / max_catalog_size)
+            gui_lang_names[lang_code] = f"{lang_name} ({catalog_percent}%)"
+        else:
+            gui_lang_names[lang_code] = lang_name
+    return gui_lang_names
+
+_catalog_sizes_tuple = None
+def _get_catalog_sizes() -> tuple[dict[str, int], int]:
+    global _catalog_sizes_tuple
+    if _catalog_sizes_tuple is not None:
+        return _catalog_sizes_tuple
+    catalog_size = {}  # type: dict[str, int]
+    src_strings_translated_in_any_lang = set()
+    for lang_code, lang_name in languages.items():
+        t = gettext.translation('electrum', LOCALE_DIR, fallback=True, languages=[lang_code])
+        try:
+            catalog_size[lang_code] = len(t._catalog)
+            src_strings_translated_in_any_lang |= set(t._catalog)
+        except Exception:
+            catalog_size[lang_code] = 0
+    # FIXME cheating re what 100% means! We would want to use the total count of source strings,
+    #  but we are missing that info. We approximate it by counting the source strings that are
+    #  translated into at least one language.
+    max_catalog_size = len(src_strings_translated_in_any_lang)
+    max_catalog_size = max(max_catalog_size, 1)  # avoid div-by-zero
+    _catalog_sizes_tuple = catalog_size, max_catalog_size
+    return _catalog_sizes_tuple
