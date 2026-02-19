@@ -62,8 +62,7 @@ class QEConfig(AuthMixin, QObject):
     languagesChanged = pyqtSignal()
     @pyqtProperty('QVariantList', notify=languagesChanged)
     def languagesAvailable(self):
-        # show_completion_percent=False, as it might be too slow to calc on old phones:
-        langs = get_gui_lang_names(show_completion_percent=False)
+        langs = get_gui_lang_names()
         langs_list = list(map(lambda x: {'value': x[0], 'text': x[1]}, langs.items()))
         return langs_list
 

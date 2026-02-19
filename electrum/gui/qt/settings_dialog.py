@@ -76,7 +76,7 @@ class SettingsDialog(QDialog, QtEventListener):
         # language
         lang_label = HelpLabel.from_configvar(self.config.cv.LOCALIZATION_LANGUAGE)
         lang_combo = QComboBox()
-        _languages = get_gui_lang_names(show_completion_percent=True)
+        _languages = get_gui_lang_names()
         lang_combo.addItems(list(_languages.values()))
         lang_keys = list(_languages.keys())
         lang_cur_setting = self.config.LOCALIZATION_LANGUAGE
