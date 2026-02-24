@@ -2699,13 +2699,24 @@ class LNWallet(Logger):
                 del self._payment_bundles_pkey_to_canon[pkey]
             del self._payment_bundles_canon_to_pkeylist[canon_pkey]
 
-    def save_preimage(self, payment_hash: bytes, preimage: bytes, *, write_to_disk: bool = True):
+    def save_preimage(
+        self,
+        payment_hash: bytes,
+        preimage: bytes,
+        *,
+        write_to_disk: bool = True,
+        mark_as_public: bool = False,  # see is_preimage_public
+    ):
+        assert isinstance(payment_hash, bytes), f"expected bytes, but got {type(payment_hash)}"
+        assert isinstance(preimage, bytes), f"expected bytes, but got {type(preimage)}"
         if sha256(preimage) != payment_hash:
             raise Exception("tried to save incorrect preimage for payment_hash")
-        if self.get_preimage(payment_hash) is not None:
-            return  # we already have this preimage
-        self.logger.debug(f"saving preimage for {payment_hash.hex()}")
-        self._preimages[payment_hash.hex()] = preimage.hex(), False
+        new_tuple = preimage.hex(), mark_as_public
+        old_tuple = self._preimages.get(payment_hash.hex(), (None, None))
+        if old_tuple == new_tuple:  # no change
+            return
+        self.logger.debug(f"saving preimage for {payment_hash.hex()} (public={mark_as_public})")
+        self._preimages[payment_hash.hex()] = new_tuple
         if write_to_disk:
             self.wallet.save_db()
 
@@ -2723,13 +2734,6 @@ class LNWallet(Logger):
         preimage_bytes = self.get_preimage(bytes.fromhex(payment_hash)) or b""
         return preimage_bytes.hex() or None
 
-    def mark_preimage_as_public(self, payment_hash: bytes) -> None:
-        assert isinstance(payment_hash, bytes), f"expected bytes, but got {type(payment_hash)}"
-        preimage_hex, is_public = self._preimages.get(payment_hash.hex(), (None, None))
-        if preimage_hex is not None:
-            # some unit tests remove the preimage..
-            self._preimages[payment_hash.hex()] = preimage_hex, True
-
     def is_preimage_public(self, payment_hash: bytes) -> bool:
         """If another LN node knows a preimage besides us, we consider it public.
         If a preimage is public, it is safe to reveal it in an arbitrary context.
@@ -2742,7 +2746,7 @@ class LNWallet(Logger):
         assert isinstance(payment_hash, bytes), f"expected bytes, but got {type(payment_hash)}"
         preimage_hex, is_public = self._preimages.get(payment_hash.hex(), (None, None))
         assert preimage_hex is not None
-        return is_public
+        return bool(is_public)
 
     def get_payment_info(self, payment_hash: bytes, *, direction: lnutil.Direction) -> Optional[PaymentInfo]:
         """returns None if payment_hash is a payment we are forwarding"""

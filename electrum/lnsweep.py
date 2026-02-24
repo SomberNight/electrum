@@ -480,20 +480,17 @@ def _maybe_reveal_preimage_for_htlc(
     htlc: 'UpdateAddHtlc',
     sweep_info_name: str,
 ) -> Tuple[Optional[bytes], Optional[KeepWatchingTXO]]:
-    """Given a Remote-added-HTLC, return the preimage if it's okay to reveal it on-chain."""
+    """Given a Remote-added-HTLC, return the preimage if it's okay to reveal it on-chain.
+
+    note: to be safe, even if we don't/can't reveal the preimage now, we should tell lnwatcher to
+          keep watching this HTLC at least until its CLTV, in case circumstances change.
+    """
     if not chan.lnworker.is_preimage_public(htlc.payment_hash) and not chan.lnworker.is_complete_mpp(htlc.payment_hash):
         # - do not redeem this, it might publish the preimage of an incomplete MPP
         # - OTOH maybe this chan just got closed, and we are still receiving new htlcs
         #   for this MPP set. So the MPP set might still transition to complete!
         #   The MPP_TIMEOUT is only around 2 minutes, so this window is short.
         #   The default keep_watching logic in lnwatcher is sufficient to call us again.
-        # - if this is an incoming payment, where
-        #   - all the HTLCs have already been received (covering invoice amt) and are pending currently, and
-        #   - no one knows the preimage besides us, and
-        #   - this channel was just force-closed by either party
-        #   -> then we can freely decide whether to claim the HTLCs or let them time out.
-        #      Both choices are valid and safe. *Here* it is simpler to implement
-        #      letting the HTLC time out, so that's what we do.
         keep_watching_txo = KeepWatchingTXO(
             name=sweep_info_name + "_preimage_not_public",
             until_height=htlc.cltv_abs,
@@ -507,8 +504,15 @@ def _maybe_reveal_preimage_for_htlc(
         )
         return None, keep_watching_txo
     preimage = chan.lnworker.get_preimage(htlc.payment_hash)
+    if preimage is None:
+        keep_watching_txo = KeepWatchingTXO(
+            name=sweep_info_name + "_preimage_missing",
+            until_height=htlc.cltv_abs,
+        )
+        return None, keep_watching_txo
     # this preimage will be revealed
-    chan.lnworker.mark_preimage_as_public(htlc.payment_hash)
+    assert preimage
+    chan.lnworker.save_preimage(htlc.payment_hash, preimage, mark_as_public=True)
     return preimage, None
 
 
