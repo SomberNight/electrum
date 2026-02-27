@@ -54,8 +54,12 @@ if [ -f "$DLL_TARGET_DIR/libzbar-0.dll" ]; then
 else
     (
         # As debian bullseye doesn't provide win-iconv-mingw-w64-dev, we need to build it:
-        WIN_ICONV_COMMIT="9f98392dfecadffd62572e73e9aba878e03496c4"
+        WIN_ICONV_COMMIT="82f00fbc1b1156530a0bbd003b93b3942743ed27"
+
+        #WIN_ICONV_COMMIT="9f98392dfecadffd62572e73e9aba878e03496c4"
         # ^ tag "v0.0.8"
+#        WIN_ICONV_COMMIT="9d16924a97cffcda415dc28569c15d34a6dbf1d5"
+#        # ^ tag "v0.0.10"
         info "Building win-iconv..."
         cd "$CACHEDIR"
         if [ ! -d win-iconv ]; then
@@ -72,9 +76,11 @@ else
 
         # note: "-j1" as parallel jobs lead to non-reproducibility seemingly due to ordering issues
         #       see https://github.com/win-iconv/win-iconv/issues/42
-        CC="${GCC_TRIPLET_HOST}-gcc" make -j1 || fail "Could not build win-iconv"
+
+        CC="${GCC_TRIPLET_HOST}-gcc" cmake -B build2 -DWIN_ICONV_BUILD_EXECUTABLE=OFF
+        CC="${GCC_TRIPLET_HOST}-gcc" cmake --build build2 -j1 || fail "Could not build win-iconv"
         # FIXME avoid using sudo
-        sudo make install prefix="/usr/${GCC_TRIPLET_HOST}"  || fail "Could not install win-iconv"
+        sudo cmake --install build2 --prefix="/usr/${GCC_TRIPLET_HOST}" || fail "Could not install win-iconv"
     )
     "$CONTRIB"/make_zbar.sh || fail "Could not build zbar"
 fi
