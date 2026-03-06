@@ -16,7 +16,7 @@ if [[ ! "$SYSTEM_PYTHON" ]] ; then
     echo "Please specify which python to use in \$SYSTEM_PYTHON" && exit 1
 fi
 
-which virtualenv > /dev/null 2>&1 || { echo "Please install virtualenv" && exit 1; }
+#which virtualenv > /dev/null 2>&1 || { echo "Please install virtualenv" && exit 1; }
 
 "${SYSTEM_PYTHON}" -m hashin -h > /dev/null 2>&1 || { "${SYSTEM_PYTHON}" -m pip install hashin; }
 
@@ -38,7 +38,7 @@ for suffix in '' '-hw' '-binaries' '-binaries-mac' '-build-wine' '-build-mac' '-
 
     # install ghost packages to satisfy dependency resolvers
     for package in $(cat "$contrib/requirements/ghost.txt"); do
-        python $contrib/install_ghost.py "$package"
+        python "$contrib/install_ghost.py" "$package"
     done
 
     python -m pip install -r "$contrib/requirements/${reqfile}" --upgrade

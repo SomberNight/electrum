@@ -151,6 +151,9 @@ info "installing electrum and its dependencies."
 "$python" -m pip install --no-build-isolation --no-dependencies --no-binary :all: --no-warn-script-location \
     --cache-dir "$PIP_CACHE_DIR" -r "$CONTRIB/deterministic-build/requirements-hw.txt"
 
+"$python" -m pip install --no-build-isolation --no-dependencies --no-binary :all: --no-warn-script-location \
+    --cache-dir "$PIP_CACHE_DIR" "git+https://github.com/trezor/trezor-firmware@f0a4f922fab6d67c7dc923856e704302471c89a4#egg=trezor&subdirectory=python"
+
 "$python" -m pip install --no-build-isolation --no-dependencies --no-warn-script-location \
     --cache-dir "$PIP_CACHE_DIR" "$PROJECT_ROOT"
 
