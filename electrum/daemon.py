@@ -33,6 +33,7 @@ import threading
 from typing import Dict, Optional, Tuple, Callable, Union, Sequence, Mapping, TYPE_CHECKING
 from base64 import b64decode, b64encode
 import json
+import secrets
 import socket
 
 import aiohttp
@@ -66,8 +67,15 @@ class DaemonNotRunning(Exception):
     pass
 
 
-def get_rpcsock_defaultpath(config: SimpleConfig):
-    return os.path.join(config.path, 'daemon_rpc_socket')
+def get_rpcsock_defaultpath(config: SimpleConfig, *, socktype: str) -> Optional[str]:
+    if socktype == 'unix':
+        return os.path.join(config.path, 'daemon_rpc_socket')
+    elif socktype == 'win_namedpipe':
+        return r'\\.\pipe\{}'.format(secrets.token_hex(nbytes=16))
+    elif socktype == 'tcp':
+        return None
+    else:
+        raise Exception(f"unknown socktype ({socktype!r})")
 
 
 def get_rpcsock_default_type(config: SimpleConfig):
@@ -76,8 +84,15 @@ def get_rpcsock_default_type(config: SimpleConfig):
     # Use unix domain sockets when available,
     # with the extra paranoia that in case windows "implements" them,
     # we want to test it before making it the default there.
+    # note: it would be nice if we could use unix sockets on Windows :/
+    #   ref https://github.com/python/cpython/issues/77589
     if hasattr(socket, 'AF_UNIX') and sys.platform != 'win32':
         return 'unix'
+    if sys.platform == 'win32':
+        # note: aiohttp only supports named pipes with ProactorEventLoop on Windows.
+        #       ProactorEventLoop is the default event loop type on Windows.
+        #       we could assert that is being used here -- otherwise it will raise RuntimeError later.
+        return 'win_namedpipe'
     return 'tcp'
 
 
@@ -118,7 +133,7 @@ def request(config: SimpleConfig, endpoint, args=(), timeout: Union[float, int] 
             with open(lockfile) as f:
                 socktype, address, create_time = ast.literal_eval(f.read())
                 int(create_time)  # raise if not numeric
-                if socktype == 'unix':
+                if socktype in ['unix', 'win_namedpipe']:
                     path = address
                     (host, port) = "127.0.0.1", 0
                     # We still need a host and port for e.g. HTTP Host header
@@ -138,10 +153,12 @@ def request(config: SimpleConfig, endpoint, args=(), timeout: Union[float, int] 
         ):
             if socktype == 'unix':
                 connector = aiohttp.UnixConnector(path=path)
+            elif socktype == 'win_namedpipe':
+                connector = aiohttp.NamedPipeConnector(path=path)
             elif socktype == 'tcp':
                 connector = None # This will transform into TCP.
             else:
-                raise Exception(f"impossible socktype ({socktype!r})")
+                raise Exception(f"unknown socktype ({socktype!r})")
             async with aiohttp.ClientSession(auth=auth, connector=connector) as session:
                 c = util.JsonRPCClient(session, server_url)
                 return await c.request(endpoint, *args)
@@ -294,7 +311,7 @@ class CommandsServer(AuthenticatedServer):
         self.config = daemon.config
         sockettype = self.config.RPC_SOCKET_TYPE
         self.socktype = sockettype if sockettype != 'auto' else get_rpcsock_default_type(self.config)
-        self.sockpath = self.config.RPC_SOCKET_FILEPATH or get_rpcsock_defaultpath(self.config)
+        self.sockpath = self.config.RPC_SOCKET_FILEPATH or get_rpcsock_defaultpath(self.config, socktype=self.socktype)
         self.host = self.config.RPC_HOST
         self.port = self.config.RPC_PORT
         self.app = web.Application()
@@ -309,6 +326,8 @@ class CommandsServer(AuthenticatedServer):
     def _socket_config_str(self) -> str:
         if self.socktype == 'unix':
             return f"<socket type={self.socktype}, path={self.sockpath}>"
+        elif self.socktype == 'win_namedpipe':
+            return f"<socket type={self.socktype}, path={self.sockpath}>"
         elif self.socktype == 'tcp':
             return f"<socket type={self.socktype}, host={self.host}, port={self.port}>"
         else:
@@ -319,6 +338,8 @@ class CommandsServer(AuthenticatedServer):
         await self.runner.setup()
         if self.socktype == 'unix':
             site = web.UnixSite(self.runner, self.sockpath)
+        elif self.socktype == 'win_namedpipe':
+            site = web.NamedPipeSite(self.runner, self.sockpath)
         elif self.socktype == 'tcp':
             site = web.TCPSite(self.runner, self.host, self.port)
         else:
@@ -327,13 +348,15 @@ class CommandsServer(AuthenticatedServer):
             await site.start()
         except Exception as e:
             raise Exception(f"failed to start CommandsServer at {self._socket_config_str()}. got exc: {e!r}") from None
-        socket = site._server.sockets[0]
         if self.socktype == 'unix':
             addr = self.sockpath
+        elif self.socktype == 'win_namedpipe':
+            addr = self.sockpath
         elif self.socktype == 'tcp':
+            socket = site._server.sockets[0]
             addr = socket.getsockname()
         else:
-            raise Exception(f"impossible socktype ({self.socktype!r})")
+            raise Exception(f"unknown socktype ({self.socktype!r})")
         os.write(self.fd, bytes(repr((self.socktype, addr, time.time())), 'utf8'))
         os.close(self.fd)
         self.logger.info(f"now running and listening. socktype={self.socktype}, addr={addr}")
