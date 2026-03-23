@@ -35,6 +35,7 @@ from base64 import b64decode, b64encode
 import json
 import secrets
 import socket
+import stat
 
 import aiohttp
 from aiohttp import web, client_exceptions
@@ -44,7 +45,7 @@ from . import util
 from .network import Network
 from .util import (
     json_decode, to_bytes, to_string, profiler, standardize_path, constant_time_compare, InvalidPassword,
-    log_exceptions, randrange, OldTaskGroup, UserFacingException, JsonRPCError
+    log_exceptions, randrange, OldTaskGroup, UserFacingException, JsonRPCError, os_chmod
 )
 from .wallet import Wallet, Abstract_Wallet
 from .storage import WalletStorage
@@ -317,7 +318,7 @@ class CommandsServer(AuthenticatedServer):
         self.app = web.Application()
         self.app.router.add_post("/", self.handle)
         self.register_method('ping', self.ping)
-        self.register_method('gui', self.gui)
+        self.register_method('gui', self.gui)  # TODO only start limited RPC server by def
         self.cmd_runner = Commands(config=self.config, network=self.daemon.network, daemon=self.daemon)
         for cmdname in known_commands:
             self.register_method(cmdname, getattr(self.cmd_runner, cmdname))
@@ -348,6 +349,12 @@ class CommandsServer(AuthenticatedServer):
             await site.start()
         except Exception as e:
             raise Exception(f"failed to start CommandsServer at {self._socket_config_str()}. got exc: {e!r}") from None
+        # now server has started.
+        if self.socktype == 'unix':
+            # set restrictive permissions on unix domain socket.
+            # FIXME race? we are late. should set this during socket-file creation but aiohttp API does not let us.
+            os_chmod(self.sockpath, stat.S_IREAD | stat.S_IWRITE)
+        # write server conn details into lockfile fd
         if self.socktype == 'unix':
             addr = self.sockpath
         elif self.socktype == 'win_namedpipe':
