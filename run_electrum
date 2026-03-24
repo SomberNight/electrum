@@ -123,6 +123,7 @@ from electrum.commands import get_parser, get_simple_parser, known_commands, Com
 from electrum import daemon
 from electrum.util import create_and_start_event_loop, UserFacingException, JsonRPCError
 from electrum.i18n import set_language
+from electrum import constants
 
 if TYPE_CHECKING:
     import threading
@@ -509,7 +510,14 @@ def handle_cmd(*, cmdname: str, config: 'SimpleConfig', config_options: dict):
         configure_logging(config)
         fd = daemon.get_file_descriptor(config)
         if fd is not None:
-            d = daemon.Daemon(config, fd, start_network=False)
+            # When running in GUI mode, only start a limited minimal RPC server.
+            # The "ping" RPC is needed for the lockfile fd to work.
+            # The minimal server disables most other RPCs, to limit attack surface.
+            # - An attacker with filesystem read-access to the config file can see the rpcpassword
+            #   and could otherwise issue RPC commands. (note: 'setconfig' RPC turns config file
+            #   read access to write access)
+            only_minimal_jsonrpc = not constants.net.TESTNET
+            d = daemon.Daemon(config, fd, start_network=False, only_minimal_jsonrpc=only_minimal_jsonrpc)
             try:
                 d.run_gui()
             except BaseException as e:
@@ -535,7 +543,7 @@ def handle_cmd(*, cmdname: str, config: 'SimpleConfig', config_options: dict):
         fd = daemon.get_file_descriptor(config)
         if fd is not None:
             # run daemon
-            d = daemon.Daemon(config, fd)
+            d = daemon.Daemon(config, fd, only_minimal_jsonrpc=False)
             d.run_daemon()
             sys_exit(0)
         else:
@@ -577,7 +585,7 @@ def handle_cmd(*, cmdname: str, config: 'SimpleConfig', config_options: dict):
             except Exception as e:
                 _logger.exception("error running command (with daemon)")
                 sys_exit(1)
-        else:
+        else:  # --offline
             if cmd.requires_network:
                 print_msg("This command cannot be run offline")
                 sys_exit(1)
