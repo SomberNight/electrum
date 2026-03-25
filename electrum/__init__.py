@@ -53,3 +53,12 @@ length = len(zlib.compress(os.urandom(1000)))
 if length <= 900:
     raise ImportError("Broken PRNG. Refusing to continue. Exiting...")
 
+
+# Set default application-wide file umask to more restrictive than typical.
+# We want to create all files and directories (esp. inside the datadir) with locked-down permissions.
+# note: this helps even on Windows! (see https://docs.python.org/3/library/os.html#os.mkdir)
+#       > `os.mkdir(path, mode=0o777, *, dir_fd=None)`
+#       >   On Windows, a mode of 0o700 is specifically handled to apply access control to the new
+#       >   directory such that only the current user and administrators have access.
+os.umask(0o0077)
+
