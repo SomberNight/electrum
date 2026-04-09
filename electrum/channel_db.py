@@ -672,7 +672,7 @@ class ChannelDB(SqlDB):
         start_node = payload.get('start_node', None) or start_node
         assert start_node is not None
         if not verify_sig_for_channel_update(payload, start_node):
-            raise InvalidGossipMsg(f'failed verifying channel update for {short_channel_id}')
+            raise InvalidGossipMsg(f'failed verifying channel update for {short_channel_id}. {payload=!r}, {start_node=!r}')
 
     @classmethod
     def verify_channel_announcement(cls, payload) -> None:
@@ -681,7 +681,7 @@ class ChannelDB(SqlDB):
         sigs = [payload['node_signature_1'], payload['node_signature_2'], payload['bitcoin_signature_1'], payload['bitcoin_signature_2']]
         for pubkey, sig in zip(pubkeys, sigs):
             if not ECPubkey(pubkey).ecdsa_verify(sig, h):
-                raise InvalidGossipMsg('signature failed')
+                raise InvalidGossipMsg(f'signature failed. {payload=!r}')
 
     @classmethod
     def verify_node_announcement(cls, payload) -> None:
@@ -689,7 +689,7 @@ class ChannelDB(SqlDB):
         signature = payload['signature']
         h = sha256d(payload['raw'][66:])
         if not ECPubkey(pubkey).ecdsa_verify(signature, h):
-            raise InvalidGossipMsg('signature failed')
+            raise InvalidGossipMsg(f'signature failed. {payload=!r}')
 
     def add_node_announcements(self, msg_payloads):
         # note: signatures have already been verified.

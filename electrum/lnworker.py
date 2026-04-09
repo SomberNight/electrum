@@ -787,7 +787,7 @@ class LNGossip(Logger):
 
     @ignore_exceptions
     @log_exceptions
-    async def process_gossip(self, chan_anns, node_anns, chan_upds):
+    async def process_gossip(self, chan_anns, node_anns, chan_upds):  #
         # note: we run in the originating peer's TaskGroup, so we can safely raise here
         #       and disconnect only from that peer
         await self.channel_db.data_loaded.wait()
@@ -802,7 +802,7 @@ class LNGossip(Logger):
         # node announcements
         def process_node_anns():
             for payload in node_anns:
-                self.channel_db.verify_node_announcement(payload)
+                self.channel_db.verify_node_announcement(payload)  #
             self.channel_db.add_node_announcements(node_anns)
         await run_in_thread(process_node_anns)
         # channel updates
