@@ -54,7 +54,7 @@ from .util import (
     WalletFileException, BitcoinException, InvalidPassword, format_time, timestamp_to_datetime,
     Satoshis, Fiat, TxMinedInfo, quantize_feerate, OrderedDictWithIndex, multisig_type, parse_max_spend,
     OnchainHistoryItem, read_json_file, write_json_file, UserFacingException, FileImportFailed, EventListener,
-    event_listener
+    event_listener, InvalidBitcoinAddress,
 )
 from .bitcoin import COIN, is_address, is_minikey, relayfee, dust_threshold, DummyAddress, DummyAddressUsedInTxException
 from .keystore import (
@@ -700,9 +700,9 @@ class Abstract_Wallet(ABC, Logger, EventListener):
         if len(addrs) > 0:
             addr = str(addrs[0])
             if not bitcoin.is_address(addr):
-                neutered_addr = addr[:5] + '..' + addr[-2:]
+                neutered_addr = str(InvalidBitcoinAddress(addr=addr))
                 raise WalletFileException(f'The addresses in this wallet are not bitcoin addresses.\n'
-                                          f'e.g. {neutered_addr} (length: {len(addr)})')
+                                          f'e.g. {neutered_addr}')
 
     def check_returned_address_for_corruption(func):
         def wrapper(self, *args, **kwargs):

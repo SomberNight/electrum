@@ -31,7 +31,7 @@ from collections import defaultdict, OrderedDict
 from concurrent.futures.process import ProcessPoolExecutor
 from typing import (
     NamedTuple, Union, TYPE_CHECKING, Tuple, Optional, Callable, Any, Sequence, Dict, Generic, TypeVar, List, Iterable,
-    Set, Awaitable
+    Set, Awaitable, Type
 )
 from types import MappingProxyType
 from datetime import datetime, timezone, timedelta
@@ -69,6 +69,7 @@ from .i18n import _
 from .logging import get_logger, Logger
 
 if TYPE_CHECKING:
+    from .constants import AbstractNet
     from .network import Network, ProxySettings
     from .interface import Interface
     from .simple_config import SimpleConfig
@@ -206,6 +207,20 @@ class WalletFileException(Exception):
 
 
 class BitcoinException(Exception): pass
+
+class InvalidBitcoinAddress(BitcoinException):
+    def __init__(self, *, addr: str, net: Type['AbstractNet'] = None):
+        from . import constants
+        if net is None:
+            net = constants.net
+        assert isinstance(addr, str)
+        self.addr = addr
+        self.net = net
+
+    def __str__(self):
+        neutered_addr = self.addr[:5] + '..' + self.addr[-2:]
+        return (_('Invalid bitcoin address: {}').format(neutered_addr)
+                + f" (len={len(self.addr)}) (chain={self.net.NET_NAME})")
 
 
 class UserFacingException(Exception):

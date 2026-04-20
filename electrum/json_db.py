@@ -293,10 +293,10 @@ class JsonDB(Logger):
         # load data
         data = self.load_data(s)
         if upgrader:
-            data, was_upgraded = upgrader(data)
+            data, was_upgraded = upgrader(data)  #
             self._modified |= was_upgraded
         # convert json to python objects
-        data = self._convert_dict([], data)
+        data = self._convert_dict([], data)  #
         # convert dict to StoredDict
         self.data = StoredDict(data, self)
         self.data.set_parent(key='', parent=None)

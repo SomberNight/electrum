@@ -31,6 +31,7 @@ import electrum_ecc as ecc
 from electrum_ecc.util import bip340_tagged_hash
 
 from .util import bfh, BitcoinException, assert_bytes, to_bytes, inv_dict, is_hex_str, classproperty
+from .util import InvalidBitcoinAddress
 from . import segwit_addr
 from . import constants
 from .crypto import sha256d, sha256, hash_160
@@ -439,7 +440,7 @@ def script_to_address(script: bytes, *, net=None) -> Optional[str]:
 def address_to_script(addr: str, *, net=None) -> bytes:
     if net is None: net = constants.net
     if not is_address(addr, net=net):
-        raise BitcoinException(f"invalid bitcoin address: {addr}")
+        raise InvalidBitcoinAddress(addr=addr, net=net)
     witver, witprog = segwit_addr.decode_segwit_address(net.SEGWIT_HRP, addr)
     if witprog is not None:
         if not (0 <= witver <= 16):
