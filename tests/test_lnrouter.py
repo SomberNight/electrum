@@ -6,6 +6,7 @@ import asyncio
 from typing import Optional
 from os import urandom
 from types import MappingProxyType
+import random
 
 from electrum import util
 from electrum.channel_db import NodeInfo
@@ -573,7 +574,7 @@ class TestAllocateFeeBudget(ElectrumTestCase):
     BUDGET = PaymentFeeBudget(fee_msat=10_000, cltv=144)  # 10 sat
 
     def _allocate(self, route, *, amount=None, budget=None, level=6):
-        _allocate_fee_budget_among_route(
+        return _allocate_fee_budget_among_route(
             route,
             budget=budget or self.BUDGET,
             trampoline_fee_level=level,
@@ -691,6 +692,40 @@ class TestAllocateFeeBudget(ElectrumTestCase):
             self.assertEqual(amount, next(amounts_from_destination))
             amount += edge.fee_for_edge(amount)
         self.assertEqual([0, 2496, 1000, 2496, 1000], [e.fee_base_msat for e in route])
+
+    def test_fuzz(self):
+        invoice_amount = 1_000_000
+
+        for round_ in range(10**5):
+            budget = PaymentFeeBudget(fee_msat=random.randint(1000, 10*invoice_amount), cltv=144)
+            route = [
+                _tramp_edge('x', 'x', fee_base=0, fee_prop=0),
+            ]
+            num_edges = random.randint(1, 10)
+            fee_base_min = random.randint(1000, 50000)
+            fee_base_max = random.randint(fee_base_min, 50000)
+            fee_prop_min = random.randint(1000, 50000)
+            fee_prop_max = random.randint(fee_prop_min, 50000)
+            for e in range(num_edges):
+                if random.random() < 0.5:
+                    route.append(_tramp_edge('x', 'x'))
+                else:
+                    fee_base = random.randint(fee_base_min, fee_base_max)
+                    fee_prop = random.randint(fee_prop_min, fee_prop_max)
+                    route.append(_tramp_edge('x', 'x', fee_base=fee_base, fee_prop=fee_prop))
+            placeholder_fee = self._allocate(route, amount=invoice_amount, budget=budget)
+
+            actual_fees = []
+            fwd_amt = invoice_amount
+            for e in route[::-1]:
+                actual_fee = e.fee_for_edge(fwd_amt)
+                fwd_amt += actual_fee
+                actual_fees.append(actual_fee)
+            actual_fees = actual_fees[::-1]
+            # checks
+            no_solution = placeholder_fee == 0
+            solution_is_exact = (budget.fee_msat - num_edges <= sum(actual_fees) <= budget.fee_msat)
+            assert no_solution or solution_is_exact
 
     def test_level_zero_gives_zero_placeholders(self):
         route = [

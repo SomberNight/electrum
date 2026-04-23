@@ -219,7 +219,7 @@ def _allocate_fee_budget_among_route(
     budget: PaymentFeeBudget,
     trampoline_fee_level: int,
     amount_msat_for_dest: int,
-) -> None:
+) -> int:
     """
     Assign trampoline base fee to PLACEHOLDER trampoline edges so the realized route fee stays
     within the trampoline_fee_level's share of the payment budget.
@@ -235,41 +235,37 @@ def _allocate_fee_budget_among_route(
     """
     usable_budget_msat = get_trampoline_budget(trampoline_fee_level, budget.fee_msat)
     placeholder_edges = [e for e in route[1:] if e.fee_base_msat == PLACEHOLDER_FEE]
+    known_edges =       [e for e in route[1:] if e.fee_base_msat != PLACEHOLDER_FEE]
     if not placeholder_edges:
-        return
+        return 0
 
     amt_in_const = Fraction(amount_msat_for_dest)
-    amt_in_coeff = Fraction(0)
-    total_fee_const = Fraction(0)
-    total_fee_coeff = Fraction(0)
-    for edge in reversed(route[1:]):
+    for edge in reversed(known_edges):  # only known_edges
+        amt_in_const += edge.fee_base_msat + amt_in_const * edge.fee_proportional_millionths / 1_000_000
+    budget_const = amt_in_const - amount_msat_for_dest
+    budget_remaining = Fraction(usable_budget_msat) - budget_const
+
+    coeff = Fraction(0)
+    for edge in reversed(route[1:]):  # known_edges AND placeholder_edges
         if edge.fee_base_msat == PLACEHOLDER_FEE:
-            edge_fee_const = Fraction(0)
-            edge_fee_coeff = Fraction(1)
-        else:
-            edge_fee_const = edge.fee_base_msat + amt_in_const * edge.fee_proportional_millionths / 1_000_000
-            edge_fee_coeff = amt_in_coeff * edge.fee_proportional_millionths / 1_000_000
+            coeff += Fraction(1)
+        else:  # for a known-edge, allocate same small fee for each placeholder-edge later in path
+            coeff += coeff * edge.fee_proportional_millionths / 1_000_000
 
-        amt_in_const += edge_fee_const
-        amt_in_coeff += edge_fee_coeff
-
-        total_fee_const += edge_fee_const
-        total_fee_coeff += edge_fee_coeff
-
-    budget_residual = Fraction(usable_budget_msat) - total_fee_const
-    if budget_residual <= 0 or total_fee_coeff <= 0:
+    if budget_remaining <= 0 or coeff <= 0:
         placeholder_fee = 0
     else:
-        placeholder_fee_exact = budget_residual / total_fee_coeff
+        placeholder_fee_exact = budget_remaining / coeff
         placeholder_fee = placeholder_fee_exact.numerator // placeholder_fee_exact.denominator  # floor
     _logger.debug(
         f"_allocate_fee_budget_among_route(): {usable_budget_msat=}, "
-        f"total_fee_const={float(total_fee_const):.2f}, "
-        f"total_fee_coeff={float(total_fee_coeff):.4f}, "
+        f"budget_const={float(budget_const):.2f}, "
+        f"coeff={float(coeff):.4f}, "
         f"placeholder_fee={placeholder_fee}, placeholders={len(placeholder_edges)}")
     for edge in placeholder_edges:
         edge.fee_base_msat = placeholder_fee
         edge.fee_proportional_millionths = 0
+    return placeholder_fee
 
 
 def _choose_next_trampoline(
