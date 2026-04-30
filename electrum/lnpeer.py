@@ -1092,9 +1092,11 @@ class Peer(Logger, EventListener):
         their_channel_type = accept_channel_tlvs.get('channel_type')
         if their_channel_type is None:
             raise Exception("channel_type MUST be present in accept_channel, but missing")
-        their_channel_type = ChannelType.from_bytes(their_channel_type['type'], byteorder='big').discard_unknown_and_check()
+        their_channel_type = ChannelType.from_bytes(their_channel_type['type'], byteorder='big')
+        # if channel_type does not match the channel_type from open_channel:
+        #     MUST fail the channel.
         if their_channel_type != our_channel_type:
-            raise Exception("channel_type is not the one that we sent.")
+            raise Exception(f"channel_type is not the one that we sent. {our_channel_type=}. {their_channel_type=}.")
 
         remote_config = RemoteConfig(
             payment_basepoint=OnlyPubkeyKeypair(payload['payment_basepoint']),
@@ -1243,7 +1245,7 @@ class Peer(Logger, EventListener):
         if channel_type is None:
             raise Exception("channel_type MUST be present in open_channel, but missing")
         # MUST fail the channel if channel_type is not suitable.
-        channel_type = ChannelType.from_bytes(channel_type['type'], byteorder='big').discard_unknown_and_check()
+        channel_type = ChannelType.from_bytes(channel_type['type'], byteorder='big')
         if not channel_type.complies_with_features(self.features):
             raise Exception("sender has sent a channel type we don't support")
         assert channel_type & ChannelType.OPTION_STATIC_REMOTEKEY, "new legacy channel?!"
