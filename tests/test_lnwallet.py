@@ -3,13 +3,15 @@ import os
 import asyncio
 from unittest import mock
 from decimal import Decimal
+from typing import Optional
 
 from electrum.address_synchronizer import TX_HEIGHT_LOCAL
 import electrum.trampoline
 from . import ElectrumTestCase
 from .test_lnchannel import create_test_channels
+from .test_lnpeer import transport_pair, MockLNWallet, PeerInTests
 
-from electrum.lnutil import RECEIVED, MIN_FINAL_CLTV_DELTA_ACCEPTED, serialize_htlc_key, LnFeatures
+from electrum.lnutil import RECEIVED, MIN_FINAL_CLTV_DELTA_ACCEPTED, serialize_htlc_key, LnFeatures, HTLCOwner
 from electrum.logging import console_stderr_handler
 from electrum.lntransport import LNPeerAddr
 from electrum.invoices import LN_EXPIRY_NEVER, PR_UNPAID
@@ -17,6 +19,46 @@ from electrum.lnpeer import Peer
 from electrum.lnchannel import Channel, ChannelState
 from electrum.lnonion import OnionPacket, OnionRoutingFailure
 from electrum.crypto import sha256
+
+
+async def _connect_two_lnwallets(alice: 'MockLNWallet', bob: 'MockLNWallet') -> tuple[PeerInTests, PeerInTests]:
+    """Mock transports and add the wallets as Peers to each others lnpeermgr."""
+    t_ab, t_ba = transport_pair(
+        alice.node_keypair,
+        bob.node_keypair,
+        name1=f"{alice.name}->{bob.name}",
+        name2=f"{bob.name}->{alice.name}",
+    )
+    peer_ab = PeerInTests(alice, bob.node_keypair.pubkey, t_ab)
+    peer_ba = PeerInTests(bob, alice.node_keypair.pubkey, t_ba)
+    alice.lnpeermgr._peers[bob.node_keypair.pubkey] = peer_ab
+    bob.lnpeermgr._peers[alice.node_keypair.pubkey] = peer_ba
+    await alice.lnpeermgr.taskgroup.spawn(peer_ab.main_loop())
+    await bob.lnpeermgr.taskgroup.spawn(peer_ba.main_loop())
+    return peer_ab, peer_ba
+
+
+def _add_channels_to_peers(
+    peer_ab: 'PeerInTests',
+    peer_ba: 'PeerInTests',
+    *,
+    local_msat: Optional[int] = None,
+    remote_msat: Optional[int] = None,
+) -> tuple[Channel, Channel]:
+    """Create channels for given peers and mark them open"""
+    chan_ab, chan_ba = create_test_channels(
+        alice_lnwallet=peer_ab.lnworker,
+        bob_lnwallet=peer_ba.lnworker,
+        local_msat=local_msat,
+        remote_msat=remote_msat,
+    )
+    peer_ab.lnworker._add_channel(chan_ab)
+    peer_ba.lnworker._add_channel(chan_ba)
+    chan_ab._state = ChannelState.FUNDED
+    chan_ba._state = ChannelState.FUNDED
+    peer_ab.mark_open(chan_ab)
+    peer_ba.mark_open(chan_ba)
+    return chan_ab, chan_ba
 
 
 class TestLNWallet(ElectrumTestCase):
@@ -416,3 +458,35 @@ class TestLNWallet(ElectrumTestCase):
             wallet.config.OPEN_ZEROCONF_CHANNELS = True
             wallet.config.ZEROCONF_TRUSTED_NODE = valid_peer
             self.assertTrue(wallet.can_get_zeroconf_channel())
+
+    async def test_rebalance_channels(self):
+        alice = self.lnwallet_anchors
+        bob = self.create_mock_lnwallet(name='bob')
+        bob.config.EXPERIMENTAL_LN_FORWARD_PAYMENTS = True
+        self.assertFalse(alice.uses_trampoline())
+        peer_ab, peer_ba = await _connect_two_lnwallets(alice, bob)
+        chan1 = _add_channels_to_peers(peer_ab, peer_ba, local_msat=10_000_000_000, remote_msat=50_000_000)
+        chan2 = _add_channels_to_peers(peer_ab, peer_ba, local_msat=50_000_000, remote_msat=10_000_000_000)
+
+        # test num_sats_can_rebalance
+        self.assertGreater(alice.num_sats_can_rebalance(chan1[0], chan2[0]), 9_000_000)
+        chan1[0].set_frozen_for_sending(True)
+        self.assertEqual(alice.num_sats_can_rebalance(chan1[0], chan2[0]), 0)
+        chan1[0].set_frozen_for_sending(False)
+        chan2[0].set_frozen_for_receiving(True)
+        self.assertEqual(alice.num_sats_can_rebalance(chan1[0], chan2[0]), 0)
+        chan2[0].set_frozen_for_receiving(False)
+
+        # simple rebalance: alice chan1 -> bob -> alice chan2
+        rebalance_amount = 60_000_000
+        self.assertEqual(chan1[0].balance(HTLCOwner.LOCAL), 10_000_000_000)
+        success, log = await alice.rebalance_channels(chan1[0], chan2[0], amount_msat=rebalance_amount)
+        self.assertTrue(success, msg=log)
+        self.assertLessEqual(chan1[0].balance(HTLCOwner.LOCAL), 10_000_000_000 - rebalance_amount)
+        self.assertEqual(chan2[0].balance(HTLCOwner.LOCAL), 50_000_000 + rebalance_amount)
+
+        # test another rebalance, with partially frozen channels
+        chan1[0].set_frozen_for_receiving(True)  # shouldn't matter, this channel will send
+        chan2[0].set_frozen_for_sending(True)  # shouldn't matter, this channel will receive
+        success, log = await alice.rebalance_channels(chan1[0], chan2[0], amount_msat=150_000_000)
+        self.assertTrue(success, msg=log)
