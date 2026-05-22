@@ -1376,10 +1376,13 @@ class Interface(Logger):
         res = await self.session.send_request('blockchain.transaction.get_merkle', [tx_hash, tx_height])
         # check response
         block_height = assert_dict_contains_field(res, field_name='block_height')
+        block_hash = assert_dict_contains_field(res, field_name='block_hash')
         merkle = assert_dict_contains_field(res, field_name='merkle')
         pos = assert_dict_contains_field(res, field_name='pos')
         # note: tx_height was just a hint to the server, don't enforce the response to match it
+        # note: don't compare block_hash to our on-disk chain, as a reorg could race. Let the caller deal with that.
         assert_non_negative_integer(block_height)
+        assert_hash256_str(block_hash)
         assert_non_negative_integer(pos)
         assert_list_or_tuple(merkle)
         for item in merkle:
