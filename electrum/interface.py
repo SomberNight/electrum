@@ -131,9 +131,13 @@ def assert_hex_str(val: Any, *, allow_odd_len: bool = False) -> None:
         raise RequestCorrupted(f'{val!r} should be a hex str')
 
 
-def assert_dict_contains_field(d: Any, *, field_name: str) -> Any:
+def assert_dict(d: Any) -> None:
     if not isinstance(d, dict):
         raise RequestCorrupted(f'{d!r} should be a dict')
+
+
+def assert_dict_contains_field(d: Any, *, field_name: str) -> Any:
+    assert_dict(d)
     if field_name not in d:
         raise RequestCorrupted(f'required field {field_name!r} missing from dict')
     return d[field_name]
@@ -142,6 +146,22 @@ def assert_dict_contains_field(d: Any, *, field_name: str) -> Any:
 def assert_list_or_tuple(val: Any) -> None:
     if not isinstance(val, (list, tuple)):
         raise RequestCorrupted(f'{val!r} should be a list or tuple')
+
+
+def assert_blockref(val: Any) -> tuple[int, bytes]:
+    assert_list_or_tuple(val)
+    if len(val) != 2:
+        raise RequestCorrupted(f"{val} should be a blockref, consisting of 2 items")
+    bheight, compressed_bhash = val
+    assert_integer(bheight)
+    assert_hex_str(compressed_bhash, allow_odd_len=True)
+    blockhash_hex_full_len = len(constants.net.GENESIS)
+    if len(compressed_bhash) > blockhash_hex_full_len:
+        raise RequestCorrupted(f"{compressed_bhash} should be compressed blockhash, but it is too long")
+    if compressed_bhash.startswith("0"):
+        raise RequestCorrupted(f"{compressed_bhash} is not minimally encoded. Leading 0 hex chars must be stripped.")
+    bhash = (blockhash_hex_full_len - len(compressed_bhash)) * "0" + compressed_bhash
+    return bheight, bytes.fromhex(bhash)
 
 
 def protocol_tuple(s: Any) -> tuple[int, ...]:
@@ -235,7 +255,7 @@ class NotificationSession(RPCSession):
         assert hasattr(self, "max_send_delay")        # in base class
         self.max_send_delay = timeout
 
-    async def subscribe(self, method: str, params: List, queue: asyncio.Queue):
+    async def subscribe(self, method: str, params: List, queue: asyncio.Queue) -> None:
         # note: until the cache is written for the first time,
         # each 'subscribe' call might make a request on the network.
         notif_params = params[:]
@@ -1471,9 +1491,12 @@ class Interface(Logger):
         # do request
         res = await self.session.send_request('blockchain.scriptpubkey.get_history', [spk])
         # check response
-        assert_list_or_tuple(res)
+        assert_dict_contains_field(res, field_name='chaintip')
+        assert_blockref(res['chaintip'])
+        hist = assert_dict_contains_field(res, field_name='history')
+        assert_list_or_tuple(hist)
         prev_height = 1
-        for tx_item in res:
+        for tx_item in hist:
             height = assert_dict_contains_field(tx_item, field_name='height')
             assert_dict_contains_field(tx_item, field_name='tx_hash')
             assert_integer(height)
@@ -1491,23 +1514,24 @@ class Interface(Logger):
                 prev_height = height
         if self.active_protocol_tuple >= (1, 6):
             # enforce order of mempool txs
-            mempool_txs = [tx_item for tx_item in res if tx_item['height'] <= 0]
+            mempool_txs = [tx_item for tx_item in hist if tx_item['height'] <= 0]
             if mempool_txs != sorted(mempool_txs, key=lambda x: (-x['height'], bytes.fromhex(x['tx_hash']))):
                 raise RequestCorrupted(f'mempool txs not in canonical order')
-        hashes = set(map(lambda item: item['tx_hash'], res))
-        if len(hashes) != len(res):
+        hashes = set(map(lambda item: item['tx_hash'], hist))
+        if len(hashes) != len(hist):
             # Either server is sending garbage... or maybe if server is race-prone
             # a recently mined tx could be included in both last block and mempool?
             # Still, it's simplest to just disregard the response.
             raise RequestCorrupted(f"server history has non-unique txids for spk={spk}")
-        return res
+        return hist
 
     async def listunspent_for_spk(self, spk: str) -> List[dict]:
         # do request
         res = await self.session.send_request('blockchain.scriptpubkey.listunspent', [spk])
         # check response
-        assert_list_or_tuple(res)
-        for utxo_item in res:
+        utxos = assert_dict_contains_field(res, field_name='utxos')
+        assert_list_or_tuple(utxos)
+        for utxo_item in utxos:
             assert_dict_contains_field(utxo_item, field_name='tx_pos')
             assert_dict_contains_field(utxo_item, field_name='value')
             assert_dict_contains_field(utxo_item, field_name='tx_hash')
@@ -1516,7 +1540,9 @@ class Interface(Logger):
             assert_non_negative_integer(utxo_item['value'])
             assert_non_negative_integer(utxo_item['height'])
             assert_hash256_str(utxo_item['tx_hash'])
-        return res
+        assert_dict_contains_field(res, field_name='chaintip')
+        assert_blockref(res['chaintip'])
+        return utxos
 
     async def get_balance_for_spk(self, spk: str) -> dict:
         # do request
@@ -1524,8 +1550,10 @@ class Interface(Logger):
         # check response
         assert_dict_contains_field(res, field_name='confirmed')
         assert_dict_contains_field(res, field_name='unconfirmed')
+        assert_dict_contains_field(res, field_name='chaintip')
         assert_non_negative_integer(res['confirmed'])
         assert_integer(res['unconfirmed'])
+        assert_blockref(res['chaintip'])
         return res
 
     async def get_txid_from_txpos(self, tx_height: int, tx_pos: int, merkle: bool):
