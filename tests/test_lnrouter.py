@@ -97,7 +97,7 @@ class Test_LNRouter(ElectrumTestCase):
             'short_channel_id': channel(1),
             'chain_hash': BitcoinTestnet.rev_genesis_bytes(),
             'len': 0, 'features': b''
-        }, trusted=True)
+        }, check_spv=False, check_sig=False)
         self.assertEqual(self.cdb.num_channels, 1)
         self.cdb.add_channel_announcements({
             'node_id_1': node('b'), 'node_id_2': node('e'),
@@ -105,42 +105,42 @@ class Test_LNRouter(ElectrumTestCase):
             'short_channel_id': channel(2),
             'chain_hash': BitcoinTestnet.rev_genesis_bytes(),
             'len': 0, 'features': b''
-        }, trusted=True)
+        }, check_spv=False, check_sig=False)
         self.cdb.add_channel_announcements({
             'node_id_1': node('a'), 'node_id_2': node('b'),
             'bitcoin_key_1': node('a'), 'bitcoin_key_2': node('b'),
             'short_channel_id': channel(3),
             'chain_hash': BitcoinTestnet.rev_genesis_bytes(),
             'len': 0, 'features': b''
-        }, trusted=True)
+        }, check_spv=False, check_sig=False)
         self.cdb.add_channel_announcements({
             'node_id_1': node('c'), 'node_id_2': node('d'),
             'bitcoin_key_1': node('c'), 'bitcoin_key_2': node('d'),
             'short_channel_id': channel(4),
             'chain_hash': BitcoinTestnet.rev_genesis_bytes(),
             'len': 0, 'features': b''
-        }, trusted=True)
+        }, check_spv=False, check_sig=False)
         self.cdb.add_channel_announcements({
             'node_id_1': node('d'), 'node_id_2': node('e'),
             'bitcoin_key_1': node('d'), 'bitcoin_key_2': node('e'),
             'short_channel_id': channel(5),
             'chain_hash': BitcoinTestnet.rev_genesis_bytes(),
             'len': 0, 'features': b''
-        }, trusted=True)
+        }, check_spv=False, check_sig=False)
         self.cdb.add_channel_announcements({
             'node_id_1': node('a'), 'node_id_2': node('d'),
             'bitcoin_key_1': node('a'), 'bitcoin_key_2': node('d'),
             'short_channel_id': channel(6),
             'chain_hash': BitcoinTestnet.rev_genesis_bytes(),
             'len': 0, 'features': b''
-        }, trusted=True)
+        }, check_spv=False, check_sig=False)
         self.cdb.add_channel_announcements({
             'node_id_1': node('c'), 'node_id_2': node('e'),
             'bitcoin_key_1': node('c'), 'bitcoin_key_2': node('e'),
             'short_channel_id': channel(7),
             'chain_hash': BitcoinTestnet.rev_genesis_bytes(),
             'len': 0, 'features': b''
-        }, trusted=True)
+        }, check_spv=False, check_sig=False)
 
         self.cdb.add_node_announcements({
             'node_id': node('a'),
@@ -148,35 +148,35 @@ class Test_LNRouter(ElectrumTestCase):
             'addresses': [],
             'features': node_features(LnFeatures.OPTION_ONION_MESSAGE_OPT),
             'timestamp': 0
-        })
+        }, check_sig=False)
         self.cdb.add_node_announcements({
             'node_id': node('b'),
             'alias': alias('b'),
             'addresses': [],
             'features': node_features(),
             'timestamp': 0
-        })
+        }, check_sig=False)
         self.cdb.add_node_announcements({
             'node_id': node('c'),
             'alias': alias('c'),
             'addresses': [],
             'features': node_features(LnFeatures.OPTION_ONION_MESSAGE_OPT),
             'timestamp': 0
-        })
+        }, check_sig=False)
         self.cdb.add_node_announcements({
             'node_id': node('d'),
             'alias': alias('d'),
             'addresses': [],
             'features': node_features(LnFeatures.OPTION_ONION_MESSAGE_OPT),
             'timestamp': 0
-        })
+        }, check_sig=False)
         self.cdb.add_node_announcements({
             'node_id': node('e'),
             'alias': alias('e'),
             'addresses': [],
             'features': node_features(),
             'timestamp': 0
-        })
+        }, check_sig=False)
 
         def add_chan_upd(payload):
             self.cdb.add_channel_update(payload, verify=False)

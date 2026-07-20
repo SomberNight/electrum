@@ -265,7 +265,7 @@ class Peer(Logger, EventListener):
                 return
             # raw message is needed to check signature
             if message_type in ['node_announcement', 'channel_announcement', 'channel_update']:
-                payload['raw'] = message
+                payload['raw'] = message  # TODO instead of payload dicts, create new type, and pass that to lnworker, etc
                 payload['sender_node_id'] = self.pubkey
             # note: the message handler might be async or non-async. In either case, by default,
             #       we wait for it to complete before we return, i.e. before the next message is processed.
@@ -595,7 +595,7 @@ class Peer(Logger, EventListener):
                 if self.recv_gossip_queue.empty():
                     break
             if self.network.lngossip:
-                await self.network.lngossip.process_gossip(chan_anns, node_anns, chan_upds)
+                await self.network.lngossip.process_gossip(chan_anns=chan_anns, node_anns=node_anns, chan_upds=chan_upds)
 
     async def _send_own_gossip(self):
         if self.lnworker == self.lnworker.network.lngossip:

@@ -790,24 +790,24 @@ class LNGossip(Logger):
             progress_percent = 0
         return current_est, total_est, progress_percent
 
-    @ignore_exceptions
-    @log_exceptions
-    async def process_gossip(self, chan_anns, node_anns, chan_upds):
+    async def process_gossip(
+        self,
+        *,
+        chan_anns: Sequence[dict],
+        node_anns: Sequence[dict],
+        chan_upds: Sequence[dict],
+    ) -> None:
         # note: we run in the originating peer's TaskGroup, so we can safely raise here
         #       and disconnect only from that peer
         await self.channel_db.data_loaded.wait()
 
         # channel announcements
         def process_chan_anns():
-            for payload in chan_anns:
-                self.channel_db.verify_channel_announcement(payload)
             self.channel_db.add_channel_announcements(chan_anns)
         await run_in_thread(process_chan_anns)
 
         # node announcements
         def process_node_anns():
-            for payload in node_anns:
-                self.channel_db.verify_node_announcement(payload)
             self.channel_db.add_node_announcements(node_anns)
         await run_in_thread(process_node_anns)
         # channel updates
@@ -2245,9 +2245,8 @@ class LNWallet(Logger):
     ) -> Tuple[bool, bool]:
         blacklist = False
         update = False
-        try:
-            r = self.channel_db.add_channel_update(payload, verify=True)
-        except InvalidGossipMsg:
+        r = self.channel_db.add_channel_update(payload, verify=True)
+        if r == UpdateStatus.INVALID:
             return True, False  # blacklist
         short_channel_id = ShortChannelID(payload['short_channel_id'])
         if r == UpdateStatus.GOOD:

@@ -189,7 +189,7 @@ def inject_chan_into_gossipdb(
     print(f"injecting channel {chanAB.name} into channel_db")
     chan_ann_raw = chanAB.construct_channel_announcement_without_sigs()[0]
     chan_ann_dict = decode_msg(chan_ann_raw)[1]
-    channel_db.add_channel_announcements(chan_ann_dict, trusted=True)
+    channel_db.add_channel_announcements(chan_ann_dict, check_spv=False, check_sig=False)
 
     chan_upd1_raw = chanAB.get_outgoing_gossip_channel_update()
     chan_upd1_dict = decode_msg(chan_upd1_raw)[1]

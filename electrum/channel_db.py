@@ -33,6 +33,7 @@ import binascii
 import base64
 import asyncio
 import threading
+import enum
 from enum import IntEnum
 import functools
 
@@ -294,11 +295,12 @@ class NodeInfo(NamedTuple):
 
 
 class UpdateStatus(IntEnum):
-    ORPHANED   = 0
-    EXPIRED    = 1
-    DEPRECATED = 2
-    UNCHANGED  = 3
-    GOOD       = 4
+    ORPHANED   = enum.auto()
+    EXPIRED    = enum.auto()
+    DEPRECATED = enum.auto()
+    UNCHANGED  = enum.auto()
+    GOOD       = enum.auto()
+    INVALID    = enum.auto()
 
 
 class CategorizedChannelUpdates(NamedTuple):
@@ -307,6 +309,7 @@ class CategorizedChannelUpdates(NamedTuple):
     deprecated: List  # update older than database entry
     unchanged: List   # unchanged policies
     good: List        # good updates
+    invalid: List     # sigcheck failed
 
 
 def get_mychannel_info(short_channel_id: ShortChannelID,
@@ -465,14 +468,13 @@ class ChannelDB(SqlDB):
                    for node_id in self._recent_peers]
             return ret
 
-    # note: currently channel announcements are trusted by default (trusted=True);
+    # note: currently channel announcements are trusted by default (check_spv=False);
     #       they are not SPV-verified. Verifying them would make the gossip sync
     #       even slower; especially as servers will start throttling us.
     #       It would probably put significant strain on servers if all clients
     #       verified the complete gossip.
-    def add_channel_announcements(self, msg_payloads, *, trusted=True):
-        # note: signatures have already been verified.
-        if type(msg_payloads) is dict:
+    def add_channel_announcements(self, msg_payloads, *, check_spv: bool = False, check_sig: bool = True):
+        if type(msg_payloads) is dict:  # TODO rm type conversion
             msg_payloads = [msg_payloads]
         added = 0
         for msg in msg_payloads:
@@ -482,16 +484,22 @@ class ChannelDB(SqlDB):
             if constants.net.rev_genesis_bytes() != msg['chain_hash']:
                 self.logger.info("ChanAnn has unexpected chain_hash {}".format(msg['chain_hash'].hex()))
                 continue
+            if check_sig:
+                try:
+                    self.verify_channel_announcement(msg)
+                except InvalidGossipMsg as e:
+                    self.logger.warning(f"sigcheck failed for chan ann: {e!r}")
+                    continue
             try:
                 channel_info = ChannelInfo.from_msg(msg)
             except IncompatibleOrInsaneFeatures as e:
                 self.logger.info(f"unknown or insane feature bits: {e!r}")
                 continue
-            if trusted:
+            if check_spv:
+                added += self.ca_verifier.add_new_channel_info(short_channel_id, msg)
+            else:
                 added += 1
                 self.add_verified_channel_info(msg)
-            else:
-                added += self.ca_verifier.add_new_channel_info(short_channel_id, msg)
 
         self.update_counts()
 
@@ -569,7 +577,11 @@ class ChannelDB(SqlDB):
         if old_policy and timestamp <= old_policy.timestamp + 60:
             return UpdateStatus.DEPRECATED
         if verify:
-            self.verify_channel_update(payload)
+            try:
+                self.verify_channel_update(payload)
+            except InvalidGossipMsg as e:
+                self.logger.warning(f"sigcheck failed for chan upd: {e!r}")
+                return UpdateStatus.INVALID
         policy = Policy.from_msg(payload)
         with self.lock:
             self._policies[key] = policy
@@ -591,6 +603,7 @@ class ChannelDB(SqlDB):
         deprecated = []
         unchanged = []
         good = []
+        invalid = []
         for payload in payloads:
             r = self.add_channel_update(payload, max_age=max_age, verbose=False, verify=True)
             if r == UpdateStatus.ORPHANED:
@@ -603,13 +616,17 @@ class ChannelDB(SqlDB):
                 unchanged.append(payload)
             elif r == UpdateStatus.GOOD:
                 good.append(payload)
+            elif r == UpdateStatus.INVALID:
+                invalid.append(payload)
         self.update_counts()
         return CategorizedChannelUpdates(
             orphaned=orphaned,
             expired=expired,
             deprecated=deprecated,
             unchanged=unchanged,
-            good=good)
+            good=good,
+            invalid=invalid,
+        )
 
     def create_database(self):
         c = self.conn.cursor()
@@ -688,15 +705,33 @@ class ChannelDB(SqlDB):
         pubkey = payload['node_id']
         signature = payload['signature']
         h = sha256d(payload['raw'][66:])
+        try:
+            node_info = NodeInfo.from_msg(payload)[0]
+        except IncompatibleOrInsaneFeatures as e:
+            raise InvalidGossipMsg(
+                f'{repr(e)}. '
+                f'sender_node_id={payload["sender_node_id"].hex()}. '
+                f'{payload=!r}'
+            ) from e
         if not ECPubkey(pubkey).ecdsa_verify(signature, h):
-            raise InvalidGossipMsg('signature failed')
+            raise InvalidGossipMsg(
+                f'signature failed. '
+                f'sender_node_id={payload["sender_node_id"].hex()}. '
+                f'features={list(util.list_enabled_bits(node_info.features))}. '
+                f'{payload=!r}'
+            )
 
-    def add_node_announcements(self, msg_payloads):
-        # note: signatures have already been verified.
+    def add_node_announcements(self, msg_payloads, *, check_sig: bool = True):
         if type(msg_payloads) is dict:
             msg_payloads = [msg_payloads]
         new_nodes = set()  # type: Set[bytes]
         for msg_payload in msg_payloads:
+            if check_sig:
+                try:
+                    self.verify_node_announcement(msg_payload)
+                except InvalidGossipMsg as e:
+                    self.logger.warning(f"sigcheck failed for node ann: {e!r}")
+                    continue
             try:
                 node_info, node_addresses = NodeInfo.from_msg(msg_payload)
             except IncompatibleOrInsaneFeatures:
