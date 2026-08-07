@@ -678,7 +678,7 @@ Pane {
         target: AppController
         property: 'secureWindow'
         when: rootItem.visible  // enables stacking multiple secureWindow dialogs
-        value: true
+        value: seedText.visible
     }
 
 }
