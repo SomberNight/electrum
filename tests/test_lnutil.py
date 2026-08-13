@@ -1126,11 +1126,12 @@ class TestLNUtil(ElectrumTestCase):
                 host='lightning.electrum.org',
                 port=9739,
                 channel_seed=bfh('ce9bad44ff8521d9f57fd202ad7cdedceb934f0056f42d0f3aa7a576b505332a'),
+                channel_type=None,
                 local_delay=1008,
                 remote_delay=720,
                 remote_payment_pubkey=bfh('02a1bbc818e2e88847016a93c223eb4adef7bb8becb3709c75c556b6beb3afe7bd'),
                 remote_revocation_pubkey=bfh('022f28b7d8d1f05768ada3df1b0966083b8058e1e7197c57393e302ec118d7f0ae'),
-                local_payment_pubkey=None,
+                local_payment_basepoint=None,
                 multisig_funding_privkey=None,
             ),
             decoded_cb,
@@ -1154,15 +1155,43 @@ class TestLNUtil(ElectrumTestCase):
                 host='195.201.207.61',
                 port=9739,
                 channel_seed=bfh('ce9bad44ff8521d9f57fd202ad7cdedceb934f0056f42d0f3aa7a576b505332a'),
+                channel_type=None,
                 local_delay=1008,
                 remote_delay=720,
                 remote_payment_pubkey=bfh('02a1bbc818e2e88847016a93c223eb4adef7bb8becb3709c75c556b6beb3afe7bd'),
                 remote_revocation_pubkey=bfh('022f28b7d8d1f05768ada3df1b0966083b8058e1e7197c57393e302ec118d7f0ae'),
-                local_payment_pubkey=bfh('0308d686712782a44b0cef220485ad83dae77853a5bf8501a92bb79056c9dcb25a'),
+                local_payment_basepoint=bfh('0308d686712782a44b0cef220485ad83dae77853a5bf8501a92bb79056c9dcb25a'),
                 multisig_funding_privkey=None,
             ),
             decoded_cb,
         )
+        with self.assertRaisesRegex(Exception, "pre-v3"):
+            decoded_cb.to_bytes()  # to bytes refuses to serialize old version
+
+    @as_testnet
+    async def test_decode_imported_channel_backup_v3(self):
+        encrypted_cb = "channel_backup:AR/WbD/WxUF2NorcntF8epxd+rXl/l97blV+KB3GkG/gaWQDnK6yKAifZqjOKqzG5oiqWXU0mlT13l72fdotJOEjKnFMG1EgOzRXcNIPuYT4khc4/WdSL2uPINsWnZyO2L9bKnrX1GLFlw5xorORep2nOmh20so8m0DDGaYiYffs5zUWxu/XtZe+SsPLnFGNsquICWiWgecReg1jgZInEDN7vqu9qmsDOT/URqIrCDpV6Kse1+kwF7TgWtuJ5tQhrdMHzO5O0reCcfu2rpobifZF+uKhw+8APu+WnCAtc+uHthnU648MuffRKxXWQ/89lKFQon6ZvpCWhGI7oxO1CPGtWLQnJDNcYVwnbmBdvt6itZ5d56MF4IenBqSN+y3/TB07ie8HY+3hWGk6FMOuvOXMfTdjN/Tkh0+u+zYlZBqSj+45Bj4cFuFoa6K+B9o1Az0mxqBtakOD0g4n4KdMSQryA9FRxJuBQuRrk8KclruBSnH+xTUgKG/jwDNKMIF0MyukcYc="
+        wallet_vpub = "vpub5UQGRCM7BGYjn1ttbgxRW9yMXAwWvTXD4LSxs3F9EvEZxYdB3AwYsXG3vKtyJyjuRQKFQBaVZ7cMqNVHFZsk2Rm5HoRNcAJnPPNiEhxW8et"
+        decoded_cb = ImportedChannelBackupStorage.from_encrypted_str(encrypted_cb, password=wallet_vpub)
+        reference = ImportedChannelBackupStorage(
+            funding_txid='4d6aa822ba3ded69d27c4d245658cb3dbba511621e411be095deef4118baf5d5',
+            funding_index=0,
+            funding_address='tb1qzx6xzdavjlawmkd6j43vqxclvw6lj7asegpmjq0k6e3xlztzhyeqpkuwmg',
+            is_initiator=True,
+            node_id=bfh('03933884aaf1d6b108397e5efe5c86bcf2d8ca8d2f700eda99db9214fc2712b134'),
+            privkey=bfh('a73df0a2ac3dc4764254a3b0227a72768f229cf419f80d1653efc07584517e30'),
+            host='13.248.222.197',
+            port=9735,
+            channel_seed=bfh('7c5e51f115741b92c9746dc0e6f2f31f2830ec003f35d74a1abd0d106a3e07e9'),
+            channel_type=ChannelType.OPTION_STATIC_REMOTEKEY | ChannelType.OPTION_ANCHORS,
+            local_delay=1008,
+            remote_delay=720,
+            remote_payment_pubkey=bfh('02039b955bef1e02d5b5e8f592d9ed15ea2be49f5ee979c88071b1485cfe78a6da'),
+            remote_revocation_pubkey=bfh('026c9e1e2ce5ae47a36df3bb90dbeb6d7874086e3a4ab1ea2a6211331dbd285973'),
+            local_payment_basepoint=bfh('f406b0899040d762a326035631c2ce38b22c2db18102ab9e3c666c87d9e0ab65'),
+            multisig_funding_privkey=bfh('a21d6110f9af75def01f2145ef1338dfa53c2fb2a58dd9ae0ecf3358ee663783'),
+        )
+        self.assertEqual(reference, decoded_cb)
 
     def test_onchain_channel_backup_json_roundtrip(self):
         cb = OnchainChannelBackupStorage(
