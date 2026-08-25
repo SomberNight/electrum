@@ -1084,13 +1084,19 @@ class Channel(AbstractChannel):
     def set_can_send_ctx_updates(self, b: bool) -> None:
         self._can_send_ctx_updates = b
 
-    def can_update_ctx(self, *, proposer: HTLCOwner) -> bool:
-        """Whether proposer is allowed to send commitment_signed, revoke_and_ack,
-        and update_* messages.
-        """
+    def can_sign_or_rev_ctns(self) -> bool:
+        """Whether chan is in a state that generally allows signing new commitments or revoking them."""
         if self.get_state() not in (ChannelState.OPEN, ChannelState.SHUTDOWN):
             return False
         if self.peer_state != PeerState.GOOD:
+            return False
+        return True
+
+    def can_update_ctx(self, *, proposer: HTLCOwner) -> bool:
+        """Whether proposer is allowed to send update_* messages.
+        (update_fee, update_*_htlc)
+        """
+        if not self.can_sign_or_rev_ctns():
             return False
         if proposer == LOCAL:
             if not self._can_send_ctx_updates:
@@ -1098,6 +1104,7 @@ class Channel(AbstractChannel):
         return True
 
     def can_send_update_add_htlc(self) -> bool:
+        """Whether *we* can send update_add_htlc."""
         return self.can_update_ctx(proposer=LOCAL) and self.is_open()
 
     def is_frozen_for_sending(self) -> bool:

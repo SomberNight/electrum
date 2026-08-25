@@ -1958,7 +1958,7 @@ class Peer(Logger, EventListener):
 
     def maybe_send_commitment(self, chan: Channel) -> bool:
         assert util.get_running_loop() == util.get_asyncio_loop(), f"this must be run on the asyncio thread!"
-        if not chan.can_update_ctx(proposer=LOCAL):
+        if not chan.can_sign_or_rev_ctns():
             return False
         # REMOTE should revoke first before we can sign a new ctx
         if chan.hm.is_revack_pending(REMOTE):
@@ -2039,8 +2039,7 @@ class Peer(Logger, EventListener):
         return htlc
 
     def send_revoke_and_ack(self, chan: Channel) -> None:
-        if not chan.can_update_ctx(proposer=LOCAL):
-            return
+        assert chan.can_sign_or_rev_ctns(), chan.get_state()
         self.logger.info(f'send_revoke_and_ack. chan {chan.short_channel_id}. ctn: {chan.get_oldest_unrevoked_ctn(LOCAL)}')
         rev = chan.revoke_current_commitment()
         self.lnworker.save_channel(chan)
@@ -2052,7 +2051,7 @@ class Peer(Logger, EventListener):
 
     def on_commitment_signed(self, chan: Channel, payload) -> None:
         self.logger.info(f'on_commitment_signed. chan {chan.short_channel_id}. ctn: {chan.get_next_ctn(LOCAL)}.')
-        if not chan.can_update_ctx(proposer=REMOTE):
+        if not chan.can_sign_or_rev_ctns():
             self.logger.warning(
                 f"on_commitment_signed. dropping message. illegal action. "
                 f"chan={chan.get_id_for_log()}. {chan.get_state()=!r}. {chan.peer_state=!r}")
@@ -2434,7 +2433,7 @@ class Peer(Logger, EventListener):
 
     def on_revoke_and_ack(self, chan: Channel, payload) -> None:
         self.logger.info(f'on_revoke_and_ack. chan {chan.short_channel_id}. ctn: {chan.get_oldest_unrevoked_ctn(REMOTE)}')
-        if not chan.can_update_ctx(proposer=REMOTE):
+        if not chan.can_sign_or_rev_ctns():
             self.logger.warning(
                 f"on_revoke_and_ack. dropping message. illegal action. "
                 f"chan={chan.get_id_for_log()}. {chan.get_state()=!r}. {chan.peer_state=!r}")
