@@ -1774,6 +1774,7 @@ class LNWallet(Logger):
         max_htlc_value_in_flight_msat = self.network.config.LIGHTNING_MAX_HTLC_VALUE_IN_FLIGHT_MSAT or funding_sat * 1000
         local_config = LocalConfig.from_seed(
             channel_seed=channel_seed,
+            channel_type=channel_type,
             static_remotekey=static_remotekey,
             static_payment_key=static_payment_key,
             multisig_key=multisig_funding_keypair,

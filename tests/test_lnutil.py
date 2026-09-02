@@ -1119,6 +1119,7 @@ class TestLNUtil(ElectrumTestCase):
         decoded_cb = ImportedChannelBackupStorage.from_encrypted_str(encrypted_cb, password=wallet1.get_fingerprint())
         self.assertEqual(
             ImportedChannelBackupStorage(
+                backup_version=0,
                 funding_txid='97767fdefef3152319363b772914d71e5eb70e793b835c13dce20037d3ac13fe',
                 funding_index=1,
                 funding_address='tb1qfsxllwl2edccpar9jas9wsxd4vhcewlxqwmn0w27kurkme3jvkdqn4msdp',
@@ -1128,7 +1129,7 @@ class TestLNUtil(ElectrumTestCase):
                 host='lightning.electrum.org',
                 port=9739,
                 channel_seed=bfh('ce9bad44ff8521d9f57fd202ad7cdedceb934f0056f42d0f3aa7a576b505332a'),
-                channel_type=None,
+                channel_type=int(ChannelType.OPTION_STATIC_REMOTEKEY),
                 local_delay=1008,
                 remote_delay=720,
                 remote_payment_pubkey=bfh('02a1bbc818e2e88847016a93c223eb4adef7bb8becb3709c75c556b6beb3afe7bd'),
@@ -1151,6 +1152,7 @@ class TestLNUtil(ElectrumTestCase):
         decoded_cb = ImportedChannelBackupStorage.from_encrypted_str(encrypted_cb, password=wallet1.get_fingerprint())
         self.assertEqual(
             ImportedChannelBackupStorage(
+                backup_version=1,
                 funding_txid='97767fdefef3152319363b772914d71e5eb70e793b835c13dce20037d3ac13fe',
                 funding_index=1,
                 funding_address='tb1qfsxllwl2edccpar9jas9wsxd4vhcewlxqwmn0w27kurkme3jvkdqn4msdp',
@@ -1160,7 +1162,7 @@ class TestLNUtil(ElectrumTestCase):
                 host='195.201.207.61',
                 port=9739,
                 channel_seed=bfh('ce9bad44ff8521d9f57fd202ad7cdedceb934f0056f42d0f3aa7a576b505332a'),
-                channel_type=None,
+                channel_type=int(ChannelType.OPTION_STATIC_REMOTEKEY),
                 local_delay=1008,
                 remote_delay=720,
                 remote_payment_pubkey=bfh('02a1bbc818e2e88847016a93c223eb4adef7bb8becb3709c75c556b6beb3afe7bd'),
@@ -1170,7 +1172,7 @@ class TestLNUtil(ElectrumTestCase):
             ),
             decoded_cb,
         )
-        with self.assertRaisesRegex(Exception, "pre-v3"):
+        with self.assertRaisesRegex(Exception, "cannot re-serialize old-version channel backup"):
             decoded_cb.to_bytes()  # to bytes refuses to serialize old version
         chan_backup = ChannelBackup(decoded_cb, lnworker=None)
         self.assertEqual(
@@ -1184,6 +1186,7 @@ class TestLNUtil(ElectrumTestCase):
         wallet_vpub = "vpub5UQGRCM7BGYjn1ttbgxRW9yMXAwWvTXD4LSxs3F9EvEZxYdB3AwYsXG3vKtyJyjuRQKFQBaVZ7cMqNVHFZsk2Rm5HoRNcAJnPPNiEhxW8et"
         decoded_cb = ImportedChannelBackupStorage.from_encrypted_str(encrypted_cb, password=wallet_vpub)
         reference = ImportedChannelBackupStorage(
+            backup_version=3,
             funding_txid='4d6aa822ba3ded69d27c4d245658cb3dbba511621e411be095deef4118baf5d5',
             funding_index=0,
             funding_address='tb1qzx6xzdavjlawmkd6j43vqxclvw6lj7asegpmjq0k6e3xlztzhyeqpkuwmg',

@@ -247,10 +247,11 @@ class LocalConfig(ChannelConfig):
         kwargs['revocation_basepoint'] = keypair_generator(LnKeyFamily.REVOCATION_BASE)
         static_remotekey = kwargs.pop('static_remotekey')
         static_payment_key = kwargs.pop('static_payment_key')
-        channel_type = kwargs.pop('channel_type', None)
+        channel_type = kwargs.pop('channel_type')
         payment_basepoint = kwargs.pop('payment_basepoint', None)
         assert bool(static_remotekey) + bool(static_payment_key) + bool(payment_basepoint) <= 1
         if static_payment_key:
+            assert channel_type & ChannelType.OPTION_ANCHORS
             # We derive the payment_basepoint from a static secret (derived from
             # the wallet seed) and a public nonce that is revealed
             # when the funding transaction is spent. This way we can restore the
@@ -260,16 +261,20 @@ class LocalConfig(ChannelConfig):
                 funding_pubkey=kwargs['multisig_key'].pubkey
             )
         elif static_remotekey:  # we automatically sweep to a wallet address
+            assert channel_type == ChannelType.OPTION_STATIC_REMOTEKEY
             kwargs['payment_basepoint'] = OnlyPubkeyKeypair(static_remotekey)
         elif payment_basepoint:  # channel backup
-            if channel_type is not None and channel_type & ChannelType.OPTION_ANCHORS:
+            if len(payment_basepoint) == 32:  # privkey
+                assert channel_type & ChannelType.OPTION_ANCHORS
                 privkey = ecc.ECPrivkey(payment_basepoint)
                 kwargs['payment_basepoint'] = Keypair(privkey=privkey.get_secret_bytes(), pubkey=privkey.get_public_key_bytes())
             else:
+                assert len(payment_basepoint) == 33  # pubkey
                 kwargs['payment_basepoint'] = OnlyPubkeyKeypair(payment_basepoint)
         else:
             # v0 channel backup for srk channel: the real basepoint is a wallet pubkey that is
             # not part of the backup and cannot be derived, see: https://github.com/spesmilo/electrum/pull/8536
+            assert channel_type == ChannelType.OPTION_STATIC_REMOTEKEY
             kwargs['payment_basepoint'] = OnlyPubkeyKeypair(None)
 
         assert ecc.ECPubkey.is_pubkey_bytes(kwargs['payment_basepoint'].pubkey)
@@ -344,14 +349,15 @@ class OnchainChannelBackupStorage(ChannelBackupStorage):
         return OnchainChannelBackupStorage(**kwargs)
 
 
-@dataclasses.dataclass(frozen=True)
+@dataclasses.dataclass(frozen=True, kw_only=True)
 class ImportedChannelBackupStorage(ChannelBackupStorage):
+    backup_version: int = CHANNEL_BACKUP_VERSION_LATEST
     node_id: bytes  # remote node pubkey
     privkey: bytes  # local node privkey
     host: str
     port: int
     channel_seed: bytes
-    channel_type: Optional[int]  # introduced in v3
+    channel_type: int
     local_delay: int
     remote_delay: int
     remote_payment_pubkey: bytes
@@ -367,8 +373,8 @@ class ImportedChannelBackupStorage(ChannelBackupStorage):
             object.__setattr__(self, 'channel_type', channel_type)
 
     def to_bytes(self) -> bytes:
-        if self.channel_type is None:
-            raise Exception("cannot re-serialize pre-v3 channel backup")
+        if self.backup_version != CHANNEL_BACKUP_VERSION_LATEST:
+            raise Exception("cannot re-serialize old-version channel backup")
         vds = BCDataStream()
         vds.write_uint16(CHANNEL_BACKUP_VERSION_LATEST)
         vds.write_boolean(self.is_initiator)
@@ -426,7 +432,28 @@ class ImportedChannelBackupStorage(ChannelBackupStorage):
         else:
             multisig_funding_privkey = None
 
+        # guess channel_type for version<3:
+        if channel_type is None:
+            if version == 0:
+                # Could technically be either SRK or pre-SRK, but pre-SRK channels
+                # could never be opened in a released version, so we ignore that case.
+                channel_type = int(ChannelType.OPTION_STATIC_REMOTEKEY)
+            elif version == 1:  # can only be SRK
+                channel_type = int(ChannelType.OPTION_STATIC_REMOTEKEY)
+            else:
+                assert version == 2, version
+                # can be either SRK or anchors
+                assert multisig_funding_privkey is not None
+                node = BIP32Node.from_rootseed(channel_seed, xtype='standard')
+                srk_multisig_key = generate_keypair(node, LnKeyFamily.MULTISIG)
+                if multisig_funding_privkey == srk_multisig_key.privkey:
+                    channel_type = int(ChannelType.OPTION_STATIC_REMOTEKEY)  # SRK
+                else:
+                    channel_type = int(ChannelType.OPTION_STATIC_REMOTEKEY | ChannelType.OPTION_ANCHORS)  # anchors
+        assert channel_type is not None
+
         return ImportedChannelBackupStorage(
+            backup_version=version,
             is_initiator=is_initiator,
             privkey=privkey,
             channel_seed=channel_seed,
