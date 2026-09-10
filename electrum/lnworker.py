@@ -1321,19 +1321,11 @@ class LNWallet(Logger):
         been failed nor fulfilled yet, i.e. the receiver might still take the money.
         """
         for chan in self.channels.values():
-            for direction, htlc in itertools.chain(
-                chan.hm.get_htlcs_in_oldest_unrevoked_ctx(REMOTE),
-                chan.hm.get_htlcs_in_latest_ctx(REMOTE),
-                chan.hm.get_htlcs_in_next_ctx(REMOTE)
-            ):
+            if chan.is_redeemed():
+                continue  # skip channel
+            for htlc in chan.hm.get_all_not_irrevocably_removed_htlcs(htlc_proposer=LOCAL):
                 if htlc.payment_hash != payment_hash:
-                    continue
-                if direction != RECEIVED:
-                    continue
-                if chan.hm.was_htlc_failed(htlc_id=htlc.htlc_id, htlc_proposer=LOCAL):
-                    continue
-                if chan.hm.was_htlc_preimage_released(htlc_id=htlc.htlc_id, htlc_proposer=LOCAL):
-                    continue
+                    continue  # skip htlc
                 return True
         return False
 
