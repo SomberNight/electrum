@@ -3,6 +3,7 @@ import QtQuick.Layouts 1.0
 import QtQuick.Controls 2.1
 
 import "../../../gui/qml/components/wizard"
+import "../../../gui/qml/components/controls"
 
 WizardComponent {
     valid: keepordisablegroup.checkedButton

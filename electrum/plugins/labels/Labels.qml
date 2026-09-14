@@ -4,8 +4,7 @@ import QtQuick.Controls 2.14
 import QtQuick.Controls.Material 2.0
 
 import org.electrum 1.0
-
-//import "controls"
+import "../../gui/qml/components/controls"
 
 Item {
     width: parent.width
