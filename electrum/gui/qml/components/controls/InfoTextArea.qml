@@ -75,6 +75,8 @@ TextHighlightPane {
             id: infotext
             Layout.fillWidth: true
             wrapMode: Text.Wrap
+            // check that "Label" is our custom type, shadowing built-in QtQuick.Controls.Label:
+            electrumMagic: "this_assignment_hard_fails_at_runtime_if_using_builtin_label_type"
         }
     }
 }

@@ -9,4 +9,7 @@ import "."
 
 Controls.Label {
     textFormat: Text.PlainText
+
+    // add a custom property, so we can distinguish our custom Label type from the built-in Label, at runtime:
+    property string electrumMagic: "magic_electrum_sentinel_value"
 }
