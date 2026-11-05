@@ -2426,7 +2426,7 @@ class LNWallet(Logger):
         # if we have a direct channel it's preferable to send a single part directly through this
         # channel, so this bool will disable excluding single part payments
         have_direct_channel = any(chan.node_id == receiver_pubkey for chan in my_active_channels)
-        self.logger.info(f"channels_with_funds: {channels_with_funds}, {have_direct_channel=}")
+        self.logger.info(f"channels_with_funds: {channels_with_funds}, {have_direct_channel=}")  #
         exclude_single_part_payments = False
         if self.uses_trampoline():
             # in the case of a legacy payment, we don't allow splitting via different
@@ -2454,7 +2454,7 @@ class LNWallet(Logger):
             exclude_single_channel_splits=exclude_single_channel_splits
         )
 
-        self.logger.info(f'suggest_split {amount_msat} returned {len(split_configurations)} configurations')
+        self.logger.info(f'suggest_split {amount_msat} returned {len(split_configurations)} configurations: {split_configurations}')
         return split_configurations
 
     async def create_routes_for_payment(
@@ -2503,7 +2503,7 @@ class LNWallet(Logger):
                 continue
             if is_mpp and self.config.TEST_FORCE_DISABLE_MPP:
                 continue
-            self.logger.info(f"trying split configuration: {sc.config.values()} rating: {sc.rating}")
+            self.logger.info(f"trying split configuration: {sc.config.values()} rating: {sc.rating}")  #
             routes = []
             try:
                 is_direct_path = all(node_id == paysession.invoice_pubkey for (chan_id, node_id) in sc.config.keys())
